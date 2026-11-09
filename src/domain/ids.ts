@@ -14,6 +14,7 @@ export type IdPrefix =
   | "est"
   | "set"
   | "blk"
+  | "ent"
   | "usr"
   | "cmt"
   | "ses"
@@ -33,6 +34,7 @@ export type JobId = Id<"job">;
 export type EstimateId = Id<"est">;
 export type SetId = Id<"set">;
 export type BlockoutId = Id<"blk">;
+export type EntityId = Id<"ent">;
 export type UserId = Id<"usr">;
 export type CommitId = Id<"cmt">;
 export type SessionId = Id<"ses">;

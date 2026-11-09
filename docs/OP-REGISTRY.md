@@ -12,6 +12,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
 | `cut.get` | read | `cut_get` | The current cut: its items, total duration and the last render. |
 | `cut.render` | write | `cut_render` | Render the cut to MP4 through the assembly chain (FFmpeg concat for now). |
+| `entity.create` | write | `entity_create` | Define a character, location or prop in the library. |
+| `entity.list` | read | `entity_list` | The library: characters, locations and props with their current sheet. |
 | `estimate.create` | read | `estimate_create` | Price a batch of takes for the given tier before anything is submitted. |
 | `frame.attach` | write | `frame_attach` | Attach an image to a shot slot (board, first or last), copied into the project by content hash. |
 | `graph.stale` | read | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
@@ -28,9 +30,11 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `service.set-path` | write | `service_set-path` | Point a service at a specific executable, after checking that it runs. |
 | `session.brief` | read | `session_brief` | A bounded read of where the film stands: the cheapest way for a new session to start. |
 | `set.attach` | write | `set_attach` | Attach a digital set: a validated manifest, plus the .blend it came from when available. |
+| `sheet.publish` | write | `sheet_publish` | Publish a new version of an entity's sheet from a set of view images. |
 | `shot.create` | write | `shot_create` | Add a shot to a scene; it is built from that scene's current text. |
 | `shot.get` | read | `shot_get` | One shot with its readiness checks and staleness. |
 | `shot.rebase` | write | `shot_rebase` | Record that a shot has been re-checked against its scene's current text. |
+| `shot.set-entities` | write | `shot_set-entities` | Set the entities in a shot and pin their current sheet versions. |
 | `shot.update` | write | `shot_update` | Change a shot. Pass acceptScene to record that it was re-checked against the current scene. |
 | `spend.approve` | spend | `spend_approve` | Approve an estimate and receive a single-use token that a generation job must present. |
 | `spend.summary` | read | `spend_summary` | The budget, what is committed, and the most recent money movements. |
@@ -167,6 +171,64 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     },
     "expectedRevision": {
       "type": "integer"
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `entity.create`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "character",
+        "location",
+        "prop"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "name"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `entity.list`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "character",
+        "location",
+        "prop"
+      ]
     }
   },
   "additionalProperties": false,
@@ -676,6 +738,86 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `sheet.publish`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "front",
+              "three-quarter",
+              "profile",
+              "back",
+              "close-up",
+              "detail",
+              "expression",
+              "costume",
+              "lighting"
+            ]
+          },
+          "sourcePath": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "role",
+          "sourcePath"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "heightM": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "rights": {
+      "type": "object",
+      "properties": {
+        "licence": {
+          "type": "string"
+        },
+        "likenessConsent": {
+          "type": "string",
+          "enum": [
+            "granted",
+            "not-required",
+            "pending",
+            "expired"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "note": {
+      "type": "string",
+      "default": ""
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId",
+    "views"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `shot.create`
 
 ```json
@@ -791,6 +933,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
+```
+
+### `shot.set-entities`
+
+```json
+{}
 ```
 
 ### `shot.update`

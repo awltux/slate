@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { newId } from "../domain/ids.js";
 import { SlateError } from "../domain/result.js";
+import { currentVersionNumber } from "../kernel/production/entities.js";
 import { isShotStale } from "../kernel/production/graph.js";
 import { shotReadiness } from "../kernel/production/readiness.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
@@ -99,6 +100,8 @@ export const shotCreate = defineOp({
           description: input.description,
           builtFromSceneHash,
           frames: {},
+          entityIds: [],
+          pins: {},
           createdAt: now,
           updatedAt: now,
         };
@@ -210,6 +213,13 @@ export const shotRebase = defineOp({
         const scene = shot ? production.scenes[shot.sceneId] : undefined;
         if (!shot || !scene) return;
         shot.builtFromSceneHash = sceneHash(scene);
+        // Re-checking a shot also re-pins its entities, otherwise the badge could never clear.
+        shot.pins = Object.fromEntries(
+          shot.entityIds.map((id) => {
+            const entity = production.entities[id];
+            return [id, entity ? currentVersionNumber(entity) : 0];
+          }),
+        );
         shot.updatedAt = context.clock.now();
       },
     });

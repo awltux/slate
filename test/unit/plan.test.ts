@@ -127,6 +127,10 @@ describe("shots and readiness", () => {
       "duration",
       "number-unique",
       "story",
+      "entities-resolved",
+      "sheet-published",
+      "sheet-coverage",
+      "consent",
     ]);
     expect(checks.find((check) => check.id === "scene-linked")?.status).toBe("pass");
     // The story has not been written yet, so the shot warns about it rather than pretending to be ready.

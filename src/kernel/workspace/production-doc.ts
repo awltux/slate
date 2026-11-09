@@ -3,6 +3,7 @@ import { z } from "zod";
 import { hashValue } from "../../domain/canonical.js";
 import { SlateError } from "../../domain/result.js";
 import { AssetSchema } from "../production/assets.js";
+import { EntitySchema } from "../production/entities.js";
 import { BlockoutSchema, SetSchema } from "../production/previz.js";
 import { projectPaths } from "./paths.js";
 
@@ -65,6 +66,8 @@ export const ShotSchema = z
     builtFromSceneHash: z.string(),
     frames: ShotFramesSchema.default({}),
     selectedTakeId: z.string().startsWith("tke_").optional(),
+    entityIds: z.array(z.string()).default([]),
+    pins: z.record(z.string(), z.number().int()).default({}),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -166,6 +169,7 @@ export const ProductionDocumentSchema = z
     shots: z.record(z.string(), ShotSchema),
     takes: z.record(z.string(), TakeSchema).default({}),
     sets: z.record(z.string(), SetSchema).default({}),
+    entities: z.record(z.string(), EntitySchema).default({}),
     blockouts: z.record(z.string(), BlockoutSchema).default({}),
     assets: z.record(z.string(), AssetSchema).default({}),
     cut: CutSchema.default({ items: [], rendered: null }),
@@ -197,6 +201,7 @@ export function emptyProductionDocument(revision: number, commit: string): Produ
     shots: {},
     takes: {},
     sets: {},
+    entities: {},
     blockouts: {},
     assets: {},
     cut: { items: [], rendered: null },

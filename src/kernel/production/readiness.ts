@@ -90,6 +90,87 @@ export function shotReadiness(shot: Shot, production: ProductionDocument): Readi
       : { id: "story", label: "The five-line story is settled", status: "pass", detail: "" },
   );
 
+  // Entities: the shot must know who is in frame, and each of them must have a published sheet to be conditioned on.
+  const entities = shot.entityIds.map((id) => production.entities[id]);
+  const missingEntities = shot.entityIds.filter((id) => !production.entities[id]);
+  checks.push(
+    shot.entityIds.length === 0
+      ? {
+          id: "entities-resolved",
+          label: "Entities are listed",
+          status: "warn",
+          detail: "No characters or props listed; generation will have nothing to keep consistent",
+        }
+      : missingEntities.length > 0
+        ? {
+            id: "entities-resolved",
+            label: "Entities are listed",
+            status: "fail",
+            detail: `Missing entity: ${missingEntities.join(", ")}`,
+          }
+        : {
+            id: "entities-resolved",
+            label: "Entities are listed",
+            status: "pass",
+            detail: entities.map((entity) => entity?.name ?? "").join(", "),
+          },
+  );
+
+  const unpublished = entities.filter((entity) => entity && entity.versions.length === 0);
+  const resolved = entities.filter((entity): entity is NonNullable<(typeof entities)[number]> =>
+    Boolean(entity),
+  );
+  checks.push(
+    unpublished.length > 0
+      ? {
+          id: "sheet-published",
+          label: "Every entity has a sheet",
+          status: "fail",
+          detail: `No sheet yet: ${unpublished.map((entity) => entity?.name ?? "").join(", ")}`,
+        }
+      : {
+          id: "sheet-published",
+          label: "Every entity has a sheet",
+          status: "pass",
+          detail:
+            resolved.length > 0
+              ? resolved.map((entity) => `${entity.name} v${entity.versions.length}`).join(", ")
+              : "",
+        },
+  );
+
+  const characters = resolved.filter((entity) => entity.kind === "character");
+  const thin = characters.filter((entity) => {
+    const views = entity.versions.at(-1)?.views ?? [];
+    const hasCloseUp = views.some((view) => view.role === "close-up" || view.role === "expression");
+    return views.length < 3 || !hasCloseUp;
+  });
+  checks.push(
+    thin.length === 0
+      ? { id: "sheet-coverage", label: "Sheets cover the face", status: "pass", detail: "" }
+      : {
+          id: "sheet-coverage",
+          label: "Sheets cover the face",
+          status: "warn",
+          detail: `Needs three views including a close-up: ${thin.map((entity) => entity.name).join(", ")}`,
+        },
+  );
+
+  const blocked = resolved.filter((entity) => {
+    const consent = entity.versions.at(-1)?.rights.likenessConsent;
+    return consent === "pending" || consent === "expired";
+  });
+  checks.push(
+    blocked.length === 0
+      ? { id: "consent", label: "Likeness consent is settled", status: "pass", detail: "" }
+      : {
+          id: "consent",
+          label: "Likeness consent is settled",
+          status: "fail",
+          detail: `Pending or expired: ${blocked.map((entity) => entity.name).join(", ")} — blocks a final take`,
+        },
+  );
+
   return checks;
 }
 

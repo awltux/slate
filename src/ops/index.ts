@@ -1,5 +1,6 @@
 import { capabilitiesGet } from "./capabilities.js";
 import { cutBuild, cutGet, cutRender } from "./cut.js";
+import { entityCreate, entityList, sheetPublish, shotSetEntities } from "./entity.js";
 import { frameAttach } from "./frame.js";
 import { graphStale, sessionBrief } from "./graph.js";
 import { projectHistory } from "./history.js";
@@ -36,6 +37,10 @@ export function createRegistry(): OpRegistry {
     cutRender,
     serviceSetPath,
     serviceClearPath,
+    entityCreate,
+    sheetPublish,
+    entityList,
+    shotSetEntities,
     setAttach,
     blockoutAttach,
     previzGet,
