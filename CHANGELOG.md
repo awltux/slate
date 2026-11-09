@@ -2,6 +2,16 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Slice 6 — previz
+
+- **Attach a digital set.** A Blender manifest is validated — units, frame rate, frame range, which object plays which
+  entity, and each camera's lens, height and keys — and stored with the `.blend` as an asset. Slate consumes the
+  agent's work; it does not attempt to model.
+- **Attach a blockout for a shot.** First and last stills, the animatic at real duration, and the camera. The stills
+  fill the shot's first and last frame slots, so generation later has endpoints that agree by construction.
+- **See the cheap gate before spending.** The Previz page shows the set, each shot's camera, the pair of stills and a
+  playable animatic — the point at which staging and timing are approved, before any pixels are bought.
+
 ## Slice 5 — edit the plan
 
 - **Edit a shot in place.** Number, framing, angle, movement, duration and description are editable from the shot's

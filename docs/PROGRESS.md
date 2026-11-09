@@ -10,11 +10,24 @@ four surfaces exist.
 | 3 | A cut you can watch | `pnpm gate:3` | **done** | [cut](../artifacts/3/cut.png) · [report](../artifacts/3/report.json) |
 | 4 | Spend with approval | `pnpm gate:4` | **done** | [shoot](../artifacts/4/shoot.png) · [report](../artifacts/4/report.json) |
 | 5 | Plan editing | `pnpm gate:5` | **done** | [plan-edit](../artifacts/5/plan-edit.png) · [report](../artifacts/5/report.json) |
-| 6 | Previz | `pnpm gate:6` | **next** | — |
-| 7 | Collaboration | `pnpm gate:7` | pending | — |
-| 8 | Finish & deliver | `pnpm gate:8` | pending | — |
-| 9 | Remote review | `pnpm gate:9` | pending | — |
-| 10 | Polish | `pnpm gate:10` | pending | — |
+| 6 | Previz | `pnpm gate:6` | **done** | [previz](../artifacts/6/previz.png) · [report](../artifacts/6/report.json) |
+| 7 | Library: entities and sheets | `pnpm gate:7` | **next** | — |
+| 8 | Collaboration | `pnpm gate:8` | pending | — |
+| 9 | Finish & deliver | `pnpm gate:9` | pending | — |
+| 10 | Remote review | `pnpm gate:10` | pending | — |
+| 11 | Polish | `pnpm gate:11` | pending | — |
+
+## Slice 6 — what it proves
+
+- **A set is declared, not invented.** The agent authors the `.blend`; Slate validates the manifest — units, frame
+  rate, frame range, entity-to-object bindings and camera keys — and stores it with the file as an asset.
+- **A blockout is four artifacts with four uses**: the animatic clip, the first and last stills, and the camera.
+  Attaching it fills the shot's first and last frame slots, so a later generation step has endpoints that are
+  geometrically consistent by construction.
+- **Continuity becomes geometry.** The camera records lens, height and which side of the line of action it sits on;
+  `axisSide` is data, so a deliberate axis break is visible rather than argued about.
+- **The browser shows the cheap gate**: sets, blockout status per shot, stills and the animatic, all before a single
+  frame is generated.
 
 ## Slice 5 — what it proves
 

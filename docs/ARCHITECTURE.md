@@ -139,7 +139,50 @@ its slot requires an explicit `conform: trim | retime | hold`.
 
 Imported NLE cuts are immutable `kind: "imported"` records with a best-effort take mapping. They never merge.
 
----
+### 5.6 Entities, sheets, scenes and sets — where a character and a place are defined
+
+A character is not defined by a prompt and a location is not defined by a slugline alone. Both are **entities with
+versioned sheets**, defined once in the library and pinned by the work that used them.
+
+```
+Entity (character | location | prop)
+  └── SheetVersion (v1..vn)
+        ├── views[]        front · three-quarter · profile · back · detail · expression · costume · lighting
+        ├── measurements    heightM (drives the Blender proxy scale) · eyeHeight · palette
+        └── rights          licence · likenessConsent · territories · expiresAt
+```
+
+- **A character** is an `Entity{kind:"character"}` with a sheet: the turnaround views are what an image model is
+  conditioned on, and `heightM` is what makes a proxy the right size in a set.
+- **A location** is an `Entity{kind:"location"}` with its own sheet (reference views, lighting, palette). A **set** is
+  authored *from* that sheet — the Blender file and manifest are a materialisation of the location, not a separate
+  idea. That is why `set.attach` takes a `setId`-shaped manifest with an `entityMap`: the entity→object binding is
+  where "the keeper stands here" becomes geometry.
+- **A scene** is a screenplay unit: slugline (INT/EXT, location, time of day), synopsis, body. It *references* the
+  location entity; it does not own it. Two scenes in the same location share one location sheet and, usually, one set
+  version.
+- **A shot** is inside a scene and lists the entities in frame (`entityIds`). At generation time it **pins** the sheet
+  versions it was conditioned on: `pins: { entityId: sheetVersionId }`.
+
+**The chain, with versions at every step:**
+
+```
+location sheet v2 ──► set v3 (.blend + manifest) ──► rig ──► blockout stills (first / last)
+                                                                   │
+character sheet v4 (front, 3/4, close-up) ─────────────────────────┼──► refined frame (img2img on the blockout,
+                                                                   │    conditioned on the character views)
+                                                                   ▼
+                                                                 take ──► cut
+```
+
+Every arrow records the version it consumed. Edit the character's face — v4 → v5 — and every frame and take pinned to
+v4 becomes stale with the cause `character keeper sheet v4 → v5`; nothing else is invalidated. That is the whole point
+of pinning: reproducibility is a version, not a hope.
+
+**Refinement is conditioned, not re-prompted.** A frame refined from a blockout is generated with the blockout render
+as its structural basis (depth/normal/canny) *and* the character sheet views as its identity basis. Recording both in
+the frame's provenance is what lets the same frame be reproduced after a model upgrade, and what makes "the keeper
+changed between shots 3 and 7" a diagnosable fact rather than an opinion.
 
 ## 6. Identity, concurrency and collaboration
 
