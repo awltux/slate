@@ -2,6 +2,15 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Slice 5 — edit the plan
+
+- **Edit a shot in place.** Number, framing, angle, movement, duration and description are editable from the shot's
+  row. Saving records that the shot was checked against the scene as it stands.
+- **Edit a scene in place.** Heading, time of day, synopsis and body. Saving marks exactly that scene's shots stale and
+  shows the cause beside each one — a badge with a reason, not an unlabelled warning.
+- **Re-check is one click.** It records the scene hash the shot was reviewed against. Nothing is regenerated, and
+  nothing that did not change goes stale.
+
 ## Slice 4 — spend with approval
 
 - **See the price before you spend.** Estimate prices a shot against the catalog — a draft at $0.05/s, a final at

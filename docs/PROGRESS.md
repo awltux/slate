@@ -9,11 +9,23 @@ four surfaces exist.
 | 2 | Story → shots | `pnpm gate:2` | **done** | [write](../artifacts/2/write.png) · [plan](../artifacts/2/plan.png) · [report](../artifacts/2/report.json) |
 | 3 | A cut you can watch | `pnpm gate:3` | **done** | [cut](../artifacts/3/cut.png) · [report](../artifacts/3/report.json) |
 | 4 | Spend with approval | `pnpm gate:4` | **done** | [shoot](../artifacts/4/shoot.png) · [report](../artifacts/4/report.json) |
-| 5 | Previz | `pnpm gate:5` | **next** | — |
-| 6 | Collaboration | `pnpm gate:6` | pending | — |
-| 7 | Finish & deliver | `pnpm gate:7` | pending | — |
-| 8 | Remote review | `pnpm gate:8` | pending | — |
-| 9 | Polish | `pnpm gate:9` | pending | — |
+| 5 | Plan editing | `pnpm gate:5` | **done** | [plan-edit](../artifacts/5/plan-edit.png) · [report](../artifacts/5/report.json) |
+| 6 | Previz | `pnpm gate:6` | **next** | — |
+| 7 | Collaboration | `pnpm gate:7` | pending | — |
+| 8 | Finish & deliver | `pnpm gate:8` | pending | — |
+| 9 | Remote review | `pnpm gate:9` | pending | — |
+| 10 | Polish | `pnpm gate:10` | pending | — |
+
+## Slice 5 — what it proves
+
+- **The plan is editable from the browser.** A shot's number, framing, angle, movement, duration and description are
+  edited in the row itself; a scene's heading, synopsis and body in place above its shots.
+- **Editing is a review, and the system says what it broke.** Saving a shot records that it was checked against the
+  scene as it stands; editing the scene marks exactly its own shots stale and shows the cause next to each one.
+- **Re-check is one click**, and it clears the badge by recording the scene hash the shot was reviewed against — not by
+  regenerating anything.
+- **No new operations were needed.** `scene.update` and `shot.update` already existed and were reachable from the CLI
+  and MCP; this slice was the missing door, which is why it shipped in a fraction of the time the others took.
 
 ## Slice 4 — what it proves
 
@@ -72,10 +84,10 @@ already exists. "Operation exists" means it is reachable from the CLI and MCP to
 | Compare two takes side by side | `take.list` returns both | missing |
 | Conform a take into its slot (trim/retime) | `cut.build` uses planned durations | missing |
 | B-roll from source footage (import, not generate) | missing | missing |
-| Library (cross-project sheets) | missing | slice 9 |
-| Finish: mix, subtitles, titles, upscale | missing | slice 7 |
+| Library (cross-project sheets) | missing | last |
+| Finish: mix, subtitles, titles, upscale | missing | slice 8 |
 | Presence, conflicts, per-user undo | partial: node-scoped `touched` + `expectedRevision` | slice 6 |
-| Remote review link | missing | slice 8 |
+| Remote review link | missing | slice 9 |
 
 Editing a scene or a shot is the first thing a director tries to do after the first plan exists, and today it can only
 be done by an agent. It is the next slice after spend.
