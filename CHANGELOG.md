@@ -2,6 +2,18 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Slice 7 — the library: entities and sheets
+
+- **Characters, locations and props are defined once.** An entity is created in the library; its sheet is published
+  as a new version from a set of view images (front, three-quarter, close-up, costume, lighting, …), with a height in
+  metres and a licence.
+- **Versions, not edits.** Publishing v2 never changes what v1 meant. A shot pins the versions it was conditioned on,
+  so a new sheet marks exactly the shots pinned to the old one stale — with the cause `The keeper sheet v1 → v2`.
+- **Consent is a gate, not a note.** A character sheet defaults to *pending*; the readiness check fails until it is
+  granted, which blocks the expensive tier rather than the cheap one.
+- **Readiness now covers the face**: entities listed, a sheet published for each, three views including a close-up,
+  and consent settled. Re-checking a shot re-pins its entities, so the badge can clear.
+
 ## Slice 6 — previz
 
 - **Attach a digital set.** A Blender manifest is validated — units, frame rate, frame range, which object plays which
