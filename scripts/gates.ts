@@ -562,6 +562,59 @@ async function gate4(steps: string[]): Promise<void> {
   steps.push("ledger: $2 committed, $1 remaining, reservation recorded");
 }
 
+async function gate5(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light");
+  steps.push(`project: ${projectId}`);
+
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
+    synopsis: "Elias trims the wick for the last time.",
+    body: "He works slowly. The machine watches.",
+  });
+  const first = await op<{ shotId: string; number: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "MCU",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 5,
+    description: "Elias turns the wick down; his hands are steady.",
+  });
+  await op(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "WS",
+    angle: "LOW",
+    movement: "PUSH",
+    durationSec: 3,
+    description: "The lantern room opens up around him.",
+  });
+  steps.push("plan: one scene, two shots");
+
+  const edited = await op(projectId, "shot.update", {
+    shotId: first.data.shotId,
+    durationSec: 6,
+    acceptScene: true,
+  });
+  assert(
+    (edited.data as { stale: boolean }).stale === false,
+    "editing a shot with acceptScene must leave it fresh",
+  );
+
+  const changedScene = await op<{ shotsMarkedStale: number }>(projectId, "scene.update", {
+    sceneId: scene.data.sceneId,
+    body: "He lets the machine trim the wick. He watches.",
+  });
+  assert(
+    changedScene.stale.added.length === 2,
+    `editing the scene must stale both shots, got ${changedScene.stale.added.length}`,
+  );
+  steps.push("staleness: a scene edit marks both shots stale, with causes");
+
+  const rebased = await op<{ stale: boolean }>(projectId, "shot.rebase", { shotId: first.data.shotId });
+  assert(rebased.data.stale === false, "rebase must clear one shot");
+  steps.push("rebase: one shot re-checked, one still stale");
+}
+
 async function browserFlow(steps: string[]): Promise<void> {
   try {
     const { chromium } = await import("playwright");
@@ -573,6 +626,36 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 5) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.click('role=tab[name="Plan"]');
+      await page.waitForSelector("text=Add a scene", { timeout: 20_000 });
+
+      // Edit a shot through the row editor: duration first, then save.
+      await page
+        .getByRole("button", { name: /^Edit shot / })
+        .first()
+        .click();
+      await page.getByLabel("Duration in seconds").first().fill("7");
+      await page.getByRole("button", { name: "Save", exact: true }).first().click();
+      await page.waitForSelector("text=7s", { timeout: 15_000 });
+      steps.push("ui: edited a shot's duration in the row editor");
+
+      // Edit the scene body; its shots must go stale and say why.
+      await page.getByRole("button", { name: "Edit scene" }).click();
+      await page.getByLabel("Scene body").fill("He lets the machine trim the wick and steps back.");
+      await page.getByRole("button", { name: "Save scene" }).click();
+      await page.waitForSelector("text=stale", { timeout: 15_000 });
+      steps.push("ui: editing the scene marked its shots stale, with the cause shown");
+
+      await page.getByRole("button", { name: "Re-check" }).first().click();
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: join(artifactDir, "plan-edit.png"), fullPage: true });
+      steps.push("ui: re-check cleared one stale badge");
+      await instance.close();
+      return;
+    }
 
     if (gateNumber >= 4) {
       // The project was prepared through the API; open it and look at the take that was generated.
@@ -669,6 +752,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 2) await gate2(steps);
     else if (gateNumber === 3) await gate3(steps);
     else if (gateNumber === 4) await gate4(steps);
+    else if (gateNumber === 5) await gate5(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

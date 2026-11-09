@@ -25,7 +25,8 @@
     "docs:registry": "tsx scripts/registry-doc.ts",
     "check:registry": "tsx scripts/registry-doc.ts --check",
     "gate:3": "tsx scripts/gates.ts 3",
-    "gate:4": "tsx scripts/gates.ts 4"
+    "gate:4": "tsx scripts/gates.ts 4",
+    "gate:5": "tsx scripts/gates.ts 5"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",

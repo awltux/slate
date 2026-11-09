@@ -1,9 +1,9 @@
 {
   "gate": 2,
   "status": "passed",
-  "base": "http://127.0.0.1:64719",
+  "base": "http://127.0.0.1:55268",
   "steps": [
-    "project: prj_92481dfdacb34f099083f69b07009883",
+    "project: prj_ca0a1bc637e941fd9c301f3ab1cd3c29",
     "story: five lines set, none missing",
     "scenes: 1 INT lantern room, 2 EXT gallery",
     "shots: 1A, 1B and one more, with readiness checks",

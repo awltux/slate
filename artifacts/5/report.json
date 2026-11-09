@@ -1,0 +1,14 @@
+{
+  "gate": 5,
+  "status": "passed",
+  "base": "http://127.0.0.1:63194",
+  "steps": [
+    "project: prj_3a7ae25b3d654d1498f10a5f9df32a7c",
+    "plan: one scene, two shots",
+    "staleness: a scene edit marks both shots stale, with causes",
+    "rebase: one shot re-checked, one still stale",
+    "ui: edited a shot's duration in the row editor",
+    "ui: editing the scene marked its shots stale, with the cause shown",
+    "ui: re-check cleared one stale badge"
+  ]
+}
