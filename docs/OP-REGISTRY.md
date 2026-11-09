@@ -17,6 +17,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `estimate.create` | read | `estimate_create` | Price a batch of takes for the given tier before anything is submitted. |
 | `frame.attach` | write | `frame_attach` | Attach an image to a shot slot (board, first or last), copied into the project by content hash. |
 | `graph.stale` | read | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
+| `history.revert` | destructive | `history_revert` | Undo the most recent commit by restoring the state before it. |
 | `job.get` | read | `job_get` | The state of a job. |
 | `plan.vocabulary` | read | `plan_vocabulary` | Valid values for shot and scene fields. |
 | `previz.get` | read | `previz_get` | The sets and every shot's blockout state. |
@@ -307,6 +308,24 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 {
   "type": "object",
   "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `history.revert`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "commitId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "commitId"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }

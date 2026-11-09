@@ -23,6 +23,7 @@ import {
   readIdentity,
   writeSessionCookie,
 } from "./identity.js";
+import { PresenceRegistry } from "./presence.js";
 import { newProjectPath, readProjects, registerProject } from "./projects.js";
 
 export interface AppOptions {
@@ -91,6 +92,7 @@ export function createApp(options: AppOptions): Hono {
   const app = new Hono();
   const registry = options.registry ?? createRegistry();
   const hub = new EventHub();
+  const presence = new PresenceRegistry();
   const toolResolver = createToolResolver({
     run: options.run,
     vendorDir: options.vendorDir,
@@ -257,6 +259,35 @@ export function createApp(options: AppOptions): Hono {
       });
     }
     return c.json(result);
+  });
+
+  // Presence is ephemeral: who is looking at which page, expiring on its own. A notice, not a lock.
+  app.post("/p/:projectId/api/presence", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to report presence" });
+    if (!hasValidCsrf(c, identity.session))
+      throw new HTTPException(403, { message: "missing or invalid CSRF token" });
+
+    const body = (await c.req.json().catch(() => ({}))) as { page?: string; objectId?: string };
+    const projectId = c.req.param("projectId");
+    presence.touch(
+      projectId,
+      {
+        userId: identity.userId,
+        displayName: await displayNameFor(identity.userId),
+        page: typeof body.page === "string" ? body.page.slice(0, 40) : "project",
+        objectId: typeof body.objectId === "string" ? body.objectId.slice(0, 80) : null,
+      },
+      Date.now(),
+    );
+
+    return c.json({ ok: true, data: { users: presence.list(projectId, Date.now()) } });
+  });
+
+  app.get("/p/:projectId/api/presence", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to read presence" });
+    return c.json({ ok: true, data: { users: presence.list(c.req.param("projectId"), Date.now()) } });
   });
 
   app.get("/p/:projectId/api/events", async (c) => {

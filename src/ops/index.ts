@@ -3,7 +3,7 @@ import { cutBuild, cutGet, cutRender } from "./cut.js";
 import { entityCreate, entityList, sheetPublish, shotSetEntities } from "./entity.js";
 import { frameAttach } from "./frame.js";
 import { graphStale, sessionBrief } from "./graph.js";
-import { projectHistory } from "./history.js";
+import { historyRevert, projectHistory } from "./history.js";
 import { blockoutAttach, previzGet, setAttach } from "./previz.js";
 import { projectCreate, projectRename } from "./project.js";
 import { OpRegistry } from "./registry.js";
@@ -21,6 +21,7 @@ export function createRegistry(): OpRegistry {
     projectCreate,
     projectRename,
     projectHistory,
+    historyRevert,
     capabilitiesGet,
     storyGet,
     storySet,
