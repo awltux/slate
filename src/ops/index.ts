@@ -22,6 +22,7 @@ import { blockoutAttach, previzGet, setAttach } from "./previz.js";
 import { projectCreate, projectRename } from "./project.js";
 import { promptExpand } from "./prompt.js";
 import { OpRegistry } from "./registry.js";
+import { noteAdd, noteList, noteResolve, reviewLink, reviewLinks, reviewRevoke } from "./review.js";
 import { sceneCreate, sceneList, sceneSetLocation, sceneUpdate } from "./scene.js";
 import { serviceClearPath, serviceSetPath } from "./service.js";
 import { shotCreate, shotGet, shotRebase, shotUpdate } from "./shot.js";
@@ -58,6 +59,12 @@ export function createRegistry(): OpRegistry {
     entityUpdate,
     entityDelete,
     entityAngles,
+    reviewLink,
+    reviewLinks,
+    reviewRevoke,
+    noteAdd,
+    noteList,
+    noteResolve,
     promptExpand,
     libraryPush,
     libraryPull,

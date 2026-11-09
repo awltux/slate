@@ -12,6 +12,7 @@ import { SlateError } from "../../domain/result.js";
 import type { RunProbe } from "../../kernel/catalog/probe.js";
 import { createToolResolver } from "../../kernel/catalog/tool-resolver.js";
 import { libraryAssetPath, readGlobalLibrary } from "../../kernel/library/store.js";
+import { signReview, verifyReview } from "../../kernel/production/review.js";
 import { readProductionDocument } from "../../kernel/workspace/production-doc.js";
 import { readProjectDocument } from "../../kernel/workspace/project-doc.js";
 import { type OpRegistry, createRegistry } from "../../ops/index.js";
@@ -26,6 +27,7 @@ import {
 } from "./identity.js";
 import { PresenceRegistry } from "./presence.js";
 import { newProjectPath, readProjects, registerProject } from "./projects.js";
+import { reviewPage } from "./review-page.js";
 
 export interface AppOptions {
   home: string;
@@ -260,6 +262,173 @@ export function createApp(options: AppOptions): Hono {
       });
     }
     return c.json(result);
+  });
+
+  // Creating a link needs a session; the token is signed here because only the surface holds the host secret.
+  app.post("/p/:projectId/api/review-links", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to create a review link" });
+    if (!hasValidCsrf(c, identity.session))
+      throw new HTTPException(403, { message: "missing or invalid CSRF token" });
+    if (!canWrite(identity.role))
+      throw new HTTPException(403, { message: `role ${identity.role} may not share` });
+
+    const projects = await readProjects(options.home);
+    const project = projects.find((entry) => entry.id === c.req.param("projectId"));
+    if (!project) throw new HTTPException(404, { message: "project is not registered on this host" });
+
+    const body = (await c.req.json().catch(() => ({}))) as { label?: string; expiresInHours?: number };
+    const created = await registry.execute(
+      "review.link",
+      {
+        label: typeof body.label === "string" ? body.label.slice(0, 80) : "",
+        expiresInHours: Number.isFinite(body.expiresInHours) ? Number(body.expiresInHours) : 168,
+      },
+      {
+        root: project.path,
+        home: options.home,
+        actor: await displayNameFor(identity.userId),
+        clock: options.clock,
+        run: options.run,
+        vendorDir: options.vendorDir,
+        privileged: true,
+        tool: toolResolver,
+      },
+    );
+    if (!created.ok) return c.json(created, 400);
+
+    const data = created.data as { id: string; expiresAt: string; label: string };
+    const token = signReview(await secret(), {
+      projectId: project.id,
+      jti: data.id,
+      exp: Math.floor(new Date(data.expiresAt).getTime() / 1000),
+    });
+
+    return c.json({
+      ok: true,
+      data: { ...data, url: `/r/${token}` },
+      version: created.version,
+    });
+  });
+
+  // ---- Remote review ---------------------------------------------------------------------------------------------
+  // A review link is the only door that does not need a session. It is signed, expiring and revocable, and the three
+  // routes below are the whole of what it opens: look, leave a note, read the notes.
+
+  const reviewContext = async (token: string) => {
+    const nowMs = Date.parse(options.clock.now());
+    const payload = verifyReview(await secret(), token, nowMs);
+    if (!payload) return null;
+
+    const projects = await readProjects(options.home);
+    const project = projects.find((entry) => entry.id === payload.projectId);
+    if (!project) return null;
+
+    const production = await readProductionDocument(project.path);
+    const link = production?.reviewLinks[payload.jti];
+    if (!link || link.revoked) return null;
+    if (new Date(link.expiresAt).getTime() <= nowMs) return null;
+
+    return { project, production, link };
+  };
+
+  app.get("/r/:token/api/summary", async (c) => {
+    const session = await reviewContext(c.req.param("token"));
+    if (!session) throw new HTTPException(404, { message: "this review link is not valid" });
+    const { project, production } = session;
+
+    const projectDoc = await readProjectDocument(project.path);
+    const shots = Object.values(production?.shots ?? {}).sort((a, b) =>
+      a.number.localeCompare(b.number, undefined, { numeric: true }),
+    );
+    return c.json({
+      ok: true,
+      data: {
+        project: { name: projectDoc.name },
+        label: session.link.label,
+        expiresAt: session.link.expiresAt,
+        masterAssetId: production?.delivery?.assetId ?? production?.cut.rendered?.assetId ?? null,
+        shots: shots.map((shot) => ({
+          id: shot.id,
+          number: shot.number,
+          description: shot.description,
+          durationSec: shot.durationSec,
+          assetId: shot.frames.first ?? shot.frames.board ?? null,
+        })),
+        notes: Object.values(production?.notes ?? {})
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .map((note) => ({
+            id: note.id,
+            anchorKind: note.anchor.kind,
+            anchorId: note.anchor.id,
+            body: note.body,
+            author: note.author,
+            createdAt: note.createdAt,
+            resolvedAt: note.resolvedAt,
+          })),
+      },
+    });
+  });
+
+  app.post("/r/:token/api/note", async (c) => {
+    const session = await reviewContext(c.req.param("token"));
+    if (!session) throw new HTTPException(404, { message: "this review link is not valid" });
+
+    const body = (await c.req.json().catch(() => ({}))) as {
+      anchorKind?: string;
+      anchorId?: string;
+      body?: string;
+      name?: string;
+    };
+    const text = (body.body ?? "").trim();
+    if (text === "") throw new HTTPException(400, { message: "a note needs a body" });
+    if (text.length > 2000) throw new HTTPException(400, { message: "note is too long" });
+
+    const anchorKind = body.anchorKind === "cut" ? "cut" : body.anchorKind === "scene" ? "scene" : "shot";
+    const result = await registry.execute(
+      "note.add",
+      {
+        anchor: { kind: anchorKind, id: body.anchorId ?? (session.production?.cut ? "cut" : "") },
+        body: text.slice(0, 2000),
+        author: (body.name ?? "reviewer").slice(0, 60),
+        external: true,
+      },
+      {
+        root: session.project.path,
+        home: options.home,
+        actor: "reviewer",
+        clock: options.clock,
+        run: options.run,
+        vendorDir: options.vendorDir,
+        privileged: false,
+        tool: toolResolver,
+      },
+    );
+
+    if (!result.ok) return c.json(result, 400);
+    hub.publish({ type: "version", data: { projectId: session.project.id, version: result.version } });
+    return c.json(result);
+  });
+
+  app.get("/r/:token", async (c) => {
+    const session = await reviewContext(c.req.param("token"));
+    if (!session) {
+      return c.html(reviewPage({ invalid: true }), 404);
+    }
+    return c.html(reviewPage({ invalid: false }));
+  });
+
+  app.get("/r/:token/media/:assetId", async (c) => {
+    const session = await reviewContext(c.req.param("token"));
+    if (!session) throw new HTTPException(404, { message: "this review link is not valid" });
+
+    const production = session.production;
+    const asset = production?.assets[c.req.param("assetId")];
+    if (!asset) throw new HTTPException(404, { message: "no such asset" });
+
+    const bytes = await readFile(join(session.project.path, asset.path)).catch(() => null);
+    if (!bytes) throw new HTTPException(404, { message: "asset file is missing" });
+    return c.body(bytes, 200, { "content-type": contentTypeFor(asset.path), "cache-control": "no-store" });
   });
 
   // Presence is ephemeral: who is looking at which page, expiring on its own. A notice, not a lock.

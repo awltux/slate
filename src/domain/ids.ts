@@ -18,6 +18,8 @@ export type IdPrefix =
   | "var"
   | "cnd"
   | "lib"
+  | "rvl"
+  | "nte"
   | "usr"
   | "cmt"
   | "ses"

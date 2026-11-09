@@ -6,6 +6,7 @@ import { AssetSchema } from "../production/assets.js";
 import { DeliverySchema } from "../production/delivery.js";
 import { EntitySchema } from "../production/entities.js";
 import { BlockoutSchema, SetSchema } from "../production/previz.js";
+import { NoteSchema, ReviewLinkSchema } from "../production/review.js";
 import { migrateProduction } from "./migrations.js";
 import { projectPaths } from "./paths.js";
 
@@ -175,6 +176,8 @@ export const ProductionDocumentSchema = z
     sets: z.record(z.string(), SetSchema).default({}),
     entities: z.record(z.string(), EntitySchema).default({}),
     delivery: DeliverySchema.nullable().default(null),
+    reviewLinks: z.record(z.string(), ReviewLinkSchema).default({}),
+    notes: z.record(z.string(), NoteSchema).default({}),
     blockouts: z.record(z.string(), BlockoutSchema).default({}),
     assets: z.record(z.string(), AssetSchema).default({}),
     cut: CutSchema.default({ items: [], rendered: null }),
@@ -208,6 +211,8 @@ export function emptyProductionDocument(revision: number, commit: string): Produ
     sets: {},
     entities: {},
     delivery: null,
+    reviewLinks: {},
+    notes: {},
     blockouts: {},
     assets: {},
     cut: { items: [], rendered: null },

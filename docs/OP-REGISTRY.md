@@ -29,12 +29,18 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `library.list` | read | `library_list` | The global library, plus which local entities are behind their global version. |
 | `library.pull` | write | `library_pull` | Refresh a project entity from its global library item. |
 | `library.push` | write | `library_push` | Publish a project entity to the global library, or bump its global version. |
+| `note.add` | write | `note_add` | Leave a note on a shot, a scene, or the cut. |
+| `note.list` | read | `note_list` | Notes, filtered by anchor or resolution. |
+| `note.resolve` | write | `note_resolve` | Mark a note as handled. |
 | `plan.vocabulary` | read | `plan_vocabulary` | Valid values for shot and scene fields. |
 | `previz.get` | read | `previz_get` | The sets and every shot's blockout state. |
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
 | `project.history` | read | `project_history` | Recent commits: what changed, who changed it and why. |
 | `project.rename` | write | `project_rename` | Change the project name. |
 | `prompt.expand` | spend | `prompt_expand` | Turn a description into a generation prompt, using the style sheet when one is applied. |
+| `review.link` | write | `review_link` | Create a signed, expiring link that lets a reviewer watch the cut and leave notes. |
+| `review.links` | read | `review_links` | Review links with their expiry and revocation state. |
+| `review.revoke` | destructive | `review_revoke` | Revoke a review link so it stops working immediately. |
 | `scene.create` | write | `scene_create` | Add a scene. Numbers are assigned in order and are never reused. |
 | `scene.list` | read | `scene_list` | Scenes with their shots, readiness and staleness. |
 | `scene.set-location` | write | `scene_set-location` | Link a scene to a location entity (or clear the link). Its sheet becomes the scene background. |
@@ -585,6 +591,99 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `note.add`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "anchor": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "shot",
+            "scene",
+            "cut"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1
+    },
+    "author": {
+      "type": "string"
+    },
+    "external": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "anchor",
+    "body"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `note.list`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "anchorKind": {
+      "type": "string",
+      "enum": [
+        "shot",
+        "scene",
+        "cut"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "includeResolved": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `note.resolve`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "noteId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "noteId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `plan.vocabulary`
 
 ```json
@@ -712,6 +811,57 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   },
   "required": [
     "entityId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `review.link`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "default": ""
+    },
+    "expiresInHours": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 720,
+      "default": 168
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `review.links`
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `review.revoke`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "linkId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "linkId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
