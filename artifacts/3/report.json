@@ -1,15 +1,15 @@
 {
   "gate": 3,
   "status": "passed",
-  "base": "http://127.0.0.1:59182",
+  "base": "http://127.0.0.1:51689",
   "steps": [
-    "project: prj_bd77a221d46949b989c266c7b18fbb8f",
+    "project: prj_6a810d2618e843b5b467f64de6cc093b",
     "shots: 1A (5s), 1B (3s)",
     "boards: two 1280x720 images generated locally",
     "frames: boards copied into the project by content hash",
     "cut: 2 items in scene order, 8.0s total",
-    "render: ffmpeg → ast_dedb87bb85144bfca619cf08f82c9e06",
-    "media: 18951 bytes, type video/mp4, range supported",
+    "render: ffmpeg → ast_04b6e3114d374c9c8591acc5f349f44d",
+    "media: 14158 bytes, type video/mp4, range supported",
     "media: refused without a session",
     "ui: rendered cut visible in the browser"
   ]

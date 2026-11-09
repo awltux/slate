@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -117,11 +117,6 @@ export const cutBuild = defineOp({
   },
 });
 
-function concatLine(file: string, durationSec: number): string {
-  const normalised = file.split("\\").join("/").replaceAll("'", "'\\''");
-  return `file '${normalised}'\nduration ${durationSec}\n`;
-}
-
 export const cutRender = defineOp({
   name: "cut.render",
   policy: "write",
@@ -142,21 +137,9 @@ export const cutRender = defineOp({
     }
 
     const workDir = await mkdtemp(join(tmpdir(), "slate-cut-"));
-    const listFile = join(workDir, "cut.txt");
     const outputFile = join(workDir, "cut.mp4");
 
     try {
-      const lines = before.cut.items.map((item) => {
-        const asset = before.assets[item.assetId];
-        if (!asset) throw new SlateError("media_missing", `cut item ${item.shotId} has no asset`);
-        return concatLine(join(context.root, asset.path), item.durationSec);
-      });
-      const last = before.cut.items.at(-1);
-      const lastAsset = last ? before.assets[last.assetId] : undefined;
-      if (last && lastAsset) lines.push(concatLine(join(context.root, lastAsset.path), last.durationSec));
-
-      await writeFile(listFile, lines.join(""), "utf8");
-
       const ffmpeg = await context.tool("ffmpeg");
       if (!ffmpeg.binary) {
         throw new SlateError("capability_missing", "FFmpeg is not available to render the cut", {
@@ -164,17 +147,26 @@ export const cutRender = defineOp({
         });
       }
 
-      const result = await context.run([
-        ffmpeg.binary,
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        listFile,
-        "-vf",
-        `scale=${input.width}:${input.height}:force_original_aspect_ratio=decrease,pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`,
+      // Each image becomes exactly its planned duration (`-loop 1 -t`), then the concat *filter* joins the segments.
+      // The concat demuxer is not used: with stills its duration directives round unpredictably and the render comes
+      // out longer than the cut it claims to be. A gate assertion pins the duration to the selection total.
+      const args: string[] = [ffmpeg.binary, "-y"];
+      for (const item of before.cut.items) {
+        const asset = before.assets[item.assetId];
+        if (!asset) throw new SlateError("media_missing", `cut item ${item.shotId} has no asset`);
+        args.push("-loop", "1", "-t", String(item.durationSec), "-i", join(context.root, asset.path));
+      }
+
+      const normalise = `scale=${input.width}:${input.height}:force_original_aspect_ratio=decrease,pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p`;
+      const segments = before.cut.items.map((_, index) => `[${index}:v]${normalise}[v${index}]`).join(";");
+      const joined = before.cut.items.map((_, index) => `[v${index}]`).join("");
+      const filter = `${segments};${joined}concat=n=${before.cut.items.length}:v=1:a=0[out]`;
+
+      args.push(
+        "-filter_complex",
+        filter,
+        "-map",
+        "[out]",
         "-r",
         "30",
         "-c:v",
@@ -184,7 +176,9 @@ export const cutRender = defineOp({
         "-pix_fmt",
         "yuv420p",
         outputFile,
-      ]);
+      );
+
+      const result = await context.run(args);
 
       if (result.code !== 0) {
         throw new SlateError("service_unavailable", "FFmpeg failed to render the cut", {

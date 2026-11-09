@@ -388,6 +388,30 @@ async function gate3(steps: string[]): Promise<void> {
   const bytes = new Uint8Array(await full.arrayBuffer());
   assert(bytes.length > 10_000, `the render must have substance (${bytes.length} bytes)`);
 
+  // The render must be as long as the cut claims: an extra concat segment silently lengthens the film.
+  const renderedFile = join(await mkdtemp(join(tmpdir(), "slate-render-")), "cut.mp4");
+  await writeFile(renderedFile, bytes);
+  const ffprobe = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("ffprobe");
+  const probe = await runCommand([
+    (ffprobe.binary ?? "ffprobe") as string,
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "default=nw=1:nk=1",
+    renderedFile,
+  ]);
+  const duration = Number(probe.stdout.trim());
+  assert(
+    Math.abs(duration - built.data.totalSeconds) < 0.35,
+    `render is ${duration}s but the cut is ${built.data.totalSeconds}s`,
+  );
+
   const ranged = await fetch(mediaUrl, { headers: { cookie, range: "bytes=0-99" } });
   assert(ranged.status === 206, `range requests must work (got ${ranged.status})`);
   steps.push(`media: ${bytes.length} bytes, type video/mp4, range supported`);
