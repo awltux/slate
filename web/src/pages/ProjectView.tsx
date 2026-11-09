@@ -5,6 +5,7 @@ import { Finish } from "./Finish.js";
 import { Library } from "./Library.js";
 import { Plan } from "./Plan.js";
 import { Previz } from "./Previz.js";
+import { Review } from "./Review.js";
 import { Shoot } from "./Shoot.js";
 import { Write } from "./Write.js";
 
@@ -45,7 +46,17 @@ interface Commit {
   touched: string[];
 }
 
-type Tab = "write" | "plan" | "previz" | "shoot" | "cut" | "finish" | "library" | "health" | "activity";
+type Tab =
+  | "write"
+  | "plan"
+  | "previz"
+  | "shoot"
+  | "cut"
+  | "finish"
+  | "review"
+  | "library"
+  | "health"
+  | "activity";
 
 export function ProjectView({
   project,
@@ -190,6 +201,9 @@ export function ProjectView({
         <button type="button" role="tab" aria-selected={tab === "finish"} onClick={() => setTab("finish")}>
           Finish
         </button>
+        <button type="button" role="tab" aria-selected={tab === "review"} onClick={() => setTab("review")}>
+          Review
+        </button>
         <button type="button" role="tab" aria-selected={tab === "library"} onClick={() => setTab("library")}>
           Library
         </button>
@@ -211,6 +225,7 @@ export function ProjectView({
       {tab === "shoot" ? <Shoot projectId={project.id} /> : null}
       {tab === "cut" ? <CutPage projectId={project.id} /> : null}
       {tab === "finish" ? <Finish projectId={project.id} /> : null}
+      {tab === "review" ? <Review projectId={project.id} /> : null}
       {tab === "library" ? <Library projectId={project.id} /> : null}
       {tab === "health" ? <Health projectId={project.id} /> : null}
       {tab === "activity" ? <Activity projectId={project.id} me={me} /> : null}

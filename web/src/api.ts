@@ -182,3 +182,23 @@ export async function listGlobalLibrary(): Promise<GlobalLibraryItem[]> {
 export async function importFromLibrary(projectId: string, libraryId: string): Promise<void> {
   await runOp(projectId, "library.import", { libraryId });
 }
+
+/** Mint a review link. Signing happens on the server, so the client only receives the finished URL. */
+export async function createReviewLink(projectId: string, label: string): Promise<string> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (csrfToken) headers["x-slate-csrf"] = csrfToken;
+  const response = await fetch(`/p/${projectId}/api/review-links`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers,
+    body: JSON.stringify({ label, expiresInHours: 168 }),
+  });
+  const payload = (await response.json()) as {
+    ok: boolean;
+    data?: { url: string };
+    error?: { message?: string };
+  };
+  if (!payload.ok || !payload.data)
+    throw new Error(payload.error?.message ?? "could not create a review link");
+  return `${window.location.origin}${payload.data.url}`;
+}
