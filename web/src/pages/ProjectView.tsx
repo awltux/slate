@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type PresenceUser, type ProjectSummary, pingPresence, runOp, subscribe } from "../api.js";
 import { CutPage } from "./Cut.js";
+import { Finish } from "./Finish.js";
 import { Library } from "./Library.js";
 import { Plan } from "./Plan.js";
 import { Previz } from "./Previz.js";
@@ -44,7 +45,7 @@ interface Commit {
   touched: string[];
 }
 
-type Tab = "write" | "plan" | "previz" | "shoot" | "cut" | "library" | "health" | "activity";
+type Tab = "write" | "plan" | "previz" | "shoot" | "cut" | "finish" | "library" | "health" | "activity";
 
 export function ProjectView({
   project,
@@ -170,7 +171,6 @@ export function ProjectView({
           ) : null}
         </p>
       </div>
-
       <div className="tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "write"} onClick={() => setTab("write")}>
           Write
@@ -187,6 +187,9 @@ export function ProjectView({
         <button type="button" role="tab" aria-selected={tab === "cut"} onClick={() => setTab("cut")}>
           Cut
         </button>
+        <button type="button" role="tab" aria-selected={tab === "finish"} onClick={() => setTab("finish")}>
+          Finish
+        </button>
         <button type="button" role="tab" aria-selected={tab === "library"} onClick={() => setTab("library")}>
           Library
         </button>
@@ -202,12 +205,12 @@ export function ProjectView({
           Activity
         </button>
       </div>
-
       {tab === "write" ? <Write projectId={project.id} /> : null}
       {tab === "plan" ? <Plan projectId={project.id} /> : null}
       {tab === "previz" ? <Previz projectId={project.id} /> : null}
       {tab === "shoot" ? <Shoot projectId={project.id} /> : null}
       {tab === "cut" ? <CutPage projectId={project.id} /> : null}
+      {tab === "finish" ? <Finish projectId={project.id} /> : null}
       {tab === "library" ? <Library projectId={project.id} /> : null}
       {tab === "health" ? <Health projectId={project.id} /> : null}
       {tab === "activity" ? <Activity projectId={project.id} me={me} /> : null}

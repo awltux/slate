@@ -287,18 +287,25 @@ function EntityCard({
           }}
         />
         <div className="row">
-          <select
-            value={styleId}
-            onChange={(event) => setStyleId(event.target.value)}
-            aria-label="Style sheet"
-          >
-            <option value="">no style</option>
-            {styles.map((style) => (
-              <option key={style.id} value={style.id}>
-                {style.name}
-              </option>
-            ))}
-          </select>
+          {entity.kind === "style" ? (
+            // A style is applied to other entries; offering it a style of its own is a control that can never work.
+            <span className="muted">A style sheet is applied to characters, locations and props.</span>
+          ) : (
+            <select
+              value={styleId}
+              onChange={(event) => setStyleId(event.target.value)}
+              aria-label="Style sheet"
+            >
+              <option value="">no style</option>
+              {styles
+                .filter((style) => style.id !== entity.id)
+                .map((style) => (
+                  <option key={style.id} value={style.id}>
+                    {style.name}
+                  </option>
+                ))}
+            </select>
+          )}
           <button type="button" onClick={() => void saveDetails()} disabled={busy}>
             Save description and prompt
           </button>
