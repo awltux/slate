@@ -23,6 +23,9 @@ User-visible changes per slice. Internal refactors are not listed.
 - **One revision clock.** The project and the plan share a revision; a write based on an old one is refused with a
   conflict instead of overwriting someone else's work.
 - **Every operation from the CLI.** `slate op <name> --input <json>` runs any operation with no daemon.
+- **Every operation from an agent.** `slate mcp --root .` serves the same registry over MCP, so an assistant can
+  read the plan, write the five lines and create shots without a browser, and `docs/OP-REGISTRY.md` lists exactly
+  what it can do.
 
 ## Slice 1 — boot, auth, health
 
