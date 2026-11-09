@@ -2,6 +2,19 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Slice 3 — a cut you can watch
+
+- **Build a cut from the plan.** Every shot with a board or first frame becomes an item, in scene order, at its
+  planned duration. Building replaces the selection; the film's order is the plan's order.
+- **Render and play it.** The cut renders to MP4 through FFmpeg, exactly as long as the selection says, and plays in
+  the browser. Media is served by asset id, not by file path, with range support and only to a signed-in caller.
+- **Know where a tool came from.** On Health, hover an application name to see the path it was found at. A reviewer
+  never receives that path; the owner does.
+- **Rename a project.** The owner (or an editor) can rename it from the project header; the name is part of the
+  document, so the change is a commit with an author and the new name appears everywhere at once.
+- **The gate renders a film.** `pnpm gate:3` generates two boards, builds an 8.0s cut, renders it, fetches the bytes
+  with a range request, verifies the duration matches the cut, and refuses the same URL without a session.
+
 ## Slice 2 — story to shot list
 
 - **Slate finds the tools you already have.** Applications installed somewhere other than `PATH` — a different drive,
