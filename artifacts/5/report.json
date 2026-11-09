@@ -1,9 +1,9 @@
 {
   "gate": 5,
   "status": "passed",
-  "base": "http://127.0.0.1:63194",
+  "base": "http://127.0.0.1:49618",
   "steps": [
-    "project: prj_3a7ae25b3d654d1498f10a5f9df32a7c",
+    "project: prj_d678091889d9482c997dd3f8a72056f7",
     "plan: one scene, two shots",
     "staleness: a scene edit marks both shots stale, with causes",
     "rebase: one shot re-checked, one still stale",

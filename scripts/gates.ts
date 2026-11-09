@@ -732,6 +732,133 @@ async function gate6(steps: string[]): Promise<void> {
   steps.push("media: animatic served as video/mp4");
 }
 
+async function gate7(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light");
+  steps.push(`project: ${projectId}`);
+
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
+  });
+  const shot = await op<{ shotId: string; number: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "MCU",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 5,
+    description: "Elias turns the wick down for the last time.",
+  });
+
+  const ffmpeg = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("ffmpeg");
+  assert(Boolean(ffmpeg.binary), "gate 7 needs FFmpeg to stand in for sheet views");
+  const binary = ffmpeg.binary as string;
+  const work = await mkdtemp(join(tmpdir(), "slate-library-"));
+  const view = (colour: string, file: string) =>
+    runCommand([
+      binary,
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${colour}:s=512x512`,
+      "-frames:v",
+      "1",
+      join(work, file),
+    ]);
+
+  assert((await view("0x8a6a4a", "front.png")).code === 0, "front view must render");
+  assert((await view("0x7a5a3a", "three-quarter.png")).code === 0, "three-quarter view must render");
+  assert((await view("0x6a4a2a", "close-up.png")).code === 0, "close-up view must render");
+  assert((await view("0x14202c", "lighting.png")).code === 0, "location view must render");
+  steps.push("stand-in views: three for the keeper, one for the location");
+
+  const keeper = await op<{ entityId: string }>(projectId, "entity.create", {
+    kind: "character",
+    name: "The keeper",
+    aliases: ["Elias"],
+  });
+  const lighthouse = await op<{ entityId: string }>(projectId, "entity.create", {
+    kind: "location",
+    name: "Lighthouse lantern room",
+  });
+  steps.push("library: one character, one location");
+
+  const v1 = await op<{ version: number; views: unknown[]; heightM: number | null; likenessConsent: string }>(
+    projectId,
+    "sheet.publish",
+    {
+      entityId: keeper.data.entityId,
+      views: [
+        { role: "front", sourcePath: join(work, "front.png") },
+        { role: "three-quarter", sourcePath: join(work, "three-quarter.png") },
+        { role: "close-up", sourcePath: join(work, "close-up.png") },
+      ],
+      heightM: 1.78,
+      rights: { licence: "original", likenessConsent: "granted" },
+    },
+  );
+  assert(v1.data.version === 1 && v1.data.views.length === 3, "the keeper's sheet must publish three views");
+  assert(v1.data.heightM === 1.78, "the measurement must survive");
+  assert(v1.data.likenessConsent === "granted", "consent must be recorded");
+
+  await op(projectId, "sheet.publish", {
+    entityId: lighthouse.data.entityId,
+    views: [{ role: "lighting", sourcePath: join(work, "lighting.png") }],
+    rights: { licence: "original" },
+  });
+  steps.push("sheets: keeper v1 (front, three-quarter, close-up, 1.78m), location v1");
+
+  await op(projectId, "shot.set-entities", {
+    shotId: shot.data.shotId,
+    entityIds: [keeper.data.entityId, lighthouse.data.entityId],
+  });
+
+  const ready = await op<{ readiness: Array<{ id: string; status: string; detail: string }> }>(
+    projectId,
+    "shot.get",
+    { shotId: shot.data.shotId },
+  );
+  const check = (id: string) => ready.data.readiness.find((item) => item.id === id);
+  assert(check("entities-resolved")?.status === "pass", "entities must resolve");
+  assert(check("sheet-published")?.status === "pass", "both entities have a sheet");
+  assert(check("sheet-coverage")?.status === "pass", "three views including a close-up is enough");
+  assert(check("consent")?.status === "pass", "granted consent passes");
+  steps.push("readiness: entities resolved, sheets published, face covered, consent settled");
+
+  const stale = await op<{ count: number }>(projectId, "graph.stale");
+  assert(stale.data.count === 0, "a freshly pinned shot is not stale");
+
+  const v2 = await op<{ version: number }>(projectId, "sheet.publish", {
+    entityId: keeper.data.entityId,
+    views: [{ role: "expression", sourcePath: join(work, "close-up.png") }],
+    note: "new close-up",
+  });
+  assert(v2.data.version === 2, "publishing must create v2");
+
+  const afterV2 = await op<{ nodes: Array<{ id: string; cause: string }> | null; count: number }>(
+    projectId,
+    "graph.stale",
+  );
+  assert(afterV2.data.count === 1, `publishing v2 must stale the shot, got ${afterV2.data.count}`);
+  assert(
+    afterV2.data.nodes?.[0]?.cause.includes("v1 → v2"),
+    `the cause must name the change: ${afterV2.data.nodes?.[0]?.cause}`,
+  );
+  steps.push("staleness: keeper v1 → v2 marks exactly the pinned shot stale");
+
+  const rebased = await op<{ stale: boolean }>(projectId, "shot.rebase", { shotId: shot.data.shotId });
+  assert(rebased.data.stale === false, "re-checking re-pins the entity and clears the badge");
+  steps.push("rebase: the shot re-pins to v2 and is fresh again");
+
+  const library = await op<{ entities: Array<{ name: string; version: number }> }>(projectId, "entity.list");
+  assert(library.data.entities.length === 2, "the library lists both entities");
+  steps.push("library: two entities with their current versions");
+}
+
 async function browserFlow(steps: string[]): Promise<void> {
   try {
     const { chromium } = await import("playwright");
@@ -743,6 +870,17 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 7) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.click('role=tab[name="Library"]');
+      await page.waitForSelector("text=every entity", { timeout: 20_000 }).catch(() => undefined);
+      await page.waitForSelector("img", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "library.png"), fullPage: true });
+      steps.push("ui: the keeper sheet visible in the browser");
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 6) {
       await page.selectOption('select[aria-label="Project"]', projectId);
@@ -882,6 +1020,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 4) await gate4(steps);
     else if (gateNumber === 5) await gate5(steps);
     else if (gateNumber === 6) await gate6(steps);
+    else if (gateNumber === 7) await gate7(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

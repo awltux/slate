@@ -1,0 +1,16 @@
+{
+  "gate": 7,
+  "status": "passed",
+  "base": "http://127.0.0.1:57056",
+  "steps": [
+    "project: prj_1c7dcec1fb2a4f07a8c9ede54d34e972",
+    "stand-in views: three for the keeper, one for the location",
+    "library: one character, one location",
+    "sheets: keeper v1 (front, three-quarter, close-up, 1.78m), location v1",
+    "readiness: entities resolved, sheets published, face covered, consent settled",
+    "staleness: keeper v1 → v2 marks exactly the pinned shot stale",
+    "rebase: the shot re-pins to v2 and is fresh again",
+    "library: two entities with their current versions",
+    "ui: the keeper sheet visible in the browser"
+  ]
+}
