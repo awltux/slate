@@ -1,3 +1,4 @@
+import { aiBind, aiCatalog, aiEndpointSave, aiPreview, aiProviderSave, aiRemove } from "./ai.js";
 import { capabilitiesGet } from "./capabilities.js";
 import { cutBuild, cutGet, cutRender } from "./cut.js";
 import { deliverExport, deliverQc } from "./deliver.js";
@@ -59,6 +60,12 @@ export function createRegistry(): OpRegistry {
     entityUpdate,
     entityDelete,
     entityAngles,
+    aiCatalog,
+    aiProviderSave,
+    aiEndpointSave,
+    aiBind,
+    aiRemove,
+    aiPreview,
     reviewLink,
     reviewLinks,
     reviewRevoke,

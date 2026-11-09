@@ -49,6 +49,8 @@ export interface OpDefinition<InputSchema extends z.ZodTypeAny, OutputSchema ext
   summary: string;
   input: InputSchema;
   output: OutputSchema;
+  /** True when only an owner may run this: host configuration, not project content. */
+  ownerOnly?: boolean;
   /** Nodes the write touches; required for write/spend/destructive operations. */
   touched?: (input: z.infer<InputSchema>, context: OpContext) => string[];
   run: (input: z.infer<InputSchema>, context: OpContext) => Promise<OpOutcome<z.infer<OutputSchema>>>;

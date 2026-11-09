@@ -221,6 +221,39 @@ export function createApp(options: AppOptions): Hono {
     return c.json(result);
   });
 
+  // Host-level operations (AI providers, keys) belong to the app, not to a project, so they get their own route.
+  app.post("/api/op/:name", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to use operations" });
+    if (!hasValidCsrf(c, identity.session))
+      throw new HTTPException(403, { message: "missing or invalid CSRF token" });
+
+    const name = c.req.param("name");
+    const op = registry.get(name);
+    if (!op) {
+      return c.json({
+        ok: false,
+        error: { code: "not_found", message: `unknown operation: ${name}`, retryable: false },
+      });
+    }
+    if (!op.ownerOnly) throw new HTTPException(403, { message: `${name} is not a host-level operation` });
+    if (identity.role !== "owner")
+      throw new HTTPException(403, { message: `only the owner may run ${name}` });
+
+    const body = await c.req.json().catch(() => ({}));
+    const result = await registry.execute(name, body, {
+      root: options.home,
+      home: options.home,
+      actor: await displayNameFor(identity.userId),
+      clock: options.clock,
+      run: options.run,
+      vendorDir: options.vendorDir,
+      privileged: true,
+      tool: toolResolver,
+    });
+    return c.json(result);
+  });
+
   app.post("/p/:projectId/api/op/:name", async (c) => {
     const identity = await readIdentity(c, await secret());
     if (!identity) throw new HTTPException(401, { message: "sign in to use operations" });
@@ -235,6 +268,9 @@ export function createApp(options: AppOptions): Hono {
         ok: false,
         error: { code: "not_found", message: `unknown operation: ${name}`, retryable: false },
       });
+    if (op.ownerOnly && identity.role !== "owner") {
+      throw new HTTPException(403, { message: `only the owner may run ${name}` });
+    }
     if (op.policy !== "read" && !canWrite(identity.role)) {
       throw new HTTPException(403, { message: `role ${identity.role} may not run ${name}` });
     }

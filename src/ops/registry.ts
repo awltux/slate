@@ -8,6 +8,8 @@ export interface AnyOp {
   name: string;
   policy: OpPolicy;
   summary: string;
+  /** Host configuration only an owner may change (AI providers, keys). */
+  ownerOnly?: boolean;
   input: z.ZodTypeAny;
   output: z.ZodTypeAny;
   touched?: (input: unknown, context: OpContext) => string[];

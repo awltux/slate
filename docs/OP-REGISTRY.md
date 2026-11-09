@@ -7,6 +7,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 
 | Operation | Policy | MCP tool | Summary |
 |---|---|---|---|
+| `ai.bind` | write | `ai_bind` | Choose which endpoints serve a capability, in preference order. |
+| `ai.catalog` | read | `ai_catalog` | AI providers, endpoints and capability bindings, with keys masked. |
+| `ai.endpoint.save` | write | `ai_endpoint_save` | Create or update an endpoint: one capability, one path, its parameters and request template. |
+| `ai.preview` | read | `ai_preview` | Render the request an endpoint would send, without calling it. |
+| `ai.provider.save` | write | `ai_provider_save` | Create or update an AI provider: one host, one auth scheme, one credential. |
+| `ai.remove` | destructive | `ai_remove` | Remove a provider or endpoint, and any binding that pointed at it. |
 | `blockout.attach` | write | `blockout_attach` | Attach a blockout for a shot: first and last stills, an optional animatic, and the camera. |
 | `capabilities.get` | read | `capabilities_get` | Probe the host toolchain and report the chain that will run each stage, with the reason. |
 | `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
@@ -67,6 +73,310 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `variant.update` | write | `variant_update` | Change a wardrobe item's name, description or prompt. |
 
 ## Input schemas
+
+### `ai.bind`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "capability": {
+      "type": "string",
+      "enum": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "upscale"
+      ]
+    },
+    "endpointIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "capability",
+    "endpointIds"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.catalog`
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.endpoint.save`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "providerId": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capability": {
+      "type": "string",
+      "enum": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "upscale"
+      ]
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "POST",
+        "GET"
+      ],
+      "default": "POST"
+    },
+    "path": {
+      "type": "string",
+      "default": "/"
+    },
+    "params": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "default": ""
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "enum"
+            ]
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          },
+          "default": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "help": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "key",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": {},
+      "default": {}
+    },
+    "resultPath": {
+      "type": "string",
+      "default": ""
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 3600000,
+      "default": 120000
+    }
+  },
+  "required": [
+    "providerId",
+    "name",
+    "capability"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.preview`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "endpointId": {
+      "type": "string"
+    },
+    "capability": {
+      "type": "string",
+      "enum": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "upscale"
+      ]
+    },
+    "values": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "default": "a lighthouse keeper at night"
+        },
+        "image": {
+          "type": "string",
+          "default": "https://example.invalid/reference.png"
+        },
+        "image2": {
+          "type": "string",
+          "default": "https://example.invalid/last.png"
+        },
+        "seconds": {
+          "type": "number",
+          "default": 5
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "prompt": "a lighthouse keeper at night",
+        "image": "https://example.invalid/reference.png",
+        "image2": "https://example.invalid/last.png",
+        "seconds": 5,
+        "params": {}
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.provider.save`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "default": "custom"
+    },
+    "baseUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "authHeader": {
+      "type": "string",
+      "default": "Authorization"
+    },
+    "authScheme": {
+      "type": "string",
+      "default": "Bearer {{key}}"
+    },
+    "notes": {
+      "type": "string",
+      "default": ""
+    },
+    "apiKey": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "baseUrl"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.remove`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "provider",
+        "endpoint"
+      ]
+    },
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "id"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
 
 ### `blockout.attach`
 

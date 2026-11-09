@@ -20,6 +20,8 @@ export type IdPrefix =
   | "lib"
   | "rvl"
   | "nte"
+  | "aip"
+  | "aie"
   | "usr"
   | "cmt"
   | "ses"
