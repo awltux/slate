@@ -1,8 +1,10 @@
 import { mkdir, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { hashValue } from "../../domain/canonical.js";
 import type { Clock } from "../../domain/clock.js";
 import { type CommitId, newId } from "../../domain/ids.js";
 import { SlateError } from "../../domain/result.js";
+import { SLATE_SKILL_MARKDOWN, SLATE_SKILL_PATH } from "../skill.js";
 import { writeFileAtomic } from "./atomic.js";
 import { type CommitRecord, appendCommit } from "./commits.js";
 import { type ProjectPaths, projectPaths } from "./paths.js";
@@ -79,6 +81,10 @@ export async function initProject(request: InitProjectRequest): Promise<InitProj
   };
 
   await writeFileAtomic(paths.projectFile, projectDocumentJson(project));
+
+  // The skill travels with the project: DeepSeek Harness scans <project>/.dsh/skills, so a fresh folder already
+  // documents the workflow for whichever agent opens it next.
+  await writeFileAtomic(join(paths.root, SLATE_SKILL_PATH), SLATE_SKILL_MARKDOWN);
 
   const commit: CommitRecord = {
     id: project.commit as CommitId,

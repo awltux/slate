@@ -56,6 +56,13 @@ describe("initProject", () => {
     expect(entries).not.toContain("production.json");
   });
 
+  it("installs the production skill where a harness looks for it", async () => {
+    await create();
+    const skill = await readFile(join(root, ".dsh", "skills", "slate-production", "SKILL.md"), "utf8");
+    expect(skill.startsWith("---\nname: slate-production")).toBe(true);
+    expect(skill).toContain("Spend pixels last");
+  });
+
   it("refuses a second project in the same folder", async () => {
     await create();
     await expect(create()).rejects.toMatchObject({ code: "conflict" });
