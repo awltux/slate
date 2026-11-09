@@ -19,6 +19,7 @@ interface SceneSummary {
   number: number;
   heading: { intExt: string; location: string; timeOfDay: string };
   synopsis: string;
+  body: string;
   staleCount: number;
   shots: ShotSummary[];
 }
@@ -197,6 +198,8 @@ function SceneCard({
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingScene, setEditingScene] = useState(false);
+  const [editingShot, setEditingShot] = useState<string | null>(null);
 
   async function addShot(event: React.FormEvent) {
     event.preventDefault();
@@ -231,15 +234,39 @@ function SceneCard({
 
   return (
     <div className="card stack">
-      <div>
-        <h2 style={{ marginBottom: "0.15rem" }}>
-          {scene.number}. {scene.heading.intExt} {scene.heading.location} — {scene.heading.timeOfDay}
-        </h2>
-        <p className="muted" style={{ margin: 0 }}>
-          {scene.shots.length} shot{scene.shots.length === 1 ? "" : "s"}
-          {scene.staleCount > 0 ? ` · ${scene.staleCount} stale` : ""}
-        </p>
-      </div>
+      {editingScene ? (
+        <SceneEditor
+          projectId={projectId}
+          scene={scene}
+          vocabulary={vocabulary}
+          onDone={async () => {
+            setEditingScene(false);
+            await onChange();
+          }}
+          onCancel={() => setEditingScene(false)}
+        />
+      ) : (
+        <div>
+          <div className="row">
+            <h2 style={{ marginBottom: "0.15rem" }}>
+              {scene.number}. {scene.heading.intExt} {scene.heading.location} — {scene.heading.timeOfDay}
+            </h2>
+            <button
+              type="button"
+              className="link-button"
+              aria-label="Edit scene"
+              onClick={() => setEditingScene(true)}
+            >
+              Edit scene
+            </button>
+          </div>
+          <p className="muted" style={{ margin: 0 }}>
+            {scene.shots.length} shot{scene.shots.length === 1 ? "" : "s"}
+            {scene.staleCount > 0 ? ` · ${scene.staleCount} stale` : ""}
+            {scene.synopsis ? ` · ${scene.synopsis}` : ""}
+          </p>
+        </div>
+      )}
 
       {scene.shots.length > 0 ? (
         <table>
@@ -250,51 +277,75 @@ function SceneCard({
               <th style={{ width: 70 }}>Time</th>
               <th>Description</th>
               <th style={{ width: 150 }}>Readiness</th>
+              <th style={{ width: 60 }} />
             </tr>
           </thead>
           <tbody>
-            {scene.shots.map((shot) => (
-              <tr key={shot.id}>
-                <td className="mono">{shot.number}</td>
-                <td>
-                  {shot.size} · {shot.movement}
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    {shot.angle}
-                  </div>
-                </td>
-                <td className="mono">{shot.durationSec}s</td>
-                <td>
-                  {shot.description || <span className="muted">—</span>}
-                  {shot.stale ? (
-                    <div className="row" style={{ marginTop: "0.35rem" }}>
-                      <span className="chip warn">stale</span>
-                      <span className="muted" style={{ fontSize: 12 }}>
-                        {shot.staleCause}
-                      </span>
-                      <button type="button" onClick={() => void rebase(shot.id)}>
-                        Re-check
-                      </button>
+            {scene.shots.map((shot) =>
+              editingShot === shot.id ? (
+                <ShotEditorRow
+                  key={shot.id}
+                  projectId={projectId}
+                  shot={shot}
+                  vocabulary={vocabulary}
+                  onDone={async () => {
+                    setEditingShot(null);
+                    await onChange();
+                  }}
+                  onCancel={() => setEditingShot(null)}
+                />
+              ) : (
+                <tr key={shot.id}>
+                  <td className="mono">{shot.number}</td>
+                  <td>
+                    {shot.size} · {shot.movement}
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {shot.angle}
                     </div>
-                  ) : null}
-                </td>
-                <td>
-                  <span className="dot green" />
-                  {shot.readiness.pass}
-                  {shot.readiness.warn > 0 ? (
-                    <>
-                      <span className="dot amber" style={{ marginLeft: 10 }} />
-                      {shot.readiness.warn}
-                    </>
-                  ) : null}
-                  {shot.readiness.fail > 0 ? (
-                    <>
-                      <span className="dot red" style={{ marginLeft: 10 }} />
-                      {shot.readiness.fail}
-                    </>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="mono">{shot.durationSec}s</td>
+                  <td>
+                    {shot.description || <span className="muted">—</span>}
+                    {shot.stale ? (
+                      <div className="row" style={{ marginTop: "0.35rem" }}>
+                        <span className="chip warn">stale</span>
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          {shot.staleCause}
+                        </span>
+                        <button type="button" onClick={() => void rebase(shot.id)}>
+                          Re-check
+                        </button>
+                      </div>
+                    ) : null}
+                  </td>
+                  <td>
+                    <span className="dot green" />
+                    {shot.readiness.pass}
+                    {shot.readiness.warn > 0 ? (
+                      <>
+                        <span className="dot amber" style={{ marginLeft: 10 }} />
+                        {shot.readiness.warn}
+                      </>
+                    ) : null}
+                    {shot.readiness.fail > 0 ? (
+                      <>
+                        <span className="dot red" style={{ marginLeft: 10 }} />
+                        {shot.readiness.fail}
+                      </>
+                    ) : null}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      aria-label={`Edit shot ${shot.number}`}
+                      onClick={() => setEditingShot(shot.id)}
+                    >
+                      Edit
+                    </button>
+                  </td>
+                </tr>
+              ),
+            )}
           </tbody>
         </table>
       ) : (
@@ -340,5 +391,216 @@ function SceneCard({
       </form>
       {error ? <p className="error">{error}</p> : null}
     </div>
+  );
+}
+
+function SceneEditor({
+  projectId,
+  scene,
+  vocabulary,
+  onDone,
+  onCancel,
+}: {
+  projectId: string;
+  scene: SceneSummary;
+  vocabulary: Vocabulary;
+  onDone: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [intExt, setIntExt] = useState(scene.heading.intExt);
+  const [location, setLocation] = useState(scene.heading.location);
+  const [timeOfDay, setTimeOfDay] = useState(scene.heading.timeOfDay);
+  const [synopsis, setSynopsis] = useState(scene.synopsis);
+  const [body, setBody] = useState(scene.body);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await runOp(projectId, "scene.update", {
+        sceneId: scene.id,
+        heading: { intExt, location, timeOfDay },
+        synopsis,
+        body,
+      });
+      await onDone();
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="stack" onSubmit={save}>
+      <div className="row">
+        <select
+          value={intExt}
+          onChange={(event) => setIntExt(event.target.value)}
+          aria-label="Interior or exterior"
+        >
+          {vocabulary.intExt.map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+        <input
+          value={location}
+          onChange={(event) => setLocation(event.target.value.toUpperCase())}
+          aria-label="Location"
+          style={{ flex: 1 }}
+          required
+        />
+        <select
+          value={timeOfDay}
+          onChange={(event) => setTimeOfDay(event.target.value)}
+          aria-label="Time of day"
+        >
+          {vocabulary.timeOfDay.map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+      </div>
+      <input
+        value={synopsis}
+        onChange={(event) => setSynopsis(event.target.value)}
+        placeholder="One line: what this scene does"
+        aria-label="Synopsis"
+      />
+      <textarea
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        rows={3}
+        aria-label="Scene body"
+        placeholder="Action and dialogue"
+        style={{
+          background: "var(--panel-2)",
+          border: "1px solid var(--line)",
+          borderRadius: 8,
+          padding: "0.5rem",
+          color: "inherit",
+          font: "inherit",
+        }}
+      />
+      <div className="row">
+        <button className="primary" type="submit" disabled={busy || location.trim() === ""}>
+          {busy ? "Saving…" : "Save scene"}
+        </button>
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <span className="muted" style={{ fontSize: 12 }}>
+          Editing the scene marks its shots stale.
+        </span>
+      </div>
+      {error ? <p className="error">{error}</p> : null}
+    </form>
+  );
+}
+
+function ShotEditorRow({
+  projectId,
+  shot,
+  vocabulary,
+  onDone,
+  onCancel,
+}: {
+  projectId: string;
+  shot: ShotSummary;
+  vocabulary: Vocabulary;
+  onDone: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [number, setNumber] = useState(shot.number);
+  const [size, setSize] = useState(shot.size);
+  const [angle, setAngle] = useState(shot.angle);
+  const [movement, setMovement] = useState(shot.movement);
+  const [duration, setDuration] = useState(String(shot.durationSec));
+  const [description, setDescription] = useState(shot.description);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      // Editing a shot is a review of it: it is checked against the scene as it stands now.
+      await runOp(projectId, "shot.update", {
+        shotId: shot.id,
+        number,
+        size,
+        angle,
+        movement,
+        durationSec: Number(duration) || shot.durationSec,
+        description,
+        acceptScene: true,
+      });
+      await onDone();
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <tr>
+      <td>
+        <input
+          value={number}
+          onChange={(event) => setNumber(event.target.value)}
+          aria-label="Shot number"
+          style={{ width: 64 }}
+        />
+      </td>
+      <td className="stack" style={{ gap: "0.3rem" }}>
+        <select value={size} onChange={(event) => setSize(event.target.value)} aria-label="Shot size">
+          {vocabulary.shotSizes.map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+        <select value={movement} onChange={(event) => setMovement(event.target.value)} aria-label="Movement">
+          {vocabulary.shotMovements.map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+        <select value={angle} onChange={(event) => setAngle(event.target.value)} aria-label="Angle">
+          {vocabulary.shotAngles.map((value) => (
+            <option key={value}>{value}</option>
+          ))}
+        </select>
+      </td>
+      <td>
+        <input
+          value={duration}
+          onChange={(event) => setDuration(event.target.value)}
+          aria-label="Duration in seconds"
+          inputMode="numeric"
+          style={{ width: 64 }}
+        />
+      </td>
+      <td colSpan={2}>
+        <input
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          aria-label="Description"
+          style={{ width: "100%" }}
+        />
+        {error ? <p className="error">{error}</p> : null}
+      </td>
+      <td>
+        <div className="row" style={{ gap: "0.3rem" }}>
+          <button className="primary" type="button" onClick={(event) => void save(event)} disabled={busy}>
+            {busy ? "…" : "Save"}
+          </button>
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }

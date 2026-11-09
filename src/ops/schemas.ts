@@ -34,6 +34,7 @@ export const SceneSummarySchema = z
     number: z.number().int(),
     heading: z.object({ intExt: z.string(), location: z.string(), timeOfDay: z.string() }).strict(),
     synopsis: z.string(),
+    body: z.string(),
     staleCount: z.number().int(),
     shots: z.array(ShotSummarySchema),
   })

@@ -44,6 +44,7 @@ export function sceneSummary(sceneId: string, production: ProductionDocument) {
     number: scene.number,
     heading: scene.heading,
     synopsis: scene.synopsis,
+    body: scene.body,
     staleCount: shots.filter((shot) => shot.stale).length,
     shots,
   };
