@@ -615,6 +615,123 @@ async function gate5(steps: string[]): Promise<void> {
   steps.push("rebase: one shot re-checked, one still stale");
 }
 
+async function gate6(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light");
+  steps.push(`project: ${projectId}`);
+
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
+  });
+  const shot = await op<{ shotId: string; number: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "MCU",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 5,
+    description: "Elias turns the wick down; the lens turns behind him.",
+  });
+  steps.push(`plan: shot ${shot.data.number} at 5s`);
+
+  const ffmpeg = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("ffmpeg");
+  assert(Boolean(ffmpeg.binary), "gate 6 needs FFmpeg to stand in for a Blender render");
+  const binary = ffmpeg.binary as string;
+  const work = await mkdtemp(join(tmpdir(), "slate-previz-"));
+  const first = join(work, "first.png");
+  const last = join(work, "last.png");
+  const animatic = join(work, "animatic.mp4");
+
+  const still = (colour: string, target: string) =>
+    runCommand([binary, "-y", "-f", "lavfi", "-i", `color=c=${colour}:s=960x540`, "-frames:v", "1", target]);
+  const clip = await runCommand([
+    binary,
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=960x540:rate=24:duration=5",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    animatic,
+  ]);
+  assert((await still("0x12202c", first)).code === 0, "first still must render");
+  assert((await still("0x2a1c12", last)).code === 0, "last still must render");
+  assert(clip.code === 0, "the animatic must render");
+  steps.push("stand-in renders: two stills and a 5s animatic");
+
+  const set = await op<{ id: string; cameras: number }>(projectId, "set.attach", {
+    manifest: {
+      name: "Lighthouse lantern room",
+      units: "meters",
+      fps: 24,
+      frameRange: [1, 120],
+      entityMap: { lantern: "Lantern_Lens", keeper: "Keeper_Proxy" },
+      cameras: { "3a": { lensMm: 35, heightM: 1.6, keys: [] } },
+    },
+  });
+  assert(set.data.cameras === 1, "the manifest's camera must be recorded");
+  steps.push("set: manifest validated, one camera bound to two entities");
+
+  const blockout = await op<{
+    blockoutId: string;
+    firstAssetId: string;
+    lastAssetId: string | null;
+    animaticAssetId: string | null;
+  }>(projectId, "blockout.attach", {
+    shotId: shot.data.shotId,
+    setId: set.data.id,
+    firstFramePath: first,
+    lastFramePath: last,
+    animaticPath: animatic,
+    camera: { lensMm: 35, heightM: 1.6, axisSide: 1 },
+  });
+  assert(
+    blockout.data.lastAssetId !== null && blockout.data.animaticAssetId !== null,
+    "both stills and the clip attach",
+  );
+  steps.push("blockout: first, last and animatic attached");
+
+  const shotAfter = await op<{ shot: { frames: { first?: string; last?: string } } }>(projectId, "shot.get", {
+    shotId: shot.data.shotId,
+  });
+  assert(
+    shotAfter.data.shot.frames.first === blockout.data.firstAssetId,
+    "the blockout must fill the first frame slot",
+  );
+  assert(
+    shotAfter.data.shot.frames.last === blockout.data.lastAssetId,
+    "the blockout must fill the last frame slot",
+  );
+  steps.push("frames: first and last filled from the blockout");
+
+  const previz = await op<{
+    sets: Array<{ id: string }>;
+    shots: Array<{ blockout: { lensMm: number; heightM: number; axisSide: number | null } | null }>;
+  }>(projectId, "previz.get");
+  assert(previz.data.sets.length === 1, "one set must be listed");
+  const view = previz.data.shots[0]?.blockout;
+  assert(
+    view?.lensMm === 35 && view.heightM === 1.6 && view.axisSide === 1,
+    "camera metadata must round-trip",
+  );
+  steps.push("previz: set and camera metadata read back");
+
+  const media = await fetch(`${base}/p/${projectId}/media/${blockout.data.animaticAssetId}`, {
+    headers: { cookie },
+  });
+  assert(
+    media.status === 200 && media.headers.get("content-type") === "video/mp4",
+    "the animatic must be playable",
+  );
+  steps.push("media: animatic served as video/mp4");
+}
+
 async function browserFlow(steps: string[]): Promise<void> {
   try {
     const { chromium } = await import("playwright");
@@ -626,6 +743,17 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 6) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.click('role=tab[name="Previz"]');
+      await page.waitForSelector("text=Blockouts", { timeout: 20_000 });
+      await page.waitForSelector("video", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "previz.png"), fullPage: true });
+      steps.push("ui: blockout frames and animatic visible in the browser");
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 5) {
       await page.selectOption('select[aria-label="Project"]', projectId);
@@ -753,6 +881,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 3) await gate3(steps);
     else if (gateNumber === 4) await gate4(steps);
     else if (gateNumber === 5) await gate5(steps);
+    else if (gateNumber === 6) await gate6(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);
