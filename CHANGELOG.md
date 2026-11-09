@@ -16,6 +16,15 @@ User-visible changes per slice. Internal refactors are not listed.
 - **Edit anything; delete only what is unused.** Deleting an entry still referenced by a shot (or used as another
   entry's style) is refused, with the reason named.
 
+## Slice 9 — finish and deliver
+
+- **Export a master.** The rendered cut is muxed with an optional audio bed and encoded (web: stream copy with
+  faststart; master: H.264 CRF 16), then every QC check runs against the file that was actually produced.
+- **QC is a report, not a checkbox**: duration against the cut, codec, resolution, audio presence, black-frame detection
+  and total length. A night scene may legitimately be dark, so black frames warn rather than fail.
+- **A provenance manifest ships with the film** — `exports/provenance-r<n>.json` names every shot, its take, the sheet
+  versions it pinned and the FFmpeg that encoded it, and is downloadable by the same session that can watch the master.
+
 ## Slice 8 — working together
 
 - **See who else is in the room.** Presence shows the other people on a project — a chip beside the title naming who else

@@ -904,6 +904,138 @@ async function opAs(
   return response.json() as Promise<{ ok: boolean; data?: unknown; error?: { code: string } }>;
 }
 
+async function gate9(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light");
+  steps.push(`project: ${projectId}`);
+
+  const ffmpeg = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("ffmpeg");
+  assert(Boolean(ffmpeg.binary), "gate 9 needs FFmpeg to render and deliver");
+  const binary = ffmpeg.binary as string;
+
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
+  });
+  const shotA = await op<{ shotId: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "WS",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 3,
+    description: "The lamp turns; the room breathes.",
+  });
+  const shotB = await op<{ shotId: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "MCU",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 3,
+    description: "Elias watches the flame.",
+  });
+
+  const work = await mkdtemp(join(tmpdir(), "slate-deliver-"));
+  const board = (colour: string, file: string) =>
+    runCommand([
+      binary,
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${colour}:s=1280x720`,
+      "-frames:v",
+      "1",
+      join(work, file),
+    ]);
+  assert((await board("0x1a2430", "a.png")).code === 0, "first board must render");
+  assert((await board("0x6b4a20", "b.png")).code === 0, "second board must render");
+
+  await op(projectId, "frame.attach", {
+    shotId: shotA.data.shotId,
+    role: "board",
+    sourcePath: join(work, "a.png"),
+  });
+  await op(projectId, "frame.attach", {
+    shotId: shotB.data.shotId,
+    role: "board",
+    sourcePath: join(work, "b.png"),
+  });
+  await op(projectId, "cut.build", {});
+  const rendered = await op<{ rendered: { assetId: string } | null }>(projectId, "cut.render", {
+    width: 1280,
+    height: 720,
+  });
+  assert(rendered.data.rendered !== null, "the cut must render before delivery");
+  steps.push("cut: two shots rendered to a 6.0s animatic");
+
+  const bedFile = join(work, "bed.m4a");
+  const bed = await runCommand([
+    binary,
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=220:duration=6",
+    "-c:a",
+    "aac",
+    bedFile,
+  ]);
+  assert(bed.code === 0, "the audio bed must render");
+  steps.push("audio: a 6s bed generated locally");
+
+  const delivered = await op<{
+    assetId: string;
+    durationSec: number;
+    audio: boolean;
+    codec: string;
+    manifestPath: string;
+    failed: number;
+    qc: Array<{ id: string; status: string; detail: string }>;
+  }>(projectId, "deliver.export", { preset: "master", audioPath: bedFile });
+
+  assert(delivered.data.failed === 0, `no QC check may fail, got ${JSON.stringify(delivered.data.qc)}`);
+  assert(delivered.data.audio, "the master must carry the audio bed");
+  assert(delivered.data.codec === "h264", "the master must be H.264");
+  assert(
+    Math.abs(delivered.data.durationSec - 6) < 0.4,
+    `the master must be 6s, got ${delivered.data.durationSec}`,
+  );
+  steps.push("delivery: master passed QC with audio");
+
+  const manifestName = delivered.data.manifestPath.split("/").pop();
+  const manifestResponse = await fetch(`${base}/p/${projectId}/exports/${manifestName}`, {
+    headers: { cookie },
+  });
+  assert(manifestResponse.status === 200, "the provenance manifest must be downloadable");
+  const manifest = (await manifestResponse.json()) as {
+    schema: string;
+    cut: Array<{ number: string | null; durationSec: number }>;
+    services: { ffmpeg?: string };
+    delivery: { audio: boolean };
+  };
+  assert(manifest.schema === "slate.provenance.v1", "the manifest must be schema-versioned");
+  assert(manifest.cut.length === 2, "the manifest must list both shots");
+  assert(manifest.cut[0]?.number === "1A", "the manifest must name the first shot");
+  assert(Boolean(manifest.services.ffmpeg), "the manifest must record the service that made it");
+  assert(manifest.delivery.audio, "the manifest must record that the master has audio");
+  steps.push(`manifest: ${manifestName} names 2 shots and the FFmpeg that made it`);
+
+  const master = await fetch(`${base}/p/${projectId}/media/${delivered.data.assetId}`, {
+    headers: { cookie },
+  });
+  assert(master.status === 200, "the master must be served");
+  assert(master.headers.get("content-type") === "video/mp4", "the master must be served as MP4");
+  const bytes = new Uint8Array(await master.arrayBuffer());
+  assert(bytes.length > 10_000, `the master must have substance (${bytes.length} bytes)`);
+  steps.push(`media: master served (${Math.round(bytes.length / 1024)} kB)`);
+
+  const qc = await op<{ delivery: { qc: unknown[] } | null }>(projectId, "deliver.qc", {});
+  assert(qc.data.delivery !== null, "the QC report must persist on the delivery");
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -983,6 +1115,17 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 9) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.click('role=tab[name="Finish"]');
+      await page.waitForSelector("text=QC on the delivered file", { timeout: 20_000 });
+      await page.waitForSelector("video", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "finish.png"), fullPage: true });
+      steps.push("ui: master, QC table and manifest link in the browser");
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 8) {
       await page.selectOption('select[aria-label="Project"]', projectId);
@@ -1148,6 +1291,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 6) await gate6(steps);
     else if (gateNumber === 7) await gate7(steps);
     else if (gateNumber === 8) await gate8(steps);
+    else if (gateNumber === 9) await gate9(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);
@@ -1158,7 +1302,11 @@ async function main(): Promise<number> {
   server.close();
 
   const report = { gate: gateNumber, status: exitCode === 0 ? "passed" : "failed", base, steps };
-  await writeFile(join(artifactDir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+  await writeFile(
+    join(artifactDir, "report.json"),
+    `${JSON.stringify(report, null, 2)}
+`,
+  );
   console.log(JSON.stringify(report, null, 2));
   return exitCode;
 }

@@ -1,0 +1,14 @@
+{
+  "gate": 9,
+  "status": "passed",
+  "base": "http://127.0.0.1:56815",
+  "steps": [
+    "project: prj_764c672be5884337bf2a501151e08064",
+    "cut: two shots rendered to a 6.0s animatic",
+    "audio: a 6s bed generated locally",
+    "delivery: master passed QC with audio",
+    "manifest: provenance-r8.json names 2 shots and the FFmpeg that made it",
+    "media: master served (153 kB)",
+    "ui: master, QC table and manifest link in the browser"
+  ]
+}
