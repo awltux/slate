@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type ProjectSummary, runOp, subscribe } from "../api.js";
 import { CutPage } from "./Cut.js";
+import { Library } from "./Library.js";
 import { Plan } from "./Plan.js";
 import { Previz } from "./Previz.js";
 import { Shoot } from "./Shoot.js";
@@ -43,7 +44,7 @@ interface Commit {
   touched: string[];
 }
 
-type Tab = "write" | "plan" | "previz" | "shoot" | "cut" | "health" | "activity";
+type Tab = "write" | "plan" | "previz" | "shoot" | "cut" | "library" | "health" | "activity";
 
 export function ProjectView({
   project,
@@ -154,6 +155,9 @@ export function ProjectView({
         <button type="button" role="tab" aria-selected={tab === "cut"} onClick={() => setTab("cut")}>
           Cut
         </button>
+        <button type="button" role="tab" aria-selected={tab === "library"} onClick={() => setTab("library")}>
+          Library
+        </button>
         <button type="button" role="tab" aria-selected={tab === "health"} onClick={() => setTab("health")}>
           Health
         </button>
@@ -172,6 +176,7 @@ export function ProjectView({
       {tab === "previz" ? <Previz projectId={project.id} /> : null}
       {tab === "shoot" ? <Shoot projectId={project.id} /> : null}
       {tab === "cut" ? <CutPage projectId={project.id} /> : null}
+      {tab === "library" ? <Library projectId={project.id} /> : null}
       {tab === "health" ? <Health projectId={project.id} /> : null}
       {tab === "activity" ? <Activity projectId={project.id} /> : null}
     </div>
