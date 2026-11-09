@@ -11,26 +11,35 @@
     "slate": "./dist/cli.js"
   },
   "scripts": {
-    "dev": "tsx src/surfaces/cli.ts dev",
+    "dev": "tsx src/surfaces/cli.ts serve",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
-    "gate:1": "tsx scripts/gate.ts 1"
+    "gate:1": "tsx scripts/gate.ts 1",
+    "build:web": "vite build",
+    "serve": "tsx src/surfaces/cli.ts serve"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",
     "commander": "^13.1.0",
     "hono": "^4.7.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.13.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "playwright": "^1.65.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
+    "vite": "^8.3.6",
     "vitest": "^2.1.8"
   }
 }
