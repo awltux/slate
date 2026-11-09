@@ -111,6 +111,10 @@ export const EntitySchema = z
     aliases: z.array(z.string()),
     /** A style sheet applied to this entity's generations; null means the project default. */
     styleId: z.string().startsWith("ent_").nullable(),
+    /** Set when this entity is a clone of a global library item; null means it was authored here. */
+    libraryId: z.string().startsWith("lib_").nullable().default(null),
+    /** The global version this clone was last pushed from or to; null when never linked. */
+    libraryVersion: z.number().int().nullable().default(null),
     identity: SheetVersionSchema.nullable(),
     variants: z.array(VariantSchema),
     candidates: z.array(CandidateSchema),

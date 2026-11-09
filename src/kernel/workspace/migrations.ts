@@ -69,6 +69,8 @@ function migrateEntity(entity: Record<string, unknown>): void {
   if (typeof entity.description !== "string") entity.description = "";
   if (typeof entity.prompt !== "string") entity.prompt = "";
   if (entity.styleId === undefined) entity.styleId = null;
+  if (entity.libraryId === undefined) entity.libraryId = null;
+  if (entity.libraryVersion === undefined) entity.libraryVersion = null;
   if (!Array.isArray(entity.variants)) entity.variants = [];
   if (!Array.isArray(entity.candidates)) entity.candidates = [];
   if (!Array.isArray(entity.aliases)) entity.aliases = [];

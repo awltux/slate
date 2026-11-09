@@ -11,6 +11,7 @@ import type { Clock } from "../../domain/clock.js";
 import { SlateError } from "../../domain/result.js";
 import type { RunProbe } from "../../kernel/catalog/probe.js";
 import { createToolResolver } from "../../kernel/catalog/tool-resolver.js";
+import { libraryAssetPath, readGlobalLibrary } from "../../kernel/library/store.js";
 import { readProductionDocument } from "../../kernel/workspace/production-doc.js";
 import { readProjectDocument } from "../../kernel/workspace/project-doc.js";
 import { type OpRegistry, createRegistry } from "../../ops/index.js";
@@ -308,6 +309,49 @@ export function createApp(options: AppOptions): Hono {
         await stream.writeSSE({ event: "ping", data: "{}" });
       }
       unsubscribe();
+    });
+  });
+
+  // The global library is app-level: it belongs to the host, not to a project, so it is served outside /p/:id.
+  app.get("/api/library", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to read the library" });
+
+    const { items } = await readGlobalLibrary(options.home);
+    return c.json({
+      ok: true,
+      data: {
+        items: items.map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          name: item.name,
+          version: item.version,
+          updatedAt: item.updatedAt,
+          coverAssetId: item.identity?.images[0]?.assetId ?? null,
+          sourceProjectId: item.sourceProjectId,
+        })),
+      },
+    });
+  });
+
+  // Global library covers are host-level, but still only served to a signed-in member of this host.
+  app.get("/library/:assetId", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to read the library" });
+
+    const assetId = c.req.param("assetId");
+    if (!/^last_[A-Za-z0-9]+$/.test(assetId))
+      throw new HTTPException(400, { message: "invalid library asset" });
+
+    const file = await libraryAssetPath(options.home, assetId);
+    if (!file) throw new HTTPException(404, { message: "no such library asset" });
+
+    const bytes = await readFile(file).catch(() => null);
+    if (!bytes) throw new HTTPException(404, { message: "library asset is missing" });
+
+    return c.body(bytes, 200, {
+      "content-type": contentTypeFor(file),
+      "cache-control": "private, max-age=60",
     });
   });
 

@@ -25,6 +25,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `graph.stale` | read | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
 | `history.revert` | destructive | `history_revert` | Undo the most recent commit by restoring the state before it. |
 | `job.get` | read | `job_get` | The state of a job. |
+| `library.import` | write | `library_import` | Copy a global library item into this project as a new entity. |
+| `library.list` | read | `library_list` | The global library, plus which local entities are behind their global version. |
+| `library.pull` | write | `library_pull` | Refresh a project entity from its global library item. |
+| `library.push` | write | `library_push` | Publish a project entity to the global library, or bump its global version. |
 | `plan.vocabulary` | read | `plan_vocabulary` | Valid values for shot and scene fields. |
 | `previz.get` | read | `previz_get` | The sets and every shot's blockout state. |
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
@@ -497,6 +501,83 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   },
   "required": [
     "jobId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `library.import`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "libraryId": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "libraryId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `library.list`
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `library.pull`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `library.push`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

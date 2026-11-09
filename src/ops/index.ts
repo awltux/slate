@@ -17,6 +17,7 @@ import {
 import { frameAttach } from "./frame.js";
 import { graphStale, sessionBrief } from "./graph.js";
 import { historyRevert, projectHistory } from "./history.js";
+import { libraryImport, libraryList, libraryPull, libraryPush } from "./library.js";
 import { blockoutAttach, previzGet, setAttach } from "./previz.js";
 import { projectCreate, projectRename } from "./project.js";
 import { OpRegistry } from "./registry.js";
@@ -56,6 +57,10 @@ export function createRegistry(): OpRegistry {
     entityUpdate,
     entityDelete,
     entityAngles,
+    libraryPush,
+    libraryPull,
+    libraryImport,
+    libraryList,
     deliverExport,
     deliverQc,
     entityGenerate,
