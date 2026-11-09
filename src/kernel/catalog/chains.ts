@@ -40,23 +40,33 @@ export interface ChainResolution {
   chain: ServiceId[];
   available: ServiceId[];
   chosen: ServiceId | null;
-  /** True when the chosen rung is not the preferred one, or nothing is available. */
+  /** Green when verified by its own version command, amber when it is installed but could not be verified. */
+  chosenStatus: "green" | "amber" | null;
+  /** True when the chosen rung is not the preferred one, is unverified, or nothing is available. */
   degraded: boolean;
   reason: string;
 }
 
 /**
- * Resolve each stage to the rung that will actually run. The reason is user-facing: the GUIDE requires the agent to
- * say which path it will take before work starts, not to discover a fallback mid-render.
+ * Resolve each stage to the rung that will actually run. Amber counts: a tool that is installed but does not report a
+ * version is still the tool that will do the work — it is reported as unverified rather than silently skipped in
+ * favour of a worse fallback. The reason is user-facing: the GUIDE requires the agent to say which path it will take
+ * before work starts.
  */
 export function resolveChains(states: ServiceState[]): ChainResolution[] {
   const byId = new Map(states.map((state) => [state.id, state]));
 
   return CHAIN_DEFINITIONS.map((definition) => {
-    const available = definition.services.filter((id) => byId.get(id)?.status === "green");
+    const usable = (id: ServiceId) => {
+      const status = byId.get(id)?.status;
+      return status === "green" || status === "amber";
+    };
+    const available = definition.services.filter(usable);
     const chosen = available[0] ?? null;
     const preferred = definition.services[0] ?? null;
-    const degraded = chosen !== preferred;
+    const chosenStatus = chosen ? (byId.get(chosen)?.status as "green" | "amber") : null;
+    const unverified = chosenStatus === "amber";
+    const degraded = chosen !== preferred || unverified;
 
     const label = (id: ServiceId) => {
       const state = byId.get(id);
@@ -66,8 +76,10 @@ export function resolveChains(states: ServiceState[]): ChainResolution[] {
     let reason: string;
     if (chosen === null) {
       reason = `no ${definition.stage} tool available — ${definition.fallbackNote}`;
-    } else if (!degraded) {
-      reason = `${label(chosen)} detected`;
+    } else if (chosen === preferred) {
+      reason = unverified
+        ? `${label(chosen)} detected but did not report a version; using it unverified`
+        : `${label(chosen)} detected`;
     } else {
       const missing = definition.services
         .slice(0, definition.services.indexOf(chosen))
@@ -76,6 +88,14 @@ export function resolveChains(states: ServiceState[]): ChainResolution[] {
       reason = `${missing} unavailable; ${definition.stage} will use ${label(chosen)} — ${definition.fallbackNote}`;
     }
 
-    return { stage: definition.stage, chain: definition.services, available, chosen, degraded, reason };
+    return {
+      stage: definition.stage,
+      chain: definition.services,
+      available,
+      chosen,
+      chosenStatus,
+      degraded,
+      reason,
+    };
   });
 }

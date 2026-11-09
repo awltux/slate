@@ -4,6 +4,14 @@ User-visible changes per slice. Internal refactors are not listed.
 
 ## Slice 2 — story to shot list (in progress)
 
+- **Slate finds the tools you already have.** Applications installed somewhere other than `PATH` — a different drive,
+  a versioned folder — are discovered from the system's own install records. The health panel now says where each
+  tool was found ("installed application", "common install folder", `PATH`) instead of only whether it answered.
+- **Installed but unverified is amber, not red.** A tool that runs but does not report a version is still the tool
+  that will do the work; the chain uses it and marks the stage unverified. Red now means the program could not be
+  started at all.
+- **An escape hatch for unusual installs.** `SLATE_FFMPEG_PATH`, `SLATE_BLENDER_PATH`, `SLATE_OPENSHOT_CLI_PATH`,
+  `SLATE_MPV_PATH`, `SLATE_MELT_PATH` and `SLATE_FFPROBE_PATH` override discovery entirely.
 - **Write the five lines in the browser.** Situation, desire, conflict, change, result — each save keeps a revision
   with who changed it and why, and missing lines are marked rather than silently accepted.
 - **Turn scenes into a shot list.** Add a scene with INT/EXT, location and time of day; add shots with framing,

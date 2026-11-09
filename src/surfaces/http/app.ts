@@ -66,7 +66,6 @@ export function createApp(options: AppOptions): Hono {
   const registry = options.registry ?? createRegistry();
   const hub = new EventHub();
   let secretPromise: Promise<Buffer> | undefined;
-  let indexHtml: string | undefined;
   const secret = (): Promise<Buffer> => {
     secretPromise ??= loadSecret(options.home);
     return secretPromise;
@@ -239,10 +238,11 @@ export function createApp(options: AppOptions): Hono {
   }
 
   // SPA fallback: an unknown path that is not an API route renders the app, so deep links survive a refresh.
+  // Read per request: caching this across a UI rebuild serves an index that points at a deleted asset hash.
   app.get("*", async (c) => {
     if (options.staticDir) {
-      indexHtml ??= await readFile(join(options.staticDir, "index.html"), "utf8");
-      return c.html(indexHtml);
+      const index = await readFile(join(options.staticDir, "index.html"), "utf8");
+      return c.html(index);
     }
     return c.html(
       '<!doctype html><meta charset=utf-8><title>Slate</title><body style="font-family:system-ui;padding:2rem"><h1>Slate</h1><p>The UI is not built. Run <code>pnpm build:web</code>.</p>',

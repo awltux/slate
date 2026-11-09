@@ -13,7 +13,7 @@ export const PublicServiceSchema = z
     displayName: z.string(),
     required: z.boolean(),
     status: z.enum(["green", "amber", "red"]),
-    source: z.enum(["path", "vendor", "none"]),
+    source: z.enum(["env", "vendor", "registry", "known", "path", "none"]),
     version: z.string().nullable(),
     binaryName: z.string().nullable(),
     detail: z.string(),

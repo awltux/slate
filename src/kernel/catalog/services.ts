@@ -9,18 +9,19 @@ export interface ServiceDefinition {
   displayName: string;
   /** Required services are reported red without failing startup; the workflow degrades, it does not crash. */
   required: boolean;
+  /** Bare name, resolved through PATH last so an explicit install always wins. */
+  executable: string;
   versionArgs: string[];
   versionPattern: RegExp;
-  /** Binary candidates in priority order: vendored, PATH, then well-known install locations. */
-  binaries: (vendorDir: string) => string[];
+  /** Pinned copies downloaded by `slate setup`. */
+  vendorPaths: (vendorDir: string) => string[];
+  /** Conventional install directories for this platform. */
+  knownPaths: () => string[];
 }
 
 const exe = process.platform === "win32" ? ".exe" : "";
 
-/**
- * Where each platform actually puts things. A tool installed but not on PATH is the most common "missing" report,
- * and the GUIDE's cross-platform rule is to find it rather than tell the user their machine is broken.
- */
+/** Where each platform usually puts things when the tool is installed but not on PATH. */
 export function wellKnownBinDirs(): string[] {
   const localAppData = process.env.LOCALAPPDATA;
   switch (process.platform) {
@@ -38,63 +39,74 @@ export function wellKnownBinDirs(): string[] {
   }
 }
 
-function candidates(vendorDir: string, name: string, vendorSubpath?: string): string[] {
-  const vendored = vendorSubpath
-    ? [join(vendorDir, ...vendorSubpath.split("/"), `${name}${exe}`)]
-    : [join(vendorDir, `${name}${exe}`)];
-  const known = wellKnownBinDirs().map((dir) => join(dir, `${name}${exe}`));
-  return [...vendored, ...known, name];
-}
-
 export function serviceDefinitions(): ServiceDefinition[] {
   return [
     {
       id: "ffmpeg",
       displayName: "FFmpeg",
       required: true,
+      executable: `ffmpeg${exe}`,
       versionArgs: ["-version"],
       versionPattern: /ffmpeg version (\S+)/u,
-      binaries: (vendor) => candidates(vendor, "ffmpeg", "ffmpeg/bin"),
+      vendorPaths: (vendor) => [join(vendor, "ffmpeg", "bin", `ffmpeg${exe}`)],
+      knownPaths: () => wellKnownBinDirs().map((dir) => join(dir, `ffmpeg${exe}`)),
     },
     {
       id: "ffprobe",
       displayName: "ffprobe",
       required: true,
+      executable: `ffprobe${exe}`,
       versionArgs: ["-version"],
       versionPattern: /ffprobe version (\S+)/u,
-      binaries: (vendor) => candidates(vendor, "ffprobe", "ffmpeg/bin"),
+      vendorPaths: (vendor) => [join(vendor, "ffmpeg", "bin", `ffprobe${exe}`)],
+      knownPaths: () => wellKnownBinDirs().map((dir) => join(dir, `ffprobe${exe}`)),
     },
     {
       id: "mpv",
       displayName: "mpv",
       required: false,
+      executable: `mpv${exe}`,
       versionArgs: ["--version"],
       versionPattern: /mpv (\S+)/u,
-      binaries: (vendor) => candidates(vendor, "mpv", "mpv"),
+      vendorPaths: (vendor) => [join(vendor, "mpv", `mpv${exe}`)],
+      knownPaths: () => wellKnownBinDirs().map((dir) => join(dir, `mpv${exe}`)),
     },
     {
       id: "openshot-cli",
       displayName: "OpenShot CLI",
       required: false,
+      executable: `openshot-cli${exe}`,
       versionArgs: ["--version"],
       versionPattern: /(\d+\.\d+(?:\.\d+)?)/u,
-      binaries: () => ["openshot-cli", "openshot-cli.exe"],
+      vendorPaths: () => [],
+      knownPaths: () => [],
     },
     {
       id: "melt",
       displayName: "MLT melt",
       required: false,
+      executable: "melt",
       versionArgs: ["-version"],
       versionPattern: /melt (\S+)/u,
-      binaries: () => ["melt", "melt.exe"],
+      vendorPaths: () => [],
+      knownPaths: () => wellKnownBinDirs().map((dir) => join(dir, "melt")),
     },
     {
       id: "blender",
       displayName: "Blender",
       required: false,
+      executable: `blender${exe}`,
       versionArgs: ["--version"],
       versionPattern: /Blender (\S+)/u,
-      binaries: (vendor) => candidates(vendor, "blender", "blender"),
+      vendorPaths: (vendor) => [join(vendor, "blender", `blender${exe}`)],
+      knownPaths: () => [],
     },
   ];
+}
+
+/** Environment override per service: the escape hatch when discovery still misses an unusual install. */
+export function overrideFromEnv(id: ServiceId, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const key = `SLATE_${id.toUpperCase().replaceAll("-", "_")}_PATH`;
+  const value = env[key];
+  return value && value.trim() !== "" ? value.trim() : undefined;
 }

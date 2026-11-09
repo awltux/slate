@@ -127,10 +127,16 @@ describe("project.create", () => {
 });
 
 describe("capabilities.get", () => {
+  const executableName = (argv: string[]): string =>
+    (argv[0] ?? "")
+      .split(/[\\/]/u)
+      .pop()
+      ?.replace(/\.exe$/iu, "") ?? "";
+
   const runner: RunProbe = async (argv) =>
-    argv[0] === "ffmpeg"
+    executableName(argv) === "ffmpeg"
       ? ran("ffmpeg version 6.1.1")
-      : argv[0] === "ffprobe"
+      : executableName(argv) === "ffprobe"
         ? ran("ffprobe version 6.1.1")
         : missing;
 

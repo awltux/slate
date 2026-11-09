@@ -8,7 +8,7 @@ interface ServiceRow {
   displayName: string;
   required: boolean;
   status: "green" | "amber" | "red";
-  source: "path" | "vendor" | "none";
+  source: "env" | "vendor" | "registry" | "known" | "path" | "none";
   version: string | null;
   binaryName: string | null;
   detail: string;
@@ -17,6 +17,7 @@ interface ServiceRow {
 interface ChainRow {
   stage: string;
   chosen: string | null;
+  chosenStatus: "green" | "amber" | null;
   available: string[];
   degraded: boolean;
   reason: string;
@@ -155,7 +156,7 @@ function Health({ projectId }: { projectId: string }) {
               <tr key={chain.stage}>
                 <td>{chain.stage}</td>
                 <td>
-                  <span className={`dot ${chain.degraded ? "amber" : "green"}`} />
+                  <span className={`dot ${chain.chosenStatus === "green" ? "green" : "amber"}`} />
                   {chain.chosen ?? <span className="muted">none</span>}
                 </td>
                 <td>
@@ -201,9 +202,7 @@ function Health({ projectId }: { projectId: string }) {
                   {service.status}
                 </td>
                 <td className="mono">{service.version ?? "—"}</td>
-                <td className="muted">
-                  {service.status === "green" ? (service.binaryName ?? "") : service.detail}
-                </td>
+                <td className="muted">{service.detail}</td>
               </tr>
             ))}
           </tbody>

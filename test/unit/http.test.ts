@@ -11,10 +11,16 @@ const clock = fixedClock("2026-11-09T10:00:00.000Z");
 const ran = (stdout: string) => ({ code: 0, stdout, stderr: "", failedToStart: false });
 const missing = { code: null, stdout: "", stderr: "ENOENT", failedToStart: true };
 
+const executableName = (argv: string[]): string =>
+  (argv[0] ?? "")
+    .split(/[\\/]/u)
+    .pop()
+    ?.replace(/\.exe$/iu, "") ?? "";
+
 const runner: RunProbe = async (argv) =>
-  argv[0] === "ffmpeg"
+  executableName(argv) === "ffmpeg"
     ? ran("ffmpeg version 6.1.1")
-    : argv[0] === "ffprobe"
+    : executableName(argv) === "ffprobe"
       ? ran("ffprobe version 6.1.1")
       : missing;
 

@@ -203,6 +203,16 @@ Every stage resolves to an ordered **chain**, e.g. `assembly: [openshot-cli, mel
 records versions and features; the result carries `via` naming the rung that ran. A fallback is reported, never
 silent. No tool present is `capability_missing` with an install hint.
 
+**Discovery.** A tool installed but not on `PATH` is still the tool that will run. Each service declares candidates in
+this order: a `SLATE_<SERVICE>_PATH` override, a vendored copy, a discovered install (on Windows, the uninstall
+registry — which is how tools on another drive are found), a conventional install folder, then `PATH`. The result
+reports the source (`configured path`, `vendored copy`, `installed application`, `common install folder`, `PATH`), so
+"found via installed application" is visible rather than implied.
+
+**Amber is usable.** A tool that starts but does not report a version is `amber`, not `red`: it is installed and will
+do the work, so a chain uses it and marks the stage unverified rather than silently skipping it for a worse fallback.
+Red means the process could not be started at all.
+
 ---
 
 ## 9. Surfaces and contracts

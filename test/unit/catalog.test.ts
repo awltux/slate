@@ -12,7 +12,14 @@ const ran = (stdout: string): RunResult => ({ code: 0, stdout, stderr: "", faile
 const missing: RunResult = { code: null, stdout: "", stderr: "ENOENT", failedToStart: true };
 
 function runner(table: Record<string, RunResult>) {
-  return async (argv: string[]): Promise<RunResult> => table[argv[0] ?? ""] ?? missing;
+  // Resolve by executable name without the platform extension, so the same table works on Windows and POSIX.
+  return async (argv: string[]): Promise<RunResult> =>
+    table[
+      (argv[0] ?? "")
+        .split(/[\\\\/]/u)
+        .pop()
+        ?.replace(/\.exe$/iu, "") ?? ""
+    ] ?? missing;
 }
 
 const vendorDir = join("C:", "slate", "vendor", "win32-x64");
@@ -30,12 +37,62 @@ describe("probeServices", () => {
     const states = await probeServices({
       vendorDir,
       now: "2026-11-09T10:00:00.000Z",
-      run: runner({ ffmpeg: ran("ffmpeg version 6.1.1 Copyright (c) 2000-2024") }),
+      run: async (argv) =>
+        argv[0] === "ffmpeg" || argv[0] === "ffmpeg.exe"
+          ? ran("ffmpeg version 6.1.1 Copyright (c) 2000-2024")
+          : missing,
     });
     const ffmpeg = states.find((state) => state.id === "ffmpeg");
     expect(ffmpeg?.status).toBe("green");
     expect(ffmpeg?.version).toBe("6.1.1");
     expect(ffmpeg?.source).toBe("path");
+  });
+
+  it("finds an application installed outside PATH and says where it came from", async () => {
+    const blenderPath = "E:\\Blender\\Blender 5.2\\blender.exe";
+    const states = await probeServices({
+      vendorDir,
+      now: "2026-11-09T10:00:00.000Z",
+      hints: { blender: [blenderPath] },
+      run: async (argv) => (argv[0] === blenderPath ? ran("Blender 5.2.2 LTS") : missing),
+    });
+    const blender = states.find((state) => state.id === "blender");
+    expect(blender?.status).toBe("green");
+    expect(blender?.version).toBe("5.2.2");
+    expect(blender?.source).toBe("registry");
+    expect(blender?.detail).toContain("installed application");
+  });
+
+  it("prefers an explicit override over PATH", async () => {
+    const configured = "C:\\tools\\ffmpeg.exe";
+    const states = await probeServices({
+      vendorDir,
+      now: "2026-11-09T10:00:00.000Z",
+      overrides: { ffmpeg: configured },
+      env: {},
+      run: async (argv) =>
+        argv[0] === configured
+          ? ran("ffmpeg version 9.9")
+          : argv[0] === "ffmpeg"
+            ? ran("ffmpeg version 6.0")
+            : missing,
+    });
+    const ffmpeg = states.find((state) => state.id === "ffmpeg");
+    expect(ffmpeg?.version).toBe("9.9");
+    expect(ffmpeg?.source).toBe("env");
+  });
+
+  it("reads an override from the environment", async () => {
+    const configured = "D:\\apps\\blender\\blender.exe";
+    const states = await probeServices({
+      vendorDir,
+      now: "2026-11-09T10:00:00.000Z",
+      env: { SLATE_BLENDER_PATH: configured },
+      run: async (argv) => (argv[0] === configured ? ran("Blender 4.4.3") : missing),
+    });
+    const blender = states.find((state) => state.id === "blender");
+    expect(blender?.status).toBe("green");
+    expect(blender?.source).toBe("env");
   });
 
   it("marks a service amber when it runs but does not report a version", async () => {
@@ -72,6 +129,25 @@ describe("resolveChains", () => {
     expect(assembly?.chosen).toBe("openshot-cli");
     expect(assembly?.degraded).toBe(false);
     expect(assembly?.reason).toContain("OpenShot CLI");
+  });
+
+  it("uses an installed but unverified tool rather than skipping it", async () => {
+    const states = await probeServices({
+      vendorDir,
+      now: "2026-11-09T10:00:00.000Z",
+      hints: { "openshot-cli": ["E:\\OpenShotVideoEditor\\openshot-cli.exe"] },
+      run: async (argv) =>
+        argv[0] === "E:\\OpenShotVideoEditor\\openshot-cli.exe"
+          ? { code: 2, stdout: "", stderr: "unrecognized arguments: --version", failedToStart: false }
+          : argv[0] === "ffmpeg"
+            ? ran("ffmpeg version 6.1.1")
+            : missing,
+    });
+    const assembly = resolveChains(states).find((chain) => chain.stage === "assembly");
+    expect(assembly?.chosen).toBe("openshot-cli");
+    expect(assembly?.chosenStatus).toBe("amber");
+    expect(assembly?.degraded).toBe(true);
+    expect(assembly?.reason).toContain("unverified");
   });
 
   it("falls back to ffmpeg and explains what is lost", async () => {
