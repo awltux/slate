@@ -18,6 +18,7 @@ export const ERROR_CODES = [
   "conflict",
   "unauthorized",
   "forbidden",
+  "invalid_input",
   "invalid_document",
   "media_missing",
   "hash_mismatch",
