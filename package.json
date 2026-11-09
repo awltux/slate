@@ -18,9 +18,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
-    "gate:1": "tsx scripts/gate.ts 1",
+    "gate:1": "tsx scripts/gates.ts 1",
     "build:web": "vite build",
-    "serve": "tsx src/surfaces/cli.ts serve"
+    "serve": "tsx src/surfaces/cli.ts serve",
+    "gate:2": "tsx scripts/gates.ts 2"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",

@@ -1,15 +1,15 @@
 {
   "gate": 1,
   "status": "passed",
-  "base": "http://127.0.0.1:59397",
+  "base": "http://127.0.0.1:56625",
   "steps": [
     "session: anonymous",
     "auth: owner signed in",
-    "project: prj_e0215911bd3641cca91e697f47f18a8b",
+    "project: prj_3bcbb4689629458c81c5daf71898affb",
     "capabilities: ffmpeg N-128560-g967f0ffb10-20261107",
     "ui: index served",
     "leak: no host paths",
     "headless: CLI created a project with no daemon",
-    "ui: screenshots projects.png, health.png"
+    "ui: health panel screenshotted"
   ]
 }
