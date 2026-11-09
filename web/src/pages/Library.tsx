@@ -1,16 +1,49 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, runOp } from "../api.js";
 
+const ANGLES = [
+  "front",
+  "three-quarter-left",
+  "profile-left",
+  "back",
+  "profile-right",
+  "three-quarter-right",
+] as const;
+
+const OTHER_ROLES = ["close-up", "detail", "lighting", "plate", "palette", "texture"] as const;
+
+interface Candidate {
+  id: string;
+  assetId: string;
+  variantId: string | null;
+}
+
+interface VariantView {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  version: number;
+  images: Array<{ role: string; assetId: string }>;
+  missingAngles: string[];
+}
+
 interface EntityView {
   id: string;
   kind: string;
   name: string;
+  description: string;
+  prompt: string;
   aliases: string[];
+  styleId: string | null;
   version: number;
-  views: Array<{ role: string; assetId: string }>;
+  images: Array<{ role: string; assetId: string }>;
+  missingAngles: string[];
   heightM: number | null;
   licence: string;
   likenessConsent: string;
+  variants: VariantView[];
+  candidates: Candidate[];
   createdAt: string;
 }
 
@@ -22,8 +55,9 @@ export function Library({ projectId }: { projectId: string }) {
   const [entities, setEntities] = useState<EntityView[] | null>(null);
   const [kind, setKind] = useState("character");
   const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -43,8 +77,9 @@ export function Library({ projectId }: { projectId: string }) {
     setBusy(true);
     setError(null);
     try {
-      await runOp(projectId, "entity.create", { kind, name });
+      await runOp(projectId, "entity.create", { kind, name, description });
       setName("");
+      setDescription("");
       await load();
     } catch (caught) {
       setError(message(caught));
@@ -69,87 +104,294 @@ export function Library({ projectId }: { projectId: string }) {
         <div className="row">
           <h2 style={{ margin: 0 }}>Library</h2>
           <div className="spacer" />
-          <span className="chip">{entities.length} entities</span>
+          <span className="chip">{entities.length} entries</span>
         </div>
         <p className="muted" style={{ marginBottom: 0 }}>
-          A sheet is a contract, not a mood board: its views are what a model is conditioned on, its height is
-          what a proxy is scaled from, and its consent gates a final take. Publishing a new version never
-          edits the old one.
+          Describe the thing in your own words, let an agent turn that into a prompt, generate options, and
+          pick the images that become the sheet. A character sheet is six head rotations; outfits and states
+          are variants with their own prompt and sheet.
         </p>
       </div>
 
-      <form className="card row" onSubmit={create}>
-        <select value={kind} onChange={(event) => setKind(event.target.value)} aria-label="Entity kind">
-          <option value="character">character</option>
-          <option value="location">location</option>
-          <option value="prop">prop</option>
-        </select>
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="The keeper"
-          aria-label="Entity name"
-          style={{ flex: 1 }}
+      <form className="card stack" onSubmit={create}>
+        <div className="row">
+          <select value={kind} onChange={(event) => setKind(event.target.value)} aria-label="Entity kind">
+            <option value="character">character</option>
+            <option value="location">location</option>
+            <option value="prop">prop</option>
+            <option value="style">style</option>
+          </select>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="The keeper"
+            aria-label="Entity name"
+            style={{ flex: 1 }}
+          />
+          <button className="primary" type="submit" disabled={busy || name.trim() === ""}>
+            {busy ? "Creating…" : "Define entry"}
+          </button>
+        </div>
+        <textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="Who they are, in your words — the agent turns this into a prompt."
+          aria-label="Description"
+          rows={2}
+          style={{
+            background: "var(--panel-2)",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            padding: "0.5rem",
+            color: "inherit",
+            font: "inherit",
+          }}
         />
-        <button className="primary" type="submit" disabled={busy || name.trim() === ""}>
-          {busy ? "Creating…" : "Define entity"}
-        </button>
       </form>
       {error ? <p className="error">{error}</p> : null}
 
-      {entities.length === 0 ? (
-        <div className="card">
-          <p className="empty">
-            No entities yet. Define the keeper, the lighthouse interior, the lantern — then publish their
-            sheets.
-          </p>
-        </div>
-      ) : (
-        entities.map((entity) => (
-          <div className="card stack" key={entity.id}>
-            <div className="row">
-              <h2 style={{ margin: 0 }}>{entity.name}</h2>
-              <span className="chip">{entity.kind}</span>
-              <span className="chip">{entity.version === 0 ? "no sheet" : `v${entity.version}`}</span>
-              {entity.heightM !== null ? <span className="chip">{entity.heightM.toFixed(2)} m</span> : null}
-              {entity.likenessConsent === "granted" || entity.likenessConsent === "not-required" ? null : (
-                <span className="chip warn">consent {entity.likenessConsent}</span>
-              )}
-              <div className="spacer" />
-              <span className="muted mono" style={{ fontSize: 12 }}>
-                {entity.id}
-              </span>
-            </div>
+      {entities.map((entity) => (
+        <EntityCard
+          key={entity.id}
+          projectId={projectId}
+          entity={entity}
+          entities={entities}
+          onChange={load}
+          media={media}
+        />
+      ))}
+    </div>
+  );
+}
 
-            {entity.views.length === 0 ? (
-              <p className="empty">
-                No views yet. The agent publishes them from generated or photographed references.
-              </p>
-            ) : (
-              <div className="row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
-                {entity.views.map((view) => (
-                  <figure key={view.assetId} style={{ margin: 0 }}>
-                    <img
-                      src={media(view.assetId)}
-                      alt={`${entity.name} ${view.role}`}
-                      style={{
-                        width: 150,
-                        height: 150,
-                        objectFit: "cover",
-                        borderRadius: 8,
-                        background: "#000",
-                      }}
-                    />
-                    <figcaption className="muted" style={{ fontSize: 12, textAlign: "center" }}>
-                      {view.role}
-                    </figcaption>
-                  </figure>
-                ))}
-              </div>
-            )}
+function EntityCard({
+  projectId,
+  entity,
+  entities,
+  onChange,
+  media,
+}: {
+  projectId: string;
+  entity: EntityView;
+  entities: EntityView[];
+  onChange: () => Promise<void>;
+  media: (assetId: string) => string;
+}) {
+  const [prompt, setPrompt] = useState(entity.prompt);
+  const [description, setDescription] = useState(entity.description);
+  const [styleId, setStyleId] = useState(entity.styleId ?? "");
+  const [count, setCount] = useState("4");
+  const [assign, setAssign] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPrompt(entity.prompt);
+    setDescription(entity.description);
+    setStyleId(entity.styleId ?? "");
+  }, [entity.prompt, entity.description, entity.styleId]);
+
+  const styles = entities.filter((item) => item.kind === "style");
+
+  async function run(action: () => Promise<unknown>): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      await onChange();
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveDetails() {
+    await run(() =>
+      runOp(projectId, "entity.update", {
+        entityId: entity.id,
+        description,
+        prompt,
+        styleId: styleId || null,
+      }),
+    );
+  }
+
+  async function generate() {
+    await run(() => runOp(projectId, "entity.generate", { entityId: entity.id, count: Number(count) || 4 }));
+  }
+
+  const candidates = entity.candidates.filter((candidate) => candidate.variantId === null);
+
+  async function publish() {
+    const images = Object.entries(assign)
+      .filter(([, role]) => role !== "")
+      .map(([candidateId, role]) => ({ role, candidateId }));
+    if (images.length === 0) {
+      setError("assign at least one candidate to a role");
+      return;
+    }
+    await run(() => runOp(projectId, "sheet.select", { entityId: entity.id, images }));
+    setAssign({});
+  }
+
+  async function remove() {
+    await run(() => runOp(projectId, "entity.delete", { entityId: entity.id }));
+  }
+
+  return (
+    <div className="card stack">
+      <div className="row">
+        <h2 style={{ margin: 0 }}>{entity.name}</h2>
+        <span className="chip">{entity.kind}</span>
+        <span className="chip">{entity.version === 0 ? "no sheet" : `v${entity.version}`}</span>
+        {entity.heightM !== null ? <span className="chip">{entity.heightM.toFixed(2)} m</span> : null}
+        {entity.kind === "character" && entity.missingAngles.length > 0 && entity.version > 0 ? (
+          <span className="chip warn">missing {entity.missingAngles.join(", ")}</span>
+        ) : null}
+        <div className="spacer" />
+        <button type="button" onClick={() => void remove()} disabled={busy} title="Delete when unused">
+          Delete
+        </button>
+      </div>
+
+      <div className="stack" style={{ gap: "0.4rem" }}>
+        <textarea
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          aria-label={`Description of ${entity.name}`}
+          rows={2}
+          placeholder="Description in the director's words"
+          style={{
+            background: "var(--panel-2)",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            padding: "0.5rem",
+            color: "inherit",
+            font: "inherit",
+          }}
+        />
+        <textarea
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          aria-label={`Prompt for ${entity.name}`}
+          rows={2}
+          placeholder="Generation prompt — the agent adds flourish here"
+          style={{
+            background: "var(--panel-2)",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+            padding: "0.5rem",
+            color: "inherit",
+            font: "inherit",
+          }}
+        />
+        <div className="row">
+          <select
+            value={styleId}
+            onChange={(event) => setStyleId(event.target.value)}
+            aria-label="Style sheet"
+          >
+            <option value="">no style</option>
+            {styles.map((style) => (
+              <option key={style.id} value={style.id}>
+                {style.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={() => void saveDetails()} disabled={busy}>
+            Save description and prompt
+          </button>
+          <div className="spacer" />
+          <input
+            value={count}
+            onChange={(event) => setCount(event.target.value)}
+            aria-label="Candidate count"
+            inputMode="numeric"
+            style={{ width: 60 }}
+          />
+          <button type="button" onClick={() => void generate()} disabled={busy}>
+            {busy ? "Working…" : "Generate candidates"}
+          </button>
+        </div>
+      </div>
+
+      {entity.images.length > 0 ? (
+        <div className="row" style={{ alignItems: "flex-start" }}>
+          {entity.images.map((image) => (
+            <figure key={`${image.role}-${image.assetId}`} style={{ margin: 0 }}>
+              <img
+                src={media(image.assetId)}
+                alt={`${entity.name} ${image.role}`}
+                style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 6 }}
+              />
+              <figcaption className="muted" style={{ fontSize: 11, textAlign: "center" }}>
+                {image.role}
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      ) : null}
+
+      {candidates.length > 0 ? (
+        <div className="stack" style={{ gap: "0.4rem" }}>
+          <div className="row">
+            <strong>Pick the sheet</strong>
+            <span className="muted">assign a role to each image you keep</span>
+            <div className="spacer" />
+            <button type="button" className="primary" onClick={() => void publish()} disabled={busy}>
+              Publish sheet
+            </button>
           </div>
-        ))
-      )}
+          <div className="row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
+            {candidates.map((candidate) => (
+              <div key={candidate.id} className="stack" style={{ gap: "0.25rem", width: 120 }}>
+                <img
+                  src={media(candidate.assetId)}
+                  alt="candidate"
+                  style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 6 }}
+                />
+                <select
+                  value={assign[candidate.id] ?? ""}
+                  onChange={(event) => setAssign({ ...assign, [candidate.id]: event.target.value })}
+                  aria-label={`Role for candidate ${candidate.id}`}
+                >
+                  <option value="">unused</option>
+                  {ANGLES.map((angle) => (
+                    <option key={angle} value={angle}>
+                      {angle}
+                    </option>
+                  ))}
+                  {OTHER_ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {entity.variants.length > 0 ? (
+        <div className="stack" style={{ gap: "0.4rem" }}>
+          <strong>Variants</strong>
+          {entity.variants.map((variant) => (
+            <div key={variant.id} className="row">
+              <span>{variant.name}</span>
+              <span className="chip">{variant.version === 0 ? "no sheet" : `v${variant.version}`}</span>
+              {variant.prompt ? (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {variant.prompt.slice(0, 60)}
+                </span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {error ? <p className="error">{error}</p> : null}
     </div>
   );
 }
