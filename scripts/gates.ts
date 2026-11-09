@@ -1260,6 +1260,103 @@ async function gate10(steps: string[]): Promise<void> {
   steps.push("ui: a revoked link explains itself instead of failing silently");
 }
 
+async function gate11(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light");
+
+  const provider = await fetch(`${base}/api/op/ai.provider.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      name: "fal",
+      kind: "fal",
+      baseUrl: "https://fal.run",
+      authHeader: "Authorization",
+      authScheme: "Key {{key}}",
+      apiKey: "gate-secret-key",
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data?: { id: string; hasKey: boolean } }>);
+  assert(provider.ok && provider.data?.hasKey === true, "the provider must be saved with its key");
+  steps.push("provider: fal stored with one credential");
+
+  const endpoint = await fetch(`${base}/api/op/ai.endpoint.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      providerId: provider.data.id,
+      name: "FLUX dev",
+      capability: "image",
+      path: "/fal-ai/flux/dev",
+      params: [
+        { key: "num_images", type: "integer", default: 4 },
+        { key: "strength", type: "number" },
+      ],
+      body: {
+        prompt: "{{prompt}}",
+        image_url: "{{image}}",
+        num_images: "{{param:num_images}}",
+        strength: "{{param:strength}}",
+      },
+      resultPath: "images[0].url",
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data?: { id: string } }>);
+  assert(endpoint.ok && endpoint.data?.id, "the endpoint must be saved");
+  steps.push("endpoint: FLUX dev, its own parameters, its own body shape");
+
+  const bound = await fetch(`${base}/api/op/ai.bind`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ capability: "image", endpointIds: [endpoint.data.id] }),
+  }).then((response) => response.json() as Promise<{ ok: boolean }>);
+  assert(bound.ok, "the endpoint must bind to the image capability");
+
+  const preview = await fetch(`${base}/api/op/ai.preview`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      capability: "image",
+      values: {
+        prompt: "the keeper turns the wick down",
+        image: "https://example.invalid/board.png",
+        params: { strength: 0.6 },
+      },
+    }),
+  }).then(
+    (response) =>
+      response.json() as Promise<{
+        ok: boolean;
+        data: { url: string; method: string; headers: Record<string, string>; body: Record<string, unknown> };
+      }>,
+  );
+  assert(preview.ok, "the preview must render");
+  assert(preview.data.url === "https://fal.run/fal-ai/flux/dev", "the preview must assemble the URL");
+  assert(preview.data.headers.Authorization === "Key ••••", "the preview must mask the key it would send");
+  assert(preview.data.body.num_images === 4, "a default parameter must be sent with its declared type");
+  assert(preview.data.body.strength === 0.6, "a supplied parameter must keep its declared type");
+  assert(preview.data.body.prompt === "the keeper turns the wick down", "the prompt must land in the body");
+  steps.push("preview: request rendered offline, typed parameters, key masked");
+
+  const catalog = await fetch(`${base}/api/op/ai.catalog`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: "{}",
+  }).then((response) => response.json() as Promise<{ data: { providers: Array<{ hasKey: boolean }> } }>);
+  const serialized = JSON.stringify(catalog);
+  assert(catalog.data.providers[0]?.hasKey === true, "the catalog must report that a key exists");
+  assert(!serialized.includes("gate-secret-key"), "the catalog must never return the key itself");
+  steps.push("catalog: says a key exists, never returns it");
+
+  // An editor may not read or change host setup.
+  const editor = await loginAs("editor", "gate-editor-123");
+  const refused = await fetch(`${base}/api/op/ai.catalog`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: editor.cookie, "x-slate-csrf": editor.csrf },
+    body: "{}",
+  });
+  assert(refused.status === 403, `an editor must be refused, got ${refused.status}`);
+  steps.push("permission: an editor cannot open setup at all");
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -1339,6 +1436,16 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 11) {
+      await page.click('header [role="tab"]:has-text("Setup")');
+      await page.waitForSelector("text=AI setup", { timeout: 20_000 });
+      await page.waitForSelector("text=FLUX dev", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "setup.png"), fullPage: true });
+      steps.push("ui: the owner sees providers, endpoints and bindings");
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 10) {
       const reviewContext = await instance.newContext();
@@ -1545,6 +1652,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 8) await gate8(steps);
     else if (gateNumber === 9) await gate9(steps);
     else if (gateNumber === 10) await gate10(steps);
+    else if (gateNumber === 11) await gate11(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

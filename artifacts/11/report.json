@@ -1,0 +1,13 @@
+{
+  "gate": 11,
+  "status": "passed",
+  "base": "http://127.0.0.1:53438",
+  "steps": [
+    "provider: fal stored with one credential",
+    "endpoint: FLUX dev, its own parameters, its own body shape",
+    "preview: request rendered offline, typed parameters, key masked",
+    "catalog: says a key exists, never returns it",
+    "permission: an editor cannot open setup at all",
+    "ui: the owner sees providers, endpoints and bindings"
+  ]
+}
