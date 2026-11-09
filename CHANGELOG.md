@@ -2,6 +2,20 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Slice 2 — story to shot list (in progress)
+
+- **Write the five lines in the browser.** Situation, desire, conflict, change, result — each save keeps a revision
+  with who changed it and why, and missing lines are marked rather than silently accepted.
+- **Turn scenes into a shot list.** Add a scene with INT/EXT, location and time of day; add shots with framing,
+  angle, movement, duration and a description. Shot numbers are assigned (`1A`, `1B`) and numbering is never reused.
+- **Readiness you can act on.** Every shot reports named checks with pass, warn or fail — no description, a duration
+  past ten seconds, a duplicate shot number, a story that is not settled yet.
+- **Staleness with a cause.** Editing a scene marks exactly its own shots stale, says which scene changed, and offers
+  a one-click re-check. Nothing else is invalidated.
+- **One revision clock.** The project and the plan share a revision; a write based on an old one is refused with a
+  conflict instead of overwriting someone else's work.
+- **Every operation from the CLI.** `slate op <name> --input <json>` runs any operation with no daemon.
+
 ## Slice 1 — boot, auth, health
 
 - **Sign in to Slate.** The first run creates an owner account and prints its password once in the terminal that
@@ -13,7 +27,6 @@ User-visible changes per slice. Internal refactors are not listed.
   previz, playback, mix — with the reason. Tools that are installed but not on `PATH` are found anyway. A degraded
   stage says what is lost, before any work starts.
 - **Activity.** The commit log is visible as a readable feed.
-- **Headless parity.** Every operation above is available from the CLI with no daemon running.
 
 ## Unreleased groundwork
 
