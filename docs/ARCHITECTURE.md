@@ -182,8 +182,10 @@ description ──(agent)──► prompt ──(generate)──► candidates �
   may point at one; generation records which style it used.
 - **A location entity can be materialised as a set**: the Blender file and manifest are the location made geometric,
   which is why `set.attach` binds entities to objects (`entityMap`).
-- **A scene** is a screenplay unit — slugline, synopsis, body — that *references* a location entity; it does not own it.
-  Two scenes in one place share the location sheet and, usually, one set version.
+- **A scene** is a screenplay unit — slugline, synopsis, body — that may *reference* a location entity
+  (`locationEntityId`); it does not own it. Two scenes in one place share the location sheet and, usually, one set
+  version. A linked location supplies the backdrop plate: when a shot has no frame of its own, the cut falls back to
+  the location's cover image rather than dropping the shot.
 - **A shot** lists the entities in frame (`entityIds`) and **pins** the sheet versions it was conditioned on:
   `pins: { entityId: sheetVersion }`.
 

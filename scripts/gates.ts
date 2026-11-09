@@ -833,6 +833,26 @@ async function gate7(steps: string[]): Promise<void> {
   assert(keeperView?.variants[0]?.version === 1, "the outfit sheet is v1");
   steps.push("library: identity and outfit readable with their versions");
 
+  // A scene can point at a location entity, and that location's sheet becomes the scene's backdrop.
+  const lighthouse = await op<{ entityId: string }>(projectId, "entity.create", {
+    kind: "location",
+    name: "Lantern room",
+    description: "Salt-eaten iron, one lamp, night.",
+  });
+  await op(projectId, "entity.update", {
+    entityId: lighthouse.data.entityId,
+    prompt: "lighthouse lantern room, night, amber practical, wet iron",
+  });
+  const locationCandidates = await op<{ candidates: Array<{ id: string }> }>(projectId, "entity.generate", {
+    entityId: lighthouse.data.entityId,
+    count: 1,
+  });
+  const locationSheet = await op<{ images: Array<{ assetId: string }> }>(projectId, "sheet.select", {
+    entityId: lighthouse.data.entityId,
+    images: [{ role: "lighting", candidateId: locationCandidates.data.candidates[0]?.id }],
+  });
+  steps.push("location: a lantern room with a lighting sheet");
+
   // A character in a shot cannot be deleted; a style applied to one cannot either.
   const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
     heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
@@ -849,6 +869,23 @@ async function gate7(steps: string[]): Promise<void> {
     shotId: shot.data.shotId,
     entityIds: [keeper.data.entityId, style.data.entityId],
   });
+
+  const linked = await op<{ location: { entityId: string; coverAssetId: string | null } | null }>(
+    projectId,
+    "scene.set-location",
+    { sceneId: scene.data.sceneId, entityId: lighthouse.data.entityId },
+  );
+  assert(linked.data.location?.entityId === lighthouse.data.entityId, "the scene must link the location");
+  assert(
+    linked.data.location?.coverAssetId === locationSheet.data.images[0]?.assetId,
+    "the scene must expose the location's cover image",
+  );
+
+  const cover = await fetch(`${base}/p/${projectId}/media/${linked.data.location?.coverAssetId}`, {
+    headers: { cookie },
+  });
+  assert(cover.status === 200, `the backdrop must be servable, got ${cover.status}`);
+  steps.push("scene: linked to the lantern room, backdrop served from its sheet");
 
   const refused = await fetch(`${base}/p/${projectId}/api/op/entity.delete`, {
     method: "POST",

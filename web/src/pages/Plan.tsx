@@ -14,12 +14,24 @@ interface ShotSummary {
   readiness: { pass: number; warn: number; fail: number };
 }
 
+interface SceneLocation {
+  entityId: string;
+  name: string;
+  coverAssetId: string | null;
+}
+
+interface LocationOption {
+  id: string;
+  name: string;
+}
+
 interface SceneSummary {
   id: string;
   number: number;
   heading: { intExt: string; location: string; timeOfDay: string };
   synopsis: string;
   body: string;
+  location: SceneLocation | null;
   staleCount: number;
   shots: ShotSummary[];
 }
@@ -48,17 +60,22 @@ export function Plan({ projectId }: { projectId: string }) {
   const [scenes, setScenes] = useState<SceneSummary[] | null>(null);
   const [vocabulary, setVocabulary] = useState<Vocabulary>(FALLBACK_VOCABULARY);
   const [error, setError] = useState<string | null>(null);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
   const [revision, setRevision] = useState(0);
   const [conflict, setConflict] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [list, words] = await Promise.all([
+      const [list, words, third] = await Promise.all([
         runOp<{ scenes: SceneSummary[] }>(projectId, "scene.list", {}),
         runOp<Vocabulary>(projectId, "plan.vocabulary", {}),
+        runOp<{ entities: Array<{ id: string; name: string; kind: string }> }>(projectId, "entity.list", {
+          kind: "location",
+        }),
       ]);
       setScenes(list.data.scenes);
       setVocabulary(words.data);
+      setLocations(third.data.entities.map((entity) => ({ id: entity.id, name: entity.name })));
       setRevision(list.version);
       setConflict(false);
     } catch (caught) {
@@ -132,6 +149,7 @@ export function Plan({ projectId }: { projectId: string }) {
           scene={scene}
           vocabulary={vocabulary}
           revision={revision}
+          locations={locations}
           onConflict={() => setConflict(true)}
           onChange={load}
         />
@@ -221,6 +239,7 @@ function SceneCard({
   scene,
   vocabulary,
   revision,
+  locations,
   onConflict,
   onChange,
 }: {
@@ -228,6 +247,7 @@ function SceneCard({
   scene: SceneSummary;
   vocabulary: Vocabulary;
   revision: number;
+  locations: LocationOption[];
   onConflict: () => void;
   onChange: () => Promise<void>;
 }) {
@@ -240,6 +260,24 @@ function SceneCard({
   const [error, setError] = useState<string | null>(null);
   const [editingScene, setEditingScene] = useState(false);
   const [editingShot, setEditingShot] = useState<string | null>(null);
+
+  async function setLocation(entityId: string | null) {
+    setBusy(true);
+    setError(null);
+    try {
+      await runOp(projectId, "scene.set-location", {
+        sceneId: scene.id,
+        entityId,
+        expectedRevision: revision,
+      });
+      await onChange();
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "conflict") onConflict();
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function addShot(event: React.FormEvent) {
     event.preventDefault();
@@ -303,6 +341,30 @@ function SceneCard({
             >
               Edit scene
             </button>
+          </div>
+          <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+            <select
+              value={scene.location?.entityId ?? ""}
+              aria-label={`Location for scene ${scene.number}`}
+              onChange={(event) => void setLocation(event.target.value || null)}
+              disabled={busy}
+            >
+              <option value="">no location linked</option>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </select>
+            {scene.location?.coverAssetId ? (
+              <img
+                src={`/p/${projectId}/media/${scene.location.coverAssetId}`}
+                alt={`Backdrop for scene ${scene.number}`}
+                style={{ width: 96, height: 54, objectFit: "cover", borderRadius: 4, background: "#000" }}
+              />
+            ) : scene.location ? (
+              <span className="muted">linked, but the location has no sheet yet</span>
+            ) : null}
           </div>
           <p className="muted" style={{ margin: 0 }}>
             {scene.shots.length} shot{scene.shots.length === 1 ? "" : "s"}
