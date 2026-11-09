@@ -2,6 +2,19 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Slice 4 — spend with approval
+
+- **See the price before you spend.** Estimate prices a shot against the catalog — a draft at $0.05/s, a final at
+  $0.40/s — and stores it. Nothing is charged until a take is submitted.
+- **Approve a number, not a vibe.** Approving returns a single-use token naming the estimate, its price and a fifteen
+  minute expiry. If the plan changes, the token is void and must be re-priced.
+- **The budget cannot be argued with.** The ceiling is checked when a job reserves money, before a frame renders; a
+  refused batch says what it costs and what is left. A failed job refunds.
+- **Takes arrive with provenance.** Each take records its endpoint, seed, price, job and asset. The first take for a
+  shot is selected; any other can be selected with one click.
+- **A skill travels with the project.** `project.create` writes `.dsh/skills/slate-production/SKILL.md`, so an agent
+  opening the folder knows the workflow, the money rule and what readiness means without being told.
+
 ## Slice 3 — a cut you can watch
 
 - **Build a cut from the plan.** Every shot with a board or first frame becomes an item, in scene order, at its

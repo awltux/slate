@@ -8,12 +8,24 @@ four surfaces exist.
 | 1 | Boot, auth, health | `pnpm gate:1` | **done** | [health](../artifacts/1/health.png) · [report](../artifacts/1/report.json) |
 | 2 | Story → shots | `pnpm gate:2` | **done** | [write](../artifacts/2/write.png) · [plan](../artifacts/2/plan.png) · [report](../artifacts/2/report.json) |
 | 3 | A cut you can watch | `pnpm gate:3` | **done** | [cut](../artifacts/3/cut.png) · [report](../artifacts/3/report.json) |
-| 4 | Spend with approval | `pnpm gate:4` | **next** | — |
-| 5 | Previz | `pnpm gate:5` | pending | — |
+| 4 | Spend with approval | `pnpm gate:4` | **done** | [shoot](../artifacts/4/shoot.png) · [report](../artifacts/4/report.json) |
+| 5 | Previz | `pnpm gate:5` | **next** | — |
 | 6 | Collaboration | `pnpm gate:6` | pending | — |
 | 7 | Finish & deliver | `pnpm gate:7` | pending | — |
 | 8 | Remote review | `pnpm gate:8` | pending | — |
 | 9 | Polish | `pnpm gate:9` | pending | — |
+
+## Slice 4 — what it proves
+
+- **An estimate is a record, not a message.** `estimate.create` prices each shot against a catalog entry and stores
+  the result; nothing is charged.
+- **Approval is signed.** `spend.approve` returns a token naming the estimate, its price and an expiry. The token is
+  single use and void if the estimate's hash changes, so a plan edited after approval cannot ride the same yes.
+- **Spending reserves before rendering.** The reservation lands in `.slate/ledger.jsonl` before the first frame; a
+  failed job refunds. Two concurrent submits cannot both pass a ceiling check that neither has decremented.
+- **The loop is whole without a key.** The local gateway renders a deterministic clip from the shot's board, so
+  drafts cost a fraction ($$0.05/s) and finals cost more ($$0.40/s) — the ladder is visible in the numbers.
+- **The browser shows the decision**: `$2.00 of $3.00`, what a batch will cost, and what came back.
 
 ## Slice 3 — what it proves
 
@@ -42,6 +54,31 @@ four surfaces exist.
 - **One revision clock.** Project and production documents share a revision and a commit id; a write against a stale
   revision is a `conflict`, never an overwrite.
 - **All four surfaces.** MCP serves the registry over stdio, and `docs/OP-REGISTRY.md` is generated and checked.
+
+## Backlog — known gaps
+
+Not future features to invent: things the GUIDE promises, or the product obviously needs, with an honest note on what
+already exists. "Operation exists" means it is reachable from the CLI and MCP today; only the browser has no way in.
+
+| Item | Operation | Browser |
+|---|---|---|
+| **Edit a scene** (heading, synopsis, body) | `scene.update` exists | **missing** |
+| **Edit a shot** (number, framing, angle, movement, duration, description) | `shot.update` exists | **missing** |
+| Delete a scene or a shot | missing — needs cascade rules for takes and cut items | missing |
+| Scene intent note (GUIDE §17 handoff) | missing | missing |
+| Coverage plan (GUIDE §7, master plus variants) | missing | missing |
+| Project settings after creation (runtime, aspect, budget) | missing — only `project.create` sets them | missing |
+| Upload a board from the browser | `frame.attach` takes a server-side path | missing |
+| Compare two takes side by side | `take.list` returns both | missing |
+| Conform a take into its slot (trim/retime) | `cut.build` uses planned durations | missing |
+| B-roll from source footage (import, not generate) | missing | missing |
+| Library (cross-project sheets) | missing | slice 9 |
+| Finish: mix, subtitles, titles, upscale | missing | slice 7 |
+| Presence, conflicts, per-user undo | partial: node-scoped `touched` + `expectedRevision` | slice 6 |
+| Remote review link | missing | slice 8 |
+
+Editing a scene or a shot is the first thing a director tries to do after the first plan exists, and today it can only
+be done by an agent. It is the next slice after spend.
 
 ## Notes
 

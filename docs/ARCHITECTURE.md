@@ -205,7 +205,7 @@ silent. No tool present is `capability_missing` with an install hint.
 
 **Discovery.** A tool installed but not on `PATH` is still the tool that will run. Each service declares candidates in
 this order: a `SLATE_<SERVICE>_PATH` override, a vendored copy, a discovered install (on Windows, the uninstall
-registry � which is how tools on another drive are found), a conventional install folder, then `PATH`. The result
+registry — which is how tools on another drive are found), a conventional install folder, then `PATH`. The result
 reports the source (`configured path`, `vendored copy`, `installed application`, `common install folder`, `PATH`), so
 "found via installed application" is visible rather than implied.
 
@@ -225,6 +225,40 @@ Red means the process could not be started at all.
 | UI | React SPA served same-origin; server state only, refetch on SSE |
 
 **Envelope** for every operation: `{ ok, data, version, commit, stale:{added,cleared}, via, warnings[], next[] }`.
+
+### 9.1 How a harness connects
+
+An agent harness (DeepSeek Harness, Claude Code, anything MCP-capable) reaches Slate three ways, all over the same
+registry:
+
+1. **MCP over stdio** — the primary path. `slate mcp --root <project>` serves every operation as a tool; DSH shows
+   them as `mcp__slate__<tool>`. The server is stateless, so a harness restart costs nothing.
+
+   ```yaml
+   - id: mcp-slate
+     name: '@deepseek-ai/dsh-mcp-client'
+     config:
+       serverName: slate
+       transport: stdio
+       command: slate
+       args: ['mcp', '--root', '.']
+   ```
+
+2. **CLI** — `slate op <name> --root <dir> --input '<json>'` for scripts, CI and harnesses without MCP. Embedded by
+   default, so it works with no daemon.
+
+3. **HTTP** — the same operations over the daemon, for a remote harness or a tool that already speaks HTTP.
+
+**The skill supplies the judgement.** `project.create` writes `.dsh/skills/slate-production/SKILL.md` into the
+project, which is where DSH scans for project skills; it describes the order of work, the money rule, and what
+readiness and staleness mean. Tools give mechanics; the skill gives process.
+
+**What the agent reads first** is `session.brief`: budget, plan counts, stale nodes with causes, and the next useful
+operation. Every write answers with what it invalidated (`stale.added`), so the agent can say what its change broke
+instead of leaving the human to discover it.
+
+**Activity is not the integration.** The Activity page renders the commit log for a human: who changed what, and why.
+The agent's view of the same facts is `session.brief`, `graph.stale` and `project.history`.
 
 **Errors** are `{ code, detail, retryable }` from one taxonomy: `capability_missing`, `service_unavailable`,
 `capability_mismatch`, `budget_exhausted`, `approval_required`, `approval_expired`, `stale_upstream`,
