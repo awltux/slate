@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, type ProjectSummary, runOp, subscribe } from "../api.js";
+import { CutPage } from "./Cut.js";
 import { Plan } from "./Plan.js";
 import { Write } from "./Write.js";
 
@@ -11,6 +12,7 @@ interface ServiceRow {
   source: "env" | "vendor" | "registry" | "known" | "path" | "none";
   version: string | null;
   binaryName: string | null;
+  installPath: string | null;
   detail: string;
 }
 
@@ -39,7 +41,7 @@ interface Commit {
   touched: string[];
 }
 
-type Tab = "write" | "plan" | "health" | "activity";
+type Tab = "write" | "plan" | "cut" | "health" | "activity";
 
 export function ProjectView({ project }: { project: ProjectSummary }) {
   const [tab, setTab] = useState<Tab>("write");
@@ -60,6 +62,9 @@ export function ProjectView({ project }: { project: ProjectSummary }) {
         <button type="button" role="tab" aria-selected={tab === "plan"} onClick={() => setTab("plan")}>
           Plan
         </button>
+        <button type="button" role="tab" aria-selected={tab === "cut"} onClick={() => setTab("cut")}>
+          Cut
+        </button>
         <button type="button" role="tab" aria-selected={tab === "health"} onClick={() => setTab("health")}>
           Health
         </button>
@@ -75,6 +80,7 @@ export function ProjectView({ project }: { project: ProjectSummary }) {
 
       {tab === "write" ? <Write projectId={project.id} /> : null}
       {tab === "plan" ? <Plan projectId={project.id} /> : null}
+      {tab === "cut" ? <CutPage projectId={project.id} /> : null}
       {tab === "health" ? <Health projectId={project.id} /> : null}
       {tab === "activity" ? <Activity projectId={project.id} /> : null}
     </div>
@@ -190,7 +196,16 @@ function Health({ projectId }: { projectId: string }) {
             {capabilities.services.map((service) => (
               <tr key={service.id}>
                 <td>
-                  {service.displayName}
+                  <span
+                    title={service.installPath ?? undefined}
+                    style={
+                      service.installPath
+                        ? { cursor: "help", borderBottom: "1px dotted var(--line)" }
+                        : undefined
+                    }
+                  >
+                    {service.displayName}
+                  </span>
                   {service.required ? (
                     <span className="chip" style={{ marginLeft: 6 }}>
                       required
