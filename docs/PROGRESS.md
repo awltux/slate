@@ -13,9 +13,27 @@ four surfaces exist.
 | 6 | Previz | `pnpm gate:6` | **done** | [previz](../artifacts/6/previz.png) · [report](../artifacts/6/report.json) |
 | 7 | Library: prompts, candidates, sheets | `pnpm gate:7` | **done** | [library](../artifacts/7/library.png) · [report](../artifacts/7/report.json) |
 | 8 | Collaboration | `pnpm gate:8` | **done** | [collaboration](../artifacts/8/collaboration.png) · [report](../artifacts/8/report.json) |
-| 9 | Finish & deliver | `pnpm gate:9` | **next** | — |
-| 10 | Remote review | `pnpm gate:10` | pending | — |
-| 11 | Polish | `pnpm gate:11` | pending | — |
+| 9 | Finish & deliver | `pnpm gate:9` | **done** | [finish](../artifacts/9/finish.png) · [report](../artifacts/9/report.json) |
+| 10 | Remote review | `pnpm gate:10` | **done** | [review-link](../artifacts/10/review-link.png) · [report](../artifacts/10/report.json) |
+| 11 | Polish | `pnpm gate:11` | **next** | — |
+
+## Slice 10 — what it proves
+
+- **A link, not an account.** The reviewer opens a signed URL with no session and sees the cut, the shot list and the
+  notes. The token names the project, the link id and an expiry; the document holds the revocation flag, so revoking
+  takes effect on the next request.
+- **Notes are data**: anchored to a shot or the cut, attributed to the name typed, flagged `external`, and resolvable
+  from the project side. They are never edits.
+- **The blast radius is one page**: the only routes a link opens are read the summary, add a note, and fetch media.
+- **Failure is honest**: an expired or revoked link says so in plain language instead of 404ing into a blank page.
+
+## Slice 9 — what it proves
+
+- **Delivery inspects the artefact, not the plan.** Every QC check runs on the encoded file: duration against the cut,
+  codec, resolution, audio, black stretches, total length. A failure is data, not an opinion.
+- **Black frames warn, they do not fail.** A film set at night is allowed to be dark.
+- **The manifest is part of the deliverable**: each shot, its take, the pinned sheet versions and the encoder version,
+  served to the same session as the master, so provenance travels with the file.
 
 ## Slice 8 — what it proves
 

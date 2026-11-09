@@ -2,19 +2,38 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
-## Slice 7 — the library, redesigned around a process
+## Remote review
 
-- **Every entry starts with a description** in your own words. An agent turns it into a prompt — the flourish, the
-  camera language — and both are kept, so a sheet traces back to the sentence and the prompt that produced it.
-- **Generate options, then pick.** `entity.generate` renders candidates from the prompt (priced per image, reserved
-  before it runs); you assign each image you keep a role, and that becomes the sheet version.
-- **A character's sheet is six head rotations** — front, three-quarter left, profile left, back, profile right,
-  three-quarter right. A partial selection publishes and tells you what is missing.
-- **Wardrobes and states are variants with their own prompts**: an outfit, a run-down location, a repainted wall. Each
-  is generated and selected independently.
-- **Style sheets** are library entries too; any character, location or prop can use one, and generation records which.
-- **Edit anything; delete only what is unused.** Deleting an entry still referenced by a shot (or used as another
-  entry's style) is refused, with the reason named.
+- **A review link is the only door that needs no account.** Signed, expiring and revocable, it shows the film and the
+  shot list and lets the reviewer leave notes — nothing else. It cannot change the plan or approve spend.
+- **Notes land in the project**, anchored to a shot or the cut, attributed to whatever name the reviewer typed and
+  marked as coming from a link, so nobody mistakes them for an edit.
+- **Revoking is immediate**: the next request through that link gets a page saying the link is no longer valid rather
+  than a silent failure.
+- The project Review tab creates links, lists their state, and resolves notes.
+
+## Expanding a description into a prompt
+
+- **Expand sits beside the description.** One button turns what you wrote into a generation prompt, folding in the style
+  sheet when one is applied — and it reads the field it sits next to, so there is no separate save step.
+- **A model writes it when one is configured** (an OpenAI-compatible endpoint in `config.json`); otherwise a
+  deterministic local composer writes it and the result says so, with a warning. A prompt never claims a provenance it
+  does not have.
+
+## A shared library
+
+- **Two libraries, one item shape.** A project has its own library of the characters, locations, props and styles it
+  uses. The app has a library, a tab beside the project selector, holding what is shared across every project.
+- **Push publishes, pull refreshes.** Pushing copies an entry — images included — into the app library as a versioned
+  item; the project keeps its own copy, so editing it there never changes what others see. Pull takes the newest
+  version, and the Pull button is highlighted when the shared version has moved on.
+- **Import brings a shared item into a project** as a cloned entry, free to diverge.
+
+## Scene backdrops
+
+- **A scene can link to a location.** Pick one from the library in the plan; the location sheet is what the scene looks
+  like and supplies the backdrop plate. When a shot has no frame of its own, the cut uses the location cover instead of
+  dropping the shot, and readiness says so.
 
 ## Slice 9 — finish and deliver
 
@@ -23,113 +42,74 @@ User-visible changes per slice. Internal refactors are not listed.
 - **QC is a report, not a checkbox**: duration against the cut, codec, resolution, audio presence, black-frame detection
   and total length. A night scene may legitimately be dark, so black frames warn rather than fail.
 - **A provenance manifest ships with the film** — `exports/provenance-r<n>.json` names every shot, its take, the sheet
-  versions it pinned and the FFmpeg that encoded it, and is downloadable by the same session that can watch the master.
+  versions it pinned and the FFmpeg that encoded it, and is downloadable by whoever can watch the master.
 
 ## Slice 8 — working together
 
-- **See who else is in the room.** Presence shows the other people on a project — a chip beside the title naming who else
-  is looking, expiring on its own. It is a notice, never a lock.
+- **See who else is in the room.** Presence shows the other people on a project, expiring on its own. It is a notice,
+  never a lock.
 - **Two people cannot silently overwrite each other.** A write carries the revision it was based on; if someone else
-  wrote first, the second is refused with `conflict` and the Plan page says "changed underneath you" with a reload
-  instead of clobbering the other person's work.
-- **Undo your own last change.** The newest commit can be undone by whoever made it (or an owner), restoring the state
-  before it. Buried commits are refused: undoing one would discard other people's later work.
+  wrote first, the second is refused with `conflict`, and the Plan page offers a reload instead of clobbering.
+- **Undo your own last change.** The newest commit can be undone by its author (or an owner). Buried commits are
+  refused, because undoing one would discard other people's later work.
 
-## Slice 7 — the library: entities and sheets
+## Slice 7 — the library: descriptions, candidates, sheets
 
-- **Characters, locations and props are defined once.** An entity is created in the library; its sheet is published
-  as a new version from a set of view images (front, three-quarter, close-up, costume, lighting, …), with a height in
-  metres and a licence.
-- **Versions, not edits.** Publishing v2 never changes what v1 meant. A shot pins the versions it was conditioned on,
-  so a new sheet marks exactly the shots pinned to the old one stale — with the cause `The keeper sheet v1 → v2`.
-- **Consent is a gate, not a note.** A character sheet defaults to *pending*; the readiness check fails until it is
-  granted, which blocks the expensive tier rather than the cheap one.
-- **Readiness now covers the face**: entities listed, a sheet published for each, three views including a close-up,
-  and consent settled. Re-checking a shot re-pins its entities, so the badge can clear.
+- **Every entry starts with a description** in your own words; Expand turns it into a prompt, and both are kept so a
+  sheet traces back to the sentence that made it.
+- **Generate options, then pick.** Candidates are rendered from the prompt and priced per image; you assign a role to
+  each image you keep, and that selection publishes a sheet version.
+- **A character's sheet is six head rotations**; a partial selection publishes and reports what is missing.
+- **Wardrobes and states are variants with their own prompts** — an outfit, a run-down location, a repainted wall.
+- **Style sheets are entries too**; any character, location or prop can use one, and generation records which.
+- **Edit anything; delete only what is unused.** Deleting an entry still referenced by a shot (or used as another
+  entry's style) is refused, naming what uses it.
 
 ## Slice 6 — previz
 
-- **Attach a digital set.** A Blender manifest is validated — units, frame rate, frame range, which object plays which
-  entity, and each camera's lens, height and keys — and stored with the `.blend` as an asset. Slate consumes the
-  agent's work; it does not attempt to model.
+- **Attach a digital set.** A Blender manifest is validated — units, frame rate, range, entity bindings and camera
+  keys — and stored with the `.blend` as an asset. Slate consumes the agent's work; it does not model.
 - **Attach a blockout for a shot.** First and last stills, the animatic at real duration, and the camera. The stills
-  fill the shot's first and last frame slots, so generation later has endpoints that agree by construction.
-- **See the cheap gate before spending.** The Previz page shows the set, each shot's camera, the pair of stills and a
-  playable animatic — the point at which staging and timing are approved, before any pixels are bought.
+  fill the shot's frame slots, so generation later has endpoints that agree by construction.
+- **See the cheap gate before spending**: sets, camera, stills and a playable animatic, before any pixels are bought.
 
 ## Slice 5 — edit the plan
 
-- **Edit a shot in place.** Number, framing, angle, movement, duration and description are editable from the shot's
-  row. Saving records that the shot was checked against the scene as it stands.
-- **Edit a scene in place.** Heading, time of day, synopsis and body. Saving marks exactly that scene's shots stale and
-  shows the cause beside each one — a badge with a reason, not an unlabelled warning.
-- **Re-check is one click.** It records the scene hash the shot was reviewed against. Nothing is regenerated, and
-  nothing that did not change goes stale.
+- **The plan is editable from the browser** — a shot in its row, a scene in place above its shots.
+- **Editing is a review, and the system says what it broke**: saving a shot records what it was checked against;
+  editing the scene marks exactly its own shots stale, with the cause beside each one.
+- **Re-check is one click**, clearing the badge by recording what was reviewed.
 
 ## Slice 4 — spend with approval
 
-- **See the price before you spend.** Estimate prices a shot against the catalog — a draft at $0.05/s, a final at
-  $0.40/s — and stores it. Nothing is charged until a take is submitted.
-- **Approve a number, not a vibe.** Approving returns a single-use token naming the estimate, its price and a fifteen
-  minute expiry. If the plan changes, the token is void and must be re-priced.
-- **The budget cannot be argued with.** The ceiling is checked when a job reserves money, before a frame renders; a
-  refused batch says what it costs and what is left. A failed job refunds.
-- **Takes arrive with provenance.** Each take records its endpoint, seed, price, job and asset. The first take for a
-  shot is selected; any other can be selected with one click.
-- **A skill travels with the project.** `project.create` writes `.dsh/skills/slate-production/SKILL.md`, so an agent
-  opening the folder knows the workflow, the money rule and what readiness means without being told.
+- **An estimate is a record, not a message.** `estimate.create` prices each shot against a catalog entry and stores it.
+- **Approval is signed, single use, and void if the plan changes.**
+- **Spending reserves before rendering**; a failed job refunds, and two concurrent submits cannot both pass a ceiling
+  check that neither has decremented.
 
 ## Slice 3 — a cut you can watch
 
-- **Build a cut from the plan.** Every shot with a board or first frame becomes an item, in scene order, at its
-  planned duration. Building replaces the selection; the film's order is the plan's order.
-- **Render and play it.** The cut renders to MP4 through FFmpeg, exactly as long as the selection says, and plays in
-  the browser. Media is served by asset id, not by file path, with range support and only to a signed-in caller.
-- **Know where a tool came from.** On Health, hover an application name to see the path it was found at. A reviewer
-  never receives that path; the owner does.
-- **Rename a project.** The owner (or an editor) can rename it from the project header; the name is part of the
-  document, so the change is a commit with an author and the new name appears everywhere at once.
-- **The gate renders a film.** `pnpm gate:3` generates two boards, builds an 8.0s cut, renders it, fetches the bytes
-  with a range request, verifies the duration matches the cut, and refuses the same URL without a session.
+- **A frame becomes an asset** by content hash; the document never records the path it came from.
+- **The cut is a selection list** — shot, frame, duration — and rendering references it.
+- **It plays**: FFmpeg renders exact durations, and media is served by asset id to a signed-in caller only.
 
 ## Slice 2 — story to shot list
 
-- **Slate finds the tools you already have.** Applications installed somewhere other than `PATH` — a different drive,
-  a versioned folder — are discovered from the system's own install records. The health panel now says where each
-  tool was found ("installed application", "common install folder", `PATH`) instead of only whether it answered.
-- **Installed but unverified is amber, not red.** A tool that runs but does not report a version is still the tool
-  that will do the work; the chain uses it and marks the stage unverified. Red now means the program could not be
-  started at all.
-- **An escape hatch for unusual installs.** `SLATE_FFMPEG_PATH`, `SLATE_BLENDER_PATH`, `SLATE_OPENSHOT_CLI_PATH`,
-  `SLATE_MPV_PATH`, `SLATE_MELT_PATH` and `SLATE_FFPROBE_PATH` override discovery entirely.
-- **Write the five lines in the browser.** Situation, desire, conflict, change, result — each save keeps a revision
-  with who changed it and why, and missing lines are marked rather than silently accepted.
-- **Turn scenes into a shot list.** Add a scene with INT/EXT, location and time of day; add shots with framing,
-  angle, movement, duration and a description. Shot numbers are assigned (`1A`, `1B`) and numbering is never reused.
-- **Readiness you can act on.** Every shot reports named checks with pass, warn or fail — no description, a duration
-  past ten seconds, a duplicate shot number, a story that is not settled yet.
-- **Staleness with a cause.** Editing a scene marks exactly its own shots stale, says which scene changed, and offers
-  a one-click re-check. Nothing else is invalidated.
-- **One revision clock.** The project and the plan share a revision; a write based on an old one is refused with a
-  conflict instead of overwriting someone else's work.
-- **Every operation from the CLI.** `slate op <name> --input <json>` runs any operation with no daemon.
-- **Every operation from an agent.** `slate mcp --root .` serves the same registry over MCP, so an assistant can
-  read the plan, write the five lines and create shots without a browser, and `docs/OP-REGISTRY.md` lists exactly
-  what it can do.
+- **The five lines are a document, not a prompt**, with a revision per save.
+- **A scene becomes a shot list**, numbered and never reused.
+- **Readiness is data**: named checks with pass/warn/fail instead of a disabled button.
+- **Staleness is derived and scoped**; the envelope reports what a change invalidated.
 
 ## Slice 1 — boot, auth, health
 
-- **Sign in to Slate.** The first run creates an owner account and prints its password once in the terminal that
-  started `slate serve`. Sessions are signed cookies; every change requires a CSRF token; a viewer account can read
-  but cannot write.
-- **Create a film project in the browser.** A project is a folder with a document, media directories and a genesis
-  commit. Every later change is a commit with an author and an intent.
-- **"How this will run."** Slate probes the machine and names the program that will execute each stage — assembly,
-  previz, playback, mix — with the reason. Tools that are installed but not on `PATH` are found anyway. A degraded
-  stage says what is lost, before any work starts.
-- **Activity.** The commit log is visible as a readable feed.
+- **One daemon, one project folder.** `slate serve` binds the loopback interface, prints the owner password once, and
+  serves the app.
+- **Roles are real**: viewer reads, editor writes, owner also changes host configuration and sees install paths.
+- **Health is honest**: every tool is probed and reported green, amber (installed but unverifiable) or red, with the
+  source of the discovery named and the install path shown on hover.
 
 ## Unreleased groundwork
 
-- Canonical hashing that refuses ambiguous values, an append-only commit log with atomic writes, and an operation
-  registry that validates input, refuses writes without a declared touched set, and validates its own output.
+- Documents are written atomically and committed with a snapshot, a validation pass and a commit log.
+- Canonical hashing and derived staleness underpin every "what changed" answer.
+- Tool discovery: environment override, vendored binaries, Windows uninstall registry, conventional folders, PATH.
