@@ -4,11 +4,12 @@ import { GlobalLibrary } from "./pages/GlobalLibrary.js";
 import { Login } from "./pages/Login.js";
 import { ProjectView } from "./pages/ProjectView.js";
 import { Projects } from "./pages/Projects.js";
+import { Setup } from "./pages/Setup.js";
 
 export function App() {
   const [session, setSession] = useState<SessionData | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [view, setView] = useState<"project" | "library">("project");
+  const [view, setView] = useState<"project" | "library" | "setup">("project");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,6 +94,16 @@ export function App() {
           >
             Library
           </button>
+          {session.user.role === "owner" ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "setup"}
+              onClick={() => setView("setup")}
+            >
+              Setup
+            </button>
+          ) : null}
         </div>
         <div className="spacer" />
         <span className="who">
@@ -112,7 +123,9 @@ export function App() {
       </header>
 
       <main className="main">
-        {view === "library" ? (
+        {view === "setup" ? (
+          <Setup />
+        ) : view === "library" ? (
           <GlobalLibrary
             activeProjectId={active?.id ?? null}
             activeProjectName={active?.name ?? null}

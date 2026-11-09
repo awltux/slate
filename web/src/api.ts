@@ -202,3 +202,26 @@ export async function createReviewLink(projectId: string, label: string): Promis
     throw new Error(payload.error?.message ?? "could not create a review link");
   return `${window.location.origin}${payload.data.url}`;
 }
+
+/** Run a host-level operation (owner only): AI providers and keys do not belong to a project. */
+export async function runGlobalOp<T>(name: string, input: unknown): Promise<{ data: T; version: number }> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (csrfToken) headers["x-slate-csrf"] = csrfToken;
+  const response = await fetch(`/api/op/${name}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers,
+    body: JSON.stringify(input ?? {}),
+  });
+  if (response.status === 403) throw new ApiError("forbidden", "only the owner may change setup");
+  const payload = (await response.json()) as {
+    ok: boolean;
+    data?: T;
+    version?: number;
+    error?: { code: string; message: string };
+  };
+  if (!payload.ok || payload.data === undefined) {
+    throw new ApiError(payload.error?.code ?? "error", payload.error?.message ?? "the operation failed");
+  }
+  return { data: payload.data, version: payload.version ?? 0 };
+}
