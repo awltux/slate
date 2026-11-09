@@ -5,3 +5,7 @@ vendor/
 *.log
 .DS_Store
 .slate-cache/
+
+# local scratch
+.tmp/
+

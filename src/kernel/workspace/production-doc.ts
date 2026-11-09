@@ -6,6 +6,7 @@ import { AssetSchema } from "../production/assets.js";
 import { DeliverySchema } from "../production/delivery.js";
 import { EntitySchema } from "../production/entities.js";
 import { BlockoutSchema, SetSchema } from "../production/previz.js";
+import { migrateProduction } from "./migrations.js";
 import { projectPaths } from "./paths.js";
 
 export const IntExtSchema = z.enum(["INT", "EXT", "INT/EXT"]);
@@ -235,7 +236,7 @@ export async function readProductionDocument(root: string): Promise<ProductionDo
     });
   }
 
-  const result = ProductionDocumentSchema.safeParse(parsed);
+  const result = ProductionDocumentSchema.safeParse(migrateProduction(parsed));
   if (!result.success) {
     throw new SlateError("invalid_document", "production.json does not match the production schema", {
       detail: {

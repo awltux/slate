@@ -1,5 +1,6 @@
 import { capabilitiesGet } from "./capabilities.js";
 import { cutBuild, cutGet, cutRender } from "./cut.js";
+import { deliverExport, deliverQc } from "./deliver.js";
 import { entityGenerate } from "./entity-generate.js";
 import {
   entityAngles,
@@ -54,6 +55,8 @@ export function createRegistry(): OpRegistry {
     entityUpdate,
     entityDelete,
     entityAngles,
+    deliverExport,
+    deliverQc,
     entityGenerate,
     sheetSelect,
     entityList,

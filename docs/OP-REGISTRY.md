@@ -12,6 +12,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
 | `cut.get` | read | `cut_get` | The current cut: its items, total duration and the last render. |
 | `cut.render` | write | `cut_render` | Render the cut to MP4 through the assembly chain (FFmpeg concat for now). |
+| `deliver.export` | spend | `deliver_export` | Encode the cut into a master with optional audio, run QC, and write a provenance manifest. |
+| `deliver.qc` | read | `deliver_qc` | The QC report and manifest from the last delivery. |
 | `entity.angles` | read | `entity_angles` | The six headshot rotations a character sheet must cover. |
 | `entity.create` | write | `entity_create` | Define a character, location, prop or style in the library. |
 | `entity.delete` | destructive | `entity_delete` | Delete an entity that nothing references. |
@@ -181,6 +183,44 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "integer"
     }
   },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `deliver.export`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "preset": {
+      "type": "string",
+      "enum": [
+        "web",
+        "master"
+      ],
+      "default": "web"
+    },
+    "audioPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `deliver.qc`
+
+```json
+{
+  "type": "object",
+  "properties": {},
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
