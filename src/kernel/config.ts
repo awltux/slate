@@ -11,6 +11,15 @@ export const SlateConfigSchema = z
     version: z.literal(1),
     /** Explicit binary paths chosen by the operator, which beat discovery and the environment. */
     paths: z.record(z.enum(SERVICE_IDS), z.string()).default({}),
+    /** An OpenAI-compatible chat endpoint; without one, prompts are composed locally and say so. */
+    llm: z
+      .object({
+        baseUrl: z.string(),
+        model: z.string(),
+        apiKeyEnv: z.string().default("SLATE_LLM_KEY"),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

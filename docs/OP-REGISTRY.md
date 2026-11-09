@@ -34,6 +34,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
 | `project.history` | read | `project_history` | Recent commits: what changed, who changed it and why. |
 | `project.rename` | write | `project_rename` | Change the project name. |
+| `prompt.expand` | spend | `prompt_expand` | Turn a description into a generation prompt, using the style sheet when one is applied. |
 | `scene.create` | write | `scene_create` | Add a scene. Numbers are assigned in order and are never reused. |
 | `scene.list` | read | `scene_list` | Scenes with their shots, readiness and staleness. |
 | `scene.set-location` | write | `scene_set-location` | Link a scene to a location entity (or clear the link). Its sheet becomes the scene background. |
@@ -683,6 +684,34 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   },
   "required": [
     "name"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `prompt.expand`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "variantId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

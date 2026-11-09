@@ -1,0 +1,203 @@
+import { z } from "zod";
+import { SlateError } from "../domain/result.js";
+import { readConfig } from "../kernel/config.js";
+import type { Entity } from "../kernel/production/entities.js";
+import { commitDocuments } from "../kernel/workspace/commit.js";
+import { loadDocuments } from "./documents.js";
+import { defineOp } from "./registry.js";
+
+const CAMERA_AND_LIGHT: Record<string, string[]> = {
+  character: ["three-quarter view", "soft key from the side", "neutral background", "full body in frame"],
+  location: ["wide establishing view", "deep focus", "motivated practical light", "no people in frame"],
+  prop: ["isolated product view", "soft box lighting", "clean backdrop", "macro detail"],
+  style: ["colour palette reference", "texture study", "lighting reference", "no subject"],
+};
+
+/**
+ * Compose a generation prompt from the director's description, the entity kind and its style sheet. This is the local
+ * fallback: a model, when one is configured, writes something better — but the operation must work with no key at all,
+ * and it must be deterministic when it does, or a sheet cannot be reproduced.
+ */
+export function composePrompt(input: {
+  kind: string;
+  name: string;
+  description: string;
+  style: { name: string; description: string } | null;
+  variant: { name: string; description: string } | null;
+}): string {
+  const parts: string[] = [];
+  const subject = input.description.trim() || input.name;
+  parts.push(`${input.name}: ${subject}`);
+  if (input.variant) {
+    const detail = input.variant.description.trim();
+    parts.push(detail ? `${input.variant.name} — ${detail}` : input.variant.name);
+  }
+  if (input.style) {
+    const styleDetail = input.style.description.trim();
+    parts.push(`style: ${input.style.name}${styleDetail ? ` (${styleDetail})` : ""}`);
+  }
+  parts.push(...(CAMERA_AND_LIGHT[input.kind] ?? CAMERA_AND_LIGHT.prop ?? []));
+  parts.push("consistent with the reference sheet", "no text, no watermark");
+  return parts.join(", ");
+}
+
+interface ModelResult {
+  prompt: string;
+  via: string;
+}
+
+async function askModel(
+  model: { baseUrl: string; model: string; apiKey: string | null },
+  system: string,
+  user: string,
+): Promise<string | null> {
+  try {
+    const response = await fetch(`${model.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(model.apiKey ? { authorization: `Bearer ${model.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: model.model,
+        temperature: 0.2,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const text = payload.choices?.[0]?.message?.content?.trim();
+    return text && text.length > 0 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Expand a description into a generation prompt. A configured model does the writing; without one, the local composer
+ * does it and the result says so, because a prompt that pretends to be model-written is a lie about provenance.
+ */
+export const promptExpand = defineOp({
+  name: "prompt.expand",
+  policy: "spend",
+  summary: "Turn a description into a generation prompt, using the style sheet when one is applied.",
+  input: z
+    .object({
+      entityId: z.string(),
+      variantId: z.string().nullable().default(null),
+      expectedRevision: z.number().int().optional(),
+    })
+    .strict(),
+  output: z
+    .object({
+      entityId: z.string(),
+      prompt: z.string(),
+      via: z.string(),
+      styleId: z.string().nullable(),
+    })
+    .strict(),
+  touched: (input) => [`entity:${input.entityId}`],
+  run: async (input, context) => {
+    const { production } = await loadDocuments(context);
+    const entity = production.entities[input.entityId];
+    if (!entity) throw new SlateError("not_found", `no entity ${input.entityId}`);
+
+    const variant = input.variantId
+      ? (entity.variants.find((item) => item.id === input.variantId) ?? null)
+      : null;
+    if (input.variantId && !variant) throw new SlateError("not_found", `no variant ${input.variantId}`);
+
+    const description = (variant?.description || entity.description).trim();
+    if (description === "") {
+      throw new SlateError("readiness_failed", "write a description first — there is nothing to expand", {
+        detail: { checks: [{ id: "description", status: "fail", detail: "empty" }] },
+      });
+    }
+
+    const styleEntity: Entity | null = entity.styleId ? (production.entities[entity.styleId] ?? null) : null;
+    const style = styleEntity ? { name: styleEntity.name, description: styleEntity.description } : null;
+
+    const config = await readConfig(context.home);
+    const model = config.llm
+      ? {
+          baseUrl: config.llm.baseUrl,
+          model: config.llm.model,
+          apiKey: process.env[config.llm.apiKeyEnv] ?? null,
+        }
+      : null;
+
+    let result: ModelResult;
+    if (model) {
+      const system =
+        "You write image-generation prompts for a film production system. Given a subject description and an optional style sheet, reply with one prompt of at most 60 words: subject, wardrobe or material, setting, framing, lighting, and what to avoid. No preamble, no quotes.";
+      const user = [
+        `kind: ${entity.kind}`,
+        `name: ${entity.name}`,
+        `description: ${description}`,
+        style ? `style sheet: ${style.name} — ${style.description}` : "no style sheet",
+        variant ? `variant: ${variant.name}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const written = await askModel(model, system, user);
+      result = written
+        ? { prompt: written, via: `model:${model.model}` }
+        : {
+            prompt: composePrompt({ kind: entity.kind, name: entity.name, description, style, variant }),
+            via: "local",
+          };
+    } else {
+      result = {
+        prompt: composePrompt({ kind: entity.kind, name: entity.name, description, style, variant }),
+        via: "local",
+      };
+    }
+
+    const committed = await commitDocuments({
+      root: context.root,
+      actor: context.actor,
+      intent: `prompt: expand ${entity.name}${variant ? ` / ${variant.name}` : ""}`,
+      touched: [`entity:${entity.id}`],
+      clock: context.clock,
+      expectedRevision: input.expectedRevision,
+      mutate: ({ production: target }) => {
+        const local = target.entities[input.entityId];
+        if (!local) return;
+        if (variant) {
+          const localVariant = local.variants.find((item) => item.id === variant.id);
+          if (localVariant) localVariant.prompt = result.prompt;
+        } else {
+          local.prompt = result.prompt;
+        }
+      },
+    });
+
+    return {
+      data: {
+        entityId: entity.id,
+        prompt: result.prompt,
+        via: result.via,
+        styleId: styleEntity?.id ?? null,
+      },
+      version: committed.project.revision,
+      commit: committed.commit.id,
+      via: result.via,
+      warnings:
+        result.via === "local"
+          ? [
+              {
+                code: "no_model",
+                message:
+                  "No model is configured, so the prompt was composed locally rather than written by AI.",
+              },
+            ]
+          : [],
+      next: ["entity.generate"],
+    };
+  },
+});
