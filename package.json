@@ -17,19 +17,23 @@
     "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "verify": "pnpm typecheck && pnpm lint && pnpm check:registry && pnpm test",
     "gate:1": "tsx scripts/gates.ts 1",
     "build:web": "vite build",
     "serve": "tsx src/surfaces/cli.ts serve",
-    "gate:2": "tsx scripts/gates.ts 2"
+    "gate:2": "tsx scripts/gates.ts 2",
+    "docs:registry": "tsx scripts/registry-doc.ts",
+    "check:registry": "tsx scripts/registry-doc.ts --check"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "commander": "^13.1.0",
     "hono": "^4.7.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

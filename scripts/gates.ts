@@ -9,6 +9,7 @@ import { systemClock } from "../src/domain/clock.js";
 import { runCommand } from "../src/kernel/adapters/command-runner.js";
 import { vendorDir } from "../src/kernel/home.js";
 import { createApp } from "../src/surfaces/http/app.js";
+import { mcpSmoke } from "./mcp-smoke.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const gateNumber = Number(process.argv[2] ?? "1");
@@ -265,6 +266,13 @@ async function gate2(steps: string[]): Promise<void> {
     "headless shot.create must return readiness",
   );
   steps.push("headless: story.set, scene.create and shot.create via the CLI, no daemon");
+
+  const mcpDir = await mkdtemp(join(tmpdir(), "slate-mcp-"));
+  const mcp = await mcpSmoke(mcpDir);
+  assert(mcp.tools.includes("shot_create"), "MCP must expose shot.create as shot_create");
+  assert(mcp.tools.includes("session_brief"), "MCP must expose session.brief");
+  assert(mcp.callOk, "MCP tools/call must return an ok envelope");
+  steps.push(`mcp: ${mcp.tools.length} tools over stdio (${mcp.protocolVersion}), story.set called`);
 }
 
 async function browserFlow(steps: string[]): Promise<void> {

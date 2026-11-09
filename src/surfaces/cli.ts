@@ -3,6 +3,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Command } from "commander";
 import { ensureOwner } from "../auth/users.js";
 import { systemClock } from "../domain/clock.js";
@@ -11,6 +12,7 @@ import { runCommand } from "../kernel/adapters/command-runner.js";
 import { slateHome, vendorDir } from "../kernel/home.js";
 import { type OpContext, createRegistry } from "../ops/index.js";
 import { createApp } from "./http/app.js";
+import { createMcpServer } from "./mcp/server.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -185,6 +187,16 @@ async function main() {
     .option("--root <dir>", "project folder", ".")
     .option("--json", "print the operation envelope")
     .action(capabilitiesCommand);
+
+  program
+    .command("mcp")
+    .description("Serve the operation registry over MCP (stdio) for an agent harness")
+    .option("--root <dir>", "project folder", ".")
+    .option("--actor <name>", "who the agent acts as", "agent")
+    .action(async (options: { root: string; actor: string }) => {
+      const server = createMcpServer(createRegistry(), contextFor(resolve(options.root), options.actor));
+      await server.connect(new StdioServerTransport());
+    });
 
   program
     .command("op")
