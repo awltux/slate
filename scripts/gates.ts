@@ -859,6 +859,110 @@ async function gate7(steps: string[]): Promise<void> {
   steps.push("library: two entities with their current versions");
 }
 
+interface Credentials {
+  cookie: string;
+  csrf: string;
+}
+
+async function loginAs(username: string, password: string): Promise<Credentials> {
+  const response = await fetch(`${base}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  assert(response.status === 200, `${username} must be able to sign in`);
+  return {
+    cookie: (response.headers.get("set-cookie") ?? "").split(";")[0] ?? "",
+    csrf: ((await response.json()) as { data: { csrf: string } }).data.csrf,
+  };
+}
+
+async function opAs(
+  credentials: Credentials,
+  targetProject: string,
+  name: string,
+  input: unknown,
+): Promise<{ ok: boolean; data?: unknown; error?: { code: string } }> {
+  const response = await fetch(`${base}/p/${targetProject}/api/op/${name}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      cookie: credentials.cookie,
+      "x-slate-csrf": credentials.csrf,
+    },
+    body: JSON.stringify(input),
+  });
+  return response.json() as Promise<{ ok: boolean; data?: unknown; error?: { code: string } }>;
+}
+
+async function gate8(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light");
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
+    body: "He works slowly. The machine watches.",
+  });
+
+  const editor = await loginAs("editor", "gate-editor-123");
+
+  // Presence: both sessions report in and see each other.
+  const ping = async (credentials: Credentials, page: string) =>
+    fetch(`${base}/p/${projectId}/api/presence`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: credentials.cookie,
+        "x-slate-csrf": credentials.csrf,
+      },
+      body: JSON.stringify({ page }),
+    }).then((response) => response.json() as Promise<{ data: { users: Array<{ displayName: string }> } }>);
+
+  await ping({ cookie, csrf }, "plan");
+  const seen = await ping(editor, "plan");
+  const names = seen.data.users.map((user) => user.displayName).sort();
+  assert(names.length === 2, `both sessions must be present, saw ${names.join(", ")}`);
+  steps.push(`presence: ${names.join(" and ")} see each other`);
+
+  // Conflict: two writers start from the same revision; the second is refused with the cause.
+  const brief = await op<{ project: { revision: number } }>(projectId, "session.brief");
+  const headRevision = brief.data.project.revision;
+
+  const first = await opAs(editor, projectId, "scene.update", {
+    sceneId: scene.data.sceneId,
+    body: "The editor got here first.",
+    expectedRevision: headRevision,
+  });
+  assert(first.ok, "the first writer must succeed");
+
+  const second = await opAs({ cookie, csrf }, projectId, "scene.update", {
+    sceneId: scene.data.sceneId,
+    body: "The owner was still typing.",
+    expectedRevision: headRevision,
+  });
+  assert(
+    !second.ok && second.error?.code === "conflict",
+    "the second writer must get a conflict, not an overwrite",
+  );
+  steps.push("conflict: the second writer is refused, not silently merged");
+
+  // Undo: the editor renames the project, then undoes their own change.
+  const renamed = await opAs(editor, projectId, "project.rename", { name: "The Editor's Cut" });
+  assert(renamed.ok, "the editor may rename");
+
+  const history = await opAs(editor, projectId, "project.history", { limit: 1 });
+  const head = (history.data as { commits: Array<{ id: string }> }).commits[0];
+  assert(Boolean(head), "there must be a head commit");
+
+  const undo = await opAs(editor, projectId, "history.revert", { commitId: head?.id });
+  assert(undo.ok, "the editor must be able to undo their own change");
+
+  const restored = await op<{ project: { name: string } }>(projectId, "session.brief");
+  assert(restored.data.project.name === "The Last Light", "undo must restore the previous name");
+  steps.push("undo: the editor's rename was reverted, restoring the original name");
+
+  await ping(editor, "plan");
+}
+
 async function browserFlow(steps: string[]): Promise<void> {
   try {
     const { chromium } = await import("playwright");
@@ -870,6 +974,18 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 8) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      // The editor reported presence moments ago; the header must show them.
+      await page.waitForSelector("text=editor", { timeout: 20_000 });
+      await page.click('role=tab[name="Activity"]');
+      await page.waitForSelector("text=Activity", { timeout: 15_000 });
+      await page.screenshot({ path: join(artifactDir, "collaboration.png"), fullPage: true });
+      steps.push("ui: presence in the header and the commit log with actors");
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 7) {
       await page.selectOption('select[aria-label="Project"]', projectId);
@@ -994,8 +1110,9 @@ async function main(): Promise<number> {
   await mkdir(artifactDir, { recursive: true });
   const home = await mkdtemp(join(tmpdir(), `slate-gate${gateNumber}-`));
   await ensureOwner(home, systemClock, "gate-password-123");
-  // A reviewer exists on every gate host so the privilege boundary is exercised end to end.
+  // A reviewer and an editor exist on every gate host: the privilege boundary and collaboration are exercised end to end.
   await addUser(home, { username: "reviewer", password: "gate-viewer-123", role: "viewer" }, systemClock);
+  await addUser(home, { username: "editor", password: "gate-editor-123", role: "editor" }, systemClock);
 
   const app = createApp({
     home,
@@ -1021,6 +1138,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 5) await gate5(steps);
     else if (gateNumber === 6) await gate6(steps);
     else if (gateNumber === 7) await gate7(steps);
+    else if (gateNumber === 8) await gate8(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);
