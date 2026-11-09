@@ -8,7 +8,9 @@ import { OpRegistry } from "./registry.js";
 import { sceneCreate, sceneList, sceneUpdate } from "./scene.js";
 import { serviceClearPath, serviceSetPath } from "./service.js";
 import { shotCreate, shotGet, shotRebase, shotUpdate } from "./shot.js";
+import { estimateCreate, spendApprove, spendSummary } from "./spend.js";
 import { storyGet, storySet } from "./story.js";
+import { jobGet, takeGenerate, takeList, takeSelect } from "./take.js";
 import { planVocabulary } from "./vocabulary.js";
 
 /** The one registry. Every surface resolves operations through this list. */
@@ -33,6 +35,13 @@ export function createRegistry(): OpRegistry {
     cutRender,
     serviceSetPath,
     serviceClearPath,
+    estimateCreate,
+    spendApprove,
+    spendSummary,
+    takeGenerate,
+    takeList,
+    takeSelect,
+    jobGet,
     graphStale,
     sessionBrief,
     planVocabulary,

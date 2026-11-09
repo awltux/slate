@@ -63,10 +63,32 @@ export const ShotSchema = z
     description: z.string(),
     builtFromSceneHash: z.string(),
     frames: ShotFramesSchema.default({}),
+    selectedTakeId: z.string().startsWith("tke_").optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
   .strict();
+
+export const TakeTierSchema = z.enum(["draft", "final"]);
+
+export const TakeSchema = z
+  .object({
+    id: z.string().startsWith("tke_"),
+    shotId: z.string().startsWith("sht_"),
+    tier: TakeTierSchema,
+    assetId: z.string().startsWith("ast_"),
+    durationSec: z.number().positive(),
+    gateway: z.string(),
+    endpointId: z.string(),
+    seed: z.number().int(),
+    usd: z.number().nonnegative(),
+    jobId: z.string(),
+    actor: z.string(),
+    createdAt: z.string(),
+  })
+  .strict();
+
+export type Take = z.infer<typeof TakeSchema>;
 
 export const SceneSchema = z
   .object({
@@ -141,6 +163,7 @@ export const ProductionDocumentSchema = z
       .strict(),
     scenes: z.record(z.string(), SceneSchema),
     shots: z.record(z.string(), ShotSchema),
+    takes: z.record(z.string(), TakeSchema).default({}),
     assets: z.record(z.string(), AssetSchema).default({}),
     cut: CutSchema.default({ items: [], rendered: null }),
   })
@@ -169,6 +192,7 @@ export function emptyProductionDocument(revision: number, commit: string): Produ
     story: { lines: emptyFiveLines(), revisions: [] },
     scenes: {},
     shots: {},
+    takes: {},
     assets: {},
     cut: { items: [], rendered: null },
   };

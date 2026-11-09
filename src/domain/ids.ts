@@ -11,6 +11,7 @@ export type IdPrefix =
   | "cut"
   | "ast"
   | "job"
+  | "est"
   | "usr"
   | "cmt"
   | "ses"
@@ -27,6 +28,7 @@ export type TakeId = Id<"tke">;
 export type CutId = Id<"cut">;
 export type AssetId = Id<"ast">;
 export type JobId = Id<"job">;
+export type EstimateId = Id<"est">;
 export type UserId = Id<"usr">;
 export type CommitId = Id<"cmt">;
 export type SessionId = Id<"ses">;

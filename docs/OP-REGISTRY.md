@@ -11,8 +11,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
 | `cut.get` | read | `cut_get` | The current cut: its items, total duration and the last render. |
 | `cut.render` | write | `cut_render` | Render the cut to MP4 through the assembly chain (FFmpeg concat for now). |
+| `estimate.create` | read | `estimate_create` | Price a batch of takes for the given tier before anything is submitted. |
 | `frame.attach` | write | `frame_attach` | Attach an image to a shot slot (board, first or last), copied into the project by content hash. |
 | `graph.stale` | read | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
+| `job.get` | read | `job_get` | The state of a job. |
 | `plan.vocabulary` | read | `plan_vocabulary` | Valid values for shot and scene fields. |
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
 | `project.history` | read | `project_history` | Recent commits: what changed, who changed it and why. |
@@ -27,8 +29,13 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `shot.get` | read | `shot_get` | One shot with its readiness checks and staleness. |
 | `shot.rebase` | write | `shot_rebase` | Record that a shot has been re-checked against its scene's current text. |
 | `shot.update` | write | `shot_update` | Change a shot. Pass acceptScene to record that it was re-checked against the current scene. |
+| `spend.approve` | spend | `spend_approve` | Approve an estimate and receive a single-use token that a generation job must present. |
+| `spend.summary` | read | `spend_summary` | The budget, what is committed, and the most recent money movements. |
 | `story.get` | read | `story_get` | The five-line story and its revisions. |
 | `story.set` | write | `story_set` | Set the five lines and keep a revision of the previous version. |
+| `take.generate` | spend | `take_generate` | Generate takes for an approved estimate. Requires the approval token from spend.approve. |
+| `take.list` | read | `take_list` | Takes, optionally for one shot, with which one is selected. |
+| `take.select` | write | `take_select` | Choose the take that represents a shot. |
 
 ## Input schemas
 
@@ -101,6 +108,36 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `estimate.create`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "shotIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "final"
+      ]
+    }
+  },
+  "required": [
+    "shotIds",
+    "tier"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `frame.attach`
 
 ```json
@@ -142,6 +179,24 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 {
   "type": "object",
   "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `job.get`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "jobId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "jobId"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
@@ -592,6 +647,42 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `spend.approve`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "estimateId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "estimateId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `spend.summary`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 10
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `story.get`
 
 ```json
@@ -647,6 +738,68 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   },
   "required": [
     "lines"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `take.generate`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "token": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seed": {
+      "type": "integer",
+      "default": 0
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "token"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `take.list`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "shotId": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `take.select`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "takeId": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "takeId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
