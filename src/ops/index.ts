@@ -3,6 +3,7 @@ import { cutBuild, cutGet, cutRender } from "./cut.js";
 import { frameAttach } from "./frame.js";
 import { graphStale, sessionBrief } from "./graph.js";
 import { projectHistory } from "./history.js";
+import { blockoutAttach, previzGet, setAttach } from "./previz.js";
 import { projectCreate, projectRename } from "./project.js";
 import { OpRegistry } from "./registry.js";
 import { sceneCreate, sceneList, sceneUpdate } from "./scene.js";
@@ -35,6 +36,9 @@ export function createRegistry(): OpRegistry {
     cutRender,
     serviceSetPath,
     serviceClearPath,
+    setAttach,
+    blockoutAttach,
+    previzGet,
     estimateCreate,
     spendApprove,
     spendSummary,

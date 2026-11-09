@@ -3,6 +3,7 @@ import { z } from "zod";
 import { hashValue } from "../../domain/canonical.js";
 import { SlateError } from "../../domain/result.js";
 import { AssetSchema } from "../production/assets.js";
+import { BlockoutSchema, SetSchema } from "../production/previz.js";
 import { projectPaths } from "./paths.js";
 
 export const IntExtSchema = z.enum(["INT", "EXT", "INT/EXT"]);
@@ -164,6 +165,8 @@ export const ProductionDocumentSchema = z
     scenes: z.record(z.string(), SceneSchema),
     shots: z.record(z.string(), ShotSchema),
     takes: z.record(z.string(), TakeSchema).default({}),
+    sets: z.record(z.string(), SetSchema).default({}),
+    blockouts: z.record(z.string(), BlockoutSchema).default({}),
     assets: z.record(z.string(), AssetSchema).default({}),
     cut: CutSchema.default({ items: [], rendered: null }),
   })
@@ -193,6 +196,8 @@ export function emptyProductionDocument(revision: number, commit: string): Produ
     scenes: {},
     shots: {},
     takes: {},
+    sets: {},
+    blockouts: {},
     assets: {},
     cut: { items: [], rendered: null },
   };

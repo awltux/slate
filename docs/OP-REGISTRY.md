@@ -7,6 +7,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 
 | Operation | Policy | MCP tool | Summary |
 |---|---|---|---|
+| `blockout.attach` | write | `blockout_attach` | Attach a blockout for a shot: first and last stills, an optional animatic, and the camera. |
 | `capabilities.get` | read | `capabilities_get` | Probe the host toolchain and report the chain that will run each stage, with the reason. |
 | `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
 | `cut.get` | read | `cut_get` | The current cut: its items, total duration and the last render. |
@@ -16,6 +17,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `graph.stale` | read | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
 | `job.get` | read | `job_get` | The state of a job. |
 | `plan.vocabulary` | read | `plan_vocabulary` | Valid values for shot and scene fields. |
+| `previz.get` | read | `previz_get` | The sets and every shot's blockout state. |
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
 | `project.history` | read | `project_history` | Recent commits: what changed, who changed it and why. |
 | `project.rename` | write | `project_rename` | Change the project name. |
@@ -25,6 +27,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `service.clear-path` | write | `service_clear-path` | Forget an explicit executable path and go back to discovery. |
 | `service.set-path` | write | `service_set-path` | Point a service at a specific executable, after checking that it runs. |
 | `session.brief` | read | `session_brief` | A bounded read of where the film stands: the cheapest way for a new session to start. |
+| `set.attach` | write | `set_attach` | Attach a digital set: a validated manifest, plus the .blend it came from when available. |
 | `shot.create` | write | `shot_create` | Add a shot to a scene; it is built from that scene's current text. |
 | `shot.get` | read | `shot_get` | One shot with its readiness checks and staleness. |
 | `shot.rebase` | write | `shot_rebase` | Record that a shot has been re-checked against its scene's current text. |
@@ -38,6 +41,69 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `take.select` | write | `take_select` | Choose the take that represents a shot. |
 
 ## Input schemas
+
+### `blockout.attach`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "shotId": {
+      "type": "string"
+    },
+    "setId": {
+      "type": "string"
+    },
+    "firstFramePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lastFramePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "animaticPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "camera": {
+      "type": "object",
+      "properties": {
+        "lensMm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "heightM": {
+          "type": "number",
+          "minimum": 0
+        },
+        "axisSide": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "lensMm",
+        "heightM",
+        "axisSide"
+      ],
+      "additionalProperties": false
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "shotId",
+    "firstFramePath",
+    "camera"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
 
 ### `capabilities.get`
 
@@ -203,6 +269,17 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 ```
 
 ### `plan.vocabulary`
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `previz.get`
 
 ```json
 {
@@ -448,6 +525,152 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 {
   "type": "object",
   "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `set.attach`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "manifest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "units": {
+          "type": "string",
+          "enum": [
+            "meters",
+            "feet"
+          ]
+        },
+        "fps": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "frameRange": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "entityMap": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "cameras": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "lensMm": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "heightM": {
+                "type": "number",
+                "minimum": 0
+              },
+              "keys": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "frame": {
+                      "type": "integer"
+                    },
+                    "position": {
+                      "type": "array",
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "items": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "rotation": {
+                      "type": "array",
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "items": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "lensMm": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "frame",
+                    "position",
+                    "rotation",
+                    "lensMm"
+                  ],
+                  "additionalProperties": false
+                },
+                "default": []
+              }
+            },
+            "required": [
+              "lensMm",
+              "heightM"
+            ],
+            "additionalProperties": false
+          },
+          "default": {}
+        }
+      },
+      "required": [
+        "name",
+        "units",
+        "fps",
+        "frameRange"
+      ],
+      "additionalProperties": false
+    },
+    "blendPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "manifest"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }

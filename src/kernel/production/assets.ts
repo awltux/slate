@@ -7,7 +7,7 @@ import { newId } from "../../domain/ids.js";
 import { SlateError } from "../../domain/result.js";
 import { projectPaths } from "../workspace/paths.js";
 
-export const AssetKindSchema = z.enum(["board", "render", "take", "audio", "other"]);
+export const AssetKindSchema = z.enum(["board", "render", "take", "audio", "blockout", "other"]);
 
 export const AssetSchema = z
   .object({
@@ -29,6 +29,7 @@ const FOLDER: Record<AssetKind, string> = {
   render: "renders",
   take: "generated",
   audio: "audio",
+  blockout: "blockouts",
   other: "source",
 };
 
