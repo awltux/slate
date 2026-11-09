@@ -289,8 +289,13 @@ export const deliverExport = defineOp({
     };
 
     const paths = projectPaths(context.root);
-    const manifestPath = join("exports", `provenance-r${before.revision + 1}.json`);
-    await writeFile(join(context.root, manifestPath), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    // Forward slashes: this string is a URL fragment in the UI, not a host path.
+    const manifestPath = `exports/provenance-r${before.revision + 1}.json`;
+    await writeFile(
+      join(context.root, "exports", `provenance-r${before.revision + 1}.json`),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
 
     const result = await commitDocuments({
       root: context.root,

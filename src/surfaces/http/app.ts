@@ -311,6 +311,28 @@ export function createApp(options: AppOptions): Hono {
     });
   });
 
+  // The provenance manifest is a deliverable too: the same session that can watch the film can read its receipt.
+  app.get("/p/:projectId/exports/:name", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to read exports" });
+
+    const name = c.req.param("name");
+    if (!/^[A-Za-z0-9._-]+\.json$/.test(name))
+      throw new HTTPException(400, { message: "invalid export name" });
+
+    const projects = await readProjects(options.home);
+    const project = projects.find((item) => item.id === c.req.param("projectId"));
+    if (!project) throw new HTTPException(404, { message: "no such project" });
+
+    const file = await readFile(join(project.path, "exports", name), "utf8").catch(() => null);
+    if (file === null) throw new HTTPException(404, { message: "no such export" });
+
+    return c.body(file, 200, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    });
+  });
+
   // Media is addressed by asset id, never by path, and served only to a signed-in member of this host.
   app.get("/p/:projectId/media/:assetId", async (c) => {
     const identity = await readIdentity(c, await secret());
