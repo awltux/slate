@@ -1,0 +1,16 @@
+{
+  "gate": 10,
+  "status": "passed",
+  "base": "http://127.0.0.1:62632",
+  "steps": [
+    "project: prj_2a61d2cd2ad84865bb97c64f9efbcbcc",
+    "film: one shot, rendered",
+    "link: signed, expiring in 24 hours",
+    "public: the review page reads the project with no account",
+    "note: arrives in the project, attributed and marked external",
+    "revoke: the link is dead the moment it is revoked",
+    "ui: a revoked link explains itself instead of failing silently",
+    "ui: the reviewer page needs no account and shows the cut",
+    "ui: the project shows the link state and the reviewer's note"
+  ]
+}

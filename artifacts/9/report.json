@@ -1,9 +1,9 @@
 {
   "gate": 9,
   "status": "passed",
-  "base": "http://127.0.0.1:62189",
+  "base": "http://127.0.0.1:58247",
   "steps": [
-    "project: prj_e17551ae8e5e4042a9799128cd5a60e8",
+    "project: prj_d1a9293d82b749429876b24adc021901",
     "cut: two shots rendered to a 6.0s animatic",
     "audio: a 6s bed generated locally",
     "delivery: master passed QC with audio",

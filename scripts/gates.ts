@@ -36,6 +36,7 @@ function assert(condition: unknown, message: string): asserts condition {
 let base = "";
 let cookie = "";
 let projectId = "";
+let gate10Url = "";
 let csrf = "";
 
 async function op<T>(projectId: string, name: string, input: unknown = {}): Promise<Envelope<T>> {
@@ -1135,6 +1136,130 @@ async function gate9(steps: string[]): Promise<void> {
   assert(qc.data.delivery !== null, "the QC report must persist on the delivery");
 }
 
+async function gate10(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light");
+  steps.push(`project: ${projectId}`);
+
+  const ffmpeg = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("ffmpeg");
+  assert(Boolean(ffmpeg.binary), "gate 10 needs FFmpeg to make something worth reviewing");
+  const binary = ffmpeg.binary as string;
+
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
+  });
+  const shot = await op<{ shotId: string; number: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "WS",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 4,
+    description: "The lamp turns once.",
+  });
+
+  const work = await mkdtemp(join(tmpdir(), "slate-review-"));
+  const board = join(work, "board.png");
+  const rendered = await runCommand([
+    binary,
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0x1a2430:s=1280x720",
+    "-frames:v",
+    "1",
+    board,
+  ]);
+  assert(rendered.code === 0, "the board must render");
+  await op(projectId, "frame.attach", { shotId: shot.data.shotId, role: "board", sourcePath: board });
+  await op(projectId, "cut.build", {});
+  const cut = await op<{ rendered: { assetId: string } | null }>(projectId, "cut.render", {
+    width: 1280,
+    height: 720,
+  });
+  assert(cut.data.rendered !== null, "the cut must render");
+  steps.push("film: one shot, rendered");
+
+  // The link is minted by the surface, because only it holds the signing secret.
+  const created = await fetch(`${base}/p/${projectId}/api/review-links`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ label: "Rough cut", expiresInHours: 24 }),
+  }).then(
+    (response) => response.json() as Promise<{ ok: boolean; data?: { url: string; expiresAt: string } }>,
+  );
+  assert(created.ok && created.data?.url, "a review link must be created");
+  const reviewUrl = created.data.url;
+  gate10Url = reviewUrl;
+  steps.push("link: signed, expiring in 24 hours");
+
+  // A reviewer has no cookie: this is the whole point of the link.
+  const summary = await fetch(`${base}${reviewUrl}/api/summary`).then(
+    (response) =>
+      response.json() as Promise<{
+        ok: boolean;
+        data: { project: { name: string }; shots: unknown[]; notes: unknown[] };
+      }>,
+  );
+  assert(summary.ok, "the link must open without a session");
+  assert(summary.data.project.name === "The Last Light", "the reviewer must see the film's name");
+  assert(summary.data.shots.length === 1, "the reviewer must see the shot");
+  steps.push("public: the review page reads the project with no account");
+
+  const posted = await fetch(`${base}${reviewUrl}/api/note`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      anchorKind: "shot",
+      anchorId: shot.data.shotId,
+      body: "The lamp should catch the lens earlier.",
+      name: "Morgan (director)",
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean }>);
+  assert(posted.ok, "a reviewer must be able to leave a note");
+
+  const notes = await op<{ notes: Array<{ body: string; author: string; external: boolean }> }>(
+    projectId,
+    "note.list",
+    {},
+  );
+  const note = notes.data.notes[0];
+  assert(note?.author === "Morgan (director)", "the note must carry the reviewer's name");
+  assert(note?.external === true, "the note must be marked as coming from a link");
+  steps.push("note: arrives in the project, attributed and marked external");
+
+  const media = await fetch(`${base}${reviewUrl}/media/${cut.data.rendered?.assetId}`);
+  assert(media.status === 200, "the reviewer must be able to watch the film");
+  assert(media.headers.get("content-type") === "video/mp4", "the film must be served as MP4");
+
+  const links = await op<{ links: Array<{ id: string }> }>(projectId, "review.links", {});
+  const linkId = links.data.links[0]?.id;
+  assert(Boolean(linkId), "the link must be listed");
+  await op(projectId, "review.revoke", { linkId });
+
+  const afterRevoke = await fetch(`${base}${reviewUrl}/api/summary`);
+  assert(afterRevoke.status === 404, "a revoked link must stop working immediately");
+  steps.push("revoke: the link is dead the moment it is revoked");
+
+  // A fresh link for the browser visit: the revoked one must stay dead.
+  const second = await fetch(`${base}/p/${projectId}/api/review-links`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ label: "Second look", expiresInHours: 24 }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data?: { url: string } }>);
+  assert(second.ok && second.data?.url, "a second link must be creatable");
+  gate10Url = second.data.url;
+
+  const page = await fetch(`${base}${reviewUrl}`);
+  const body = await page.text();
+  assert(page.status === 404 && body.includes("no longer valid"), "a revoked link must say so plainly");
+  steps.push("ui: a revoked link explains itself instead of failing silently");
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -1214,6 +1339,25 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 10) {
+      const reviewContext = await instance.newContext();
+      const reviewPage = await reviewContext.newPage();
+      await reviewPage.goto(`${base}${gate10Url}`);
+      await reviewPage.waitForSelector("text=Shots", { timeout: 20_000 });
+      await reviewPage.waitForSelector("video", { timeout: 20_000 });
+      await reviewPage.screenshot({ path: join(artifactDir, "review-link.png"), fullPage: true });
+      steps.push("ui: the reviewer page needs no account and shows the cut");
+
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.click('main [role="tab"]:has-text("Review")');
+      await page.waitForSelector("text=open notes", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "review-tab.png"), fullPage: true });
+      steps.push("ui: the project shows the link state and the reviewer's note");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 9) {
       await page.selectOption('select[aria-label="Project"]', projectId);
@@ -1400,6 +1544,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 7) await gate7(steps);
     else if (gateNumber === 8) await gate8(steps);
     else if (gateNumber === 9) await gate9(steps);
+    else if (gateNumber === 10) await gate10(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

@@ -1,9 +1,9 @@
 {
   "gate": 6,
   "status": "passed",
-  "base": "http://127.0.0.1:62172",
+  "base": "http://127.0.0.1:49397",
   "steps": [
-    "project: prj_9eaa3034d25b48dbb14572941a39a251",
+    "project: prj_b3564e961f5c46848b65f07791156314",
     "plan: shot 1A at 5s",
     "stand-in renders: two stills and a 5s animatic",
     "set: manifest validated, one camera bound to two entities",
