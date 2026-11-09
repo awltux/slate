@@ -145,24 +145,51 @@ A character is not defined by a prompt and a location is not defined by a slugli
 versioned sheets**, defined once in the library and pinned by the work that used them.
 
 ```
-Entity (character | location | prop)
-  └── SheetVersion (v1..vn)
-        ├── views[]        front · three-quarter · profile · back · detail · expression · costume · lighting
-        ├── measurements    heightM (drives the Blender proxy scale) · eyeHeight · palette
-        └── rights          licence · likenessConsent · territories · expiresAt
+Entity (character | location | prop | style)
+  ├── description          the director's words
+  ├── prompt               the agent's draft, built from the description with flourish added
+  ├── styleId ─────────────► a style sheet applied to this entity's generations
+  ├── identity  SheetVersion (v1..vn)
+  │      ├── images[]      6 head rotations for a character · views for a place or a thing
+  │      ├── measurements  heightM (drives the Blender proxy scale)
+  │      └── rights        licence · likenessConsent
+  ├── variants[]           wardrobe (a character) · states (a location, a prop)
+  │      └── { name, description, prompt, sheet: SheetVersion }
+  └── candidates[]         generated options awaiting a decision
 ```
 
-- **A character** is an `Entity{kind:"character"}` with a sheet: the turnaround views are what an image model is
-  conditioned on, and `heightM` is what makes a proxy the right size in a set.
-- **A location** is an `Entity{kind:"location"}` with its own sheet (reference views, lighting, palette). A **set** is
-  authored *from* that sheet — the Blender file and manifest are a materialisation of the location, not a separate
-  idea. That is why `set.attach` takes a `setId`-shaped manifest with an `entityMap`: the entity→object binding is
-  where "the keeper stands here" becomes geometry.
-- **A scene** is a screenplay unit: slugline (INT/EXT, location, time of day), synopsis, body. It *references* the
-  location entity; it does not own it. Two scenes in the same location share one location sheet and, usually, one set
-  version.
-- **A shot** is inside a scene and lists the entities in frame (`entityIds`). At generation time it **pins** the sheet
-  versions it was conditioned on: `pins: { entityId: sheetVersionId }`.
+**The process is always the same shape:**
+
+```
+description ──(agent)──► prompt ──(generate)──► candidates ──(director picks)──► sheet version
+```
+
+1. Someone creates the entry and writes a **description** in their own words.
+2. An agent turns that into a **prompt** — the flourish, the camera language, the negatives — and stores it beside the
+   description. Both are kept, so a sheet can be traced to the sentence and the prompt that produced it.
+3. `entity.generate` renders **candidates** from the prompt, with the entity's style sheet applied. A batch is priced
+   and reserved before it runs; it is the cheapest paid step in the system.
+4. The **director picks** one or more candidates and assigns each a role. That publishes a sheet version — no free-text
+   editing, no "close enough".
+
+- **A character's identity sheet is six head rotations** (front, three-quarter left, profile left, back, profile right,
+  three-quarter right). A partial selection publishes, but reports what is missing, because a usable sheet with five
+  angles beats no sheet at all.
+- **A wardrobe item is a variant with its own prompt.** "Storm coat, oilskin, soaked, hood down" is generated and
+  selected independently of the identity sheet, because an outfit is a different picture, not a different sentence.
+- **A location's states are variants too** — run down, repainted, extended — and a prop's wear states the same way.
+- **A style sheet is just another entity** (`kind:"style"`) whose images carry palette, texture and light. Any entity
+  may point at one; generation records which style it used.
+- **A location entity can be materialised as a set**: the Blender file and manifest are the location made geometric,
+  which is why `set.attach` binds entities to objects (`entityMap`).
+- **A scene** is a screenplay unit — slugline, synopsis, body — that *references* a location entity; it does not own it.
+  Two scenes in one place share the location sheet and, usually, one set version.
+- **A shot** lists the entities in frame (`entityIds`) and **pins** the sheet versions it was conditioned on:
+  `pins: { entityId: sheetVersion }`.
+
+**Deleting is a reference question.** An entry can be deleted only when nothing points at it: a shot that lists it, or
+another entity styled by it. The refusal names what is using it, because "cannot delete" without a reason is a puzzle,
+not an error.
 
 **The chain, with versions at every step:**
 

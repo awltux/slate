@@ -2,6 +2,20 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Slice 7 — the library, redesigned around a process
+
+- **Every entry starts with a description** in your own words. An agent turns it into a prompt — the flourish, the
+  camera language — and both are kept, so a sheet traces back to the sentence and the prompt that produced it.
+- **Generate options, then pick.** `entity.generate` renders candidates from the prompt (priced per image, reserved
+  before it runs); you assign each image you keep a role, and that becomes the sheet version.
+- **A character's sheet is six head rotations** — front, three-quarter left, profile left, back, profile right,
+  three-quarter right. A partial selection publishes and tells you what is missing.
+- **Wardrobes and states are variants with their own prompts**: an outfit, a run-down location, a repainted wall. Each
+  is generated and selected independently.
+- **Style sheets** are library entries too; any character, location or prop can use one, and generation records which.
+- **Edit anything; delete only what is unused.** Deleting an entry still referenced by a shot (or used as another
+  entry's style) is refused, with the reason named.
+
 ## Slice 8 — working together
 
 - **See who else is in the room.** Presence shows the other people on a project — a chip beside the title naming who else
