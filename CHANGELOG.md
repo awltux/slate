@@ -2,6 +2,16 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Slice 8 — working together
+
+- **See who else is in the room.** Presence shows the other people on a project — a chip beside the title naming who else
+  is looking, expiring on its own. It is a notice, never a lock.
+- **Two people cannot silently overwrite each other.** A write carries the revision it was based on; if someone else
+  wrote first, the second is refused with `conflict` and the Plan page says "changed underneath you" with a reload
+  instead of clobbering the other person's work.
+- **Undo your own last change.** The newest commit can be undone by whoever made it (or an owner), restoring the state
+  before it. Buried commits are refused: undoing one would discard other people's later work.
+
 ## Slice 7 — the library: entities and sheets
 
 - **Characters, locations and props are defined once.** An entity is created in the library; its sheet is published
