@@ -183,4 +183,29 @@ describe("operations", () => {
     );
     expect(response.status).toBe(403);
   });
+
+  it("lets the owner rename a project and shows the new name in the list", async () => {
+    const owner = await projectWithSession();
+    const renamed = await app.request(
+      `/p/${owner.projectId}/api/op/project.rename`,
+      authed(owner.cookie, owner.csrf, { name: "The Last Light (final)" }),
+    );
+    const body = (await renamed.json()) as { ok: boolean; data: { name: string } };
+    expect(body.ok).toBe(true);
+    expect(body.data.name).toBe("The Last Light (final)");
+
+    const listed = await app.request("/api/projects", { headers: { cookie: owner.cookie } });
+    const list = (await listed.json()) as { data: { projects: Array<{ name: string }> } };
+    expect(list.data.projects.some((project) => project.name === "The Last Light (final)")).toBe(true);
+  });
+
+  it("forbids a viewer from renaming a project", async () => {
+    const owner = await projectWithSession();
+    const viewer = await login("watcher", "another password");
+    const response = await app.request(
+      `/p/${owner.projectId}/api/op/project.rename`,
+      authed(viewer.cookie, viewer.csrf, { name: "Hijacked" }),
+    );
+    expect(response.status).toBe(403);
+  });
 });

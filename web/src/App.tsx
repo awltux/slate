@@ -93,7 +93,11 @@ export function App() {
 
       <main className="main">
         {active ? (
-          <ProjectView project={active} />
+          <ProjectView
+            project={active}
+            canRename={session.user.role === "owner" || session.user.role === "editor"}
+            onRenamed={refreshProjects}
+          />
         ) : (
           <Projects projects={projects} onCreated={refreshProjects} onOpen={setActiveId} />
         )}

@@ -16,6 +16,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `plan.vocabulary` | read | `plan_vocabulary` | Valid values for shot and scene fields. |
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
 | `project.history` | read | `project_history` | Recent commits: what changed, who changed it and why. |
+| `project.rename` | write | `project_rename` | Change the project name. |
 | `scene.create` | write | `scene_create` | Add a scene. Numbers are assigned in order and are never reused. |
 | `scene.list` | read | `scene_list` | Scenes with their shots, readiness and staleness. |
 | `scene.update` | write | `scene_update` | Change a scene. Its shots become stale because they were reviewed against the old text. |
@@ -212,6 +213,29 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "default": 20
     }
   },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `project.rename`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }

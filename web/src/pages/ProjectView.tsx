@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type ProjectSummary, runOp, subscribe } from "../api.js";
 import { CutPage } from "./Cut.js";
 import { Plan } from "./Plan.js";
@@ -43,13 +43,94 @@ interface Commit {
 
 type Tab = "write" | "plan" | "cut" | "health" | "activity";
 
-export function ProjectView({ project }: { project: ProjectSummary }) {
+export function ProjectView({
+  project,
+  canRename,
+  onRenamed,
+}: {
+  project: ProjectSummary;
+  canRename: boolean;
+  onRenamed: () => Promise<void> | void;
+}) {
   const [tab, setTab] = useState<Tab>("write");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(project.name);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const nameInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setDraft(project.name);
+  }, [project.name]);
+
+  // Focus moves only when the operator chooses to rename, never on load.
+  useEffect(() => {
+    if (editing) nameInput.current?.focus();
+  }, [editing]);
+
+  async function rename(event: React.FormEvent) {
+    event.preventDefault();
+    const name = draft.trim();
+    if (name === "" || name === project.name) {
+      setEditing(false);
+      return;
+    }
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      await runOp(project.id, "project.rename", { name });
+      await onRenamed();
+      setEditing(false);
+    } catch (caught) {
+      setRenameError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+    } finally {
+      setRenaming(false);
+    }
+  }
 
   return (
     <div className="stack">
       <div>
-        <h1 style={{ marginBottom: "0.2rem" }}>{project.name}</h1>
+        {editing ? (
+          <form className="row" onSubmit={rename} style={{ marginBottom: "0.2rem" }}>
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              aria-label="Project name"
+              ref={nameInput}
+              style={{ fontSize: "1.2rem", padding: "0.3rem 0.5rem" }}
+            />
+            <button className="primary" type="submit" disabled={renaming || draft.trim() === ""}>
+              {renaming ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(project.name);
+                setRenameError(null);
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <h1 style={{ marginBottom: "0.2rem" }}>
+            {project.name}
+            {canRename ? (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setEditing(true)}
+                title="Rename this project"
+                aria-label="Rename this project"
+              >
+                Edit
+              </button>
+            ) : null}
+          </h1>
+        )}
+        {renameError ? <p className="error">{renameError}</p> : null}
         <p className="muted" style={{ margin: 0 }}>
           {project.id}
         </p>

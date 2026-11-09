@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { commitDocuments } from "../kernel/workspace/commit.js";
 import { initProject } from "../kernel/workspace/scaffold.js";
 import { defineOp } from "./registry.js";
 
@@ -48,6 +49,54 @@ export const projectCreate = defineOp({
       version: created.project.revision,
       commit: created.commit.id,
       next: ["capabilities.get"],
+    };
+  },
+});
+
+/**
+ * Renaming is a commit like any other: the name is part of the document, so it is versioned and attributable rather
+ * than a folder label someone edits on disk.
+ */
+export const projectRename = defineOp({
+  name: "project.rename",
+  policy: "write",
+  summary: "Change the project name.",
+  input: z
+    .object({
+      name: z.string().trim().min(1).max(200),
+      expectedRevision: z.number().int().optional(),
+    })
+    .strict(),
+  output: z
+    .object({
+      projectId: z.string(),
+      name: z.string(),
+      revision: z.number().int(),
+    })
+    .strict(),
+  touched: () => ["project"],
+  run: async (input, context) => {
+    const result = await commitDocuments({
+      root: context.root,
+      actor: context.actor,
+      intent: `rename project to "${input.name}"`,
+      touched: ["project"],
+      clock: context.clock,
+      expectedRevision: input.expectedRevision,
+      mutate: ({ project }) => {
+        project.name = input.name;
+      },
+    });
+
+    return {
+      data: {
+        projectId: result.project.id,
+        name: result.project.name,
+        revision: result.project.revision,
+      },
+      version: result.project.revision,
+      commit: result.commit.id,
+      next: ["project.history"],
     };
   },
 });

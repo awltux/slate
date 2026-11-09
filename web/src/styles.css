@@ -199,6 +199,21 @@ th {
   letter-spacing: 0.04em;
 }
 
+.link-button {
+  background: none;
+  border: none;
+  padding: 0 0 0 0.6rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+  vertical-align: middle;
+}
+
+.link-button:hover {
+  color: var(--accent);
+  border: none;
+}
+
 code,
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

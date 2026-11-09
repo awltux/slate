@@ -12,6 +12,7 @@ import { SlateError } from "../../domain/result.js";
 import type { RunProbe } from "../../kernel/catalog/probe.js";
 import { createToolResolver } from "../../kernel/catalog/tool-resolver.js";
 import { readProductionDocument } from "../../kernel/workspace/production-doc.js";
+import { readProjectDocument } from "../../kernel/workspace/project-doc.js";
 import { type OpRegistry, createRegistry } from "../../ops/index.js";
 import { EventHub } from "./events.js";
 import {
@@ -159,14 +160,17 @@ export function createApp(options: AppOptions): Hono {
     if (!identity) throw new HTTPException(401, { message: "sign in to list projects" });
 
     const projects = await readProjects(options.home);
+    // The name lives in the project document, so a rename shows up without touching the host registry.
+    const named = await Promise.all(
+      projects.map(async (project) => {
+        const document = await readProjectDocument(project.path).catch(() => null);
+        return { id: project.id, name: document?.name ?? project.name, createdAt: project.createdAt };
+      }),
+    );
     return c.json({
       ok: true,
       data: {
-        projects: projects.map((project) => ({
-          id: project.id,
-          name: project.name,
-          createdAt: project.createdAt,
-        })),
+        projects: named,
       },
     });
   });
