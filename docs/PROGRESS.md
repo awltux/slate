@@ -15,7 +15,19 @@ four surfaces exist.
 | 8 | Collaboration | `pnpm gate:8` | **done** | [collaboration](../artifacts/8/collaboration.png) · [report](../artifacts/8/report.json) |
 | 9 | Finish & deliver | `pnpm gate:9` | **done** | [finish](../artifacts/9/finish.png) · [report](../artifacts/9/report.json) |
 | 10 | Remote review | `pnpm gate:10` | **done** | [review-link](../artifacts/10/review-link.png) · [report](../artifacts/10/report.json) |
-| 11 | Polish | `pnpm gate:11` | **next** | — |
+| 11 | Setup: AI connections | `pnpm gate:11` | **done** | [setup](../artifacts/11/setup.png) · [report](../artifacts/11/report.json) |
+
+## Slice 11 — what it proves
+
+- **The AI layer is data.** A provider is transport plus a credential; an endpoint is one capability plus one request
+  shape; a binding chooses which endpoint serves a capability. Adding a provider or a second model is a form, not a
+  deploy.
+- **Heterogeneity is absorbed by a template.** Parameters are declared once and referenced from the body, keep their
+  declared types, and are placed wherever the API wants them — which is what lets fal, OpenAI-compatible hosts and a
+  local graph runner share one code path.
+- **Preview is the offline test**: the exact URL, headers and body, key masked, no network call and no cost.
+- **Credentials never come back out**; `ai.catalog` reports only that a key exists, and only an owner can reach any of
+  these operations — an editor is refused with 403 before the registry runs.
 
 ## Slice 10 — what it proves
 

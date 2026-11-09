@@ -213,6 +213,44 @@ as its structural basis (depth/normal/canny) *and* the character sheet views as 
 the frame's provenance is what lets the same frame be reproduced after a model upgrade, and what makes "the keeper
 changed between shots 3 and 7" a diagnosable fact rather than an opinion.
 
+### 5.7 AI connections are declared, not coded
+
+Every generation API is REST but no two agree on anything: fal has one key and a route per model, OpenAI has one key
+and one route with many models, a local ComfyUI has no key and a graph id. Writing an adapter per provider would mean a
+deploy for every model. So the AI layer is three declarations and one renderer:
+
+```
+Provider   (transport)   id · name · baseUrl · auth { header, scheme: "Key {{key}}" } · credential
+Endpoint   (a model)     provider · capability · method · path · params[] · body template · resultPath
+Binding    (a choice)    capability → [endpoint ids], first that resolves wins
+```
+
+**The body template is the whole trick.** An endpoint declares the parameters it accepts (`num_images`, `strength`,
+`sync_mode`), and its body is ordinary JSON whose *strings* may reference them:
+
+```json
+{
+  "prompt": "{{prompt}}",
+  "image_url": "{{image}}",
+  "num_images": "{{param:num_images}}",
+  "enable_safety": "{{param:sync_mode}}"
+}
+```
+
+- A value that is exactly one `{{param:X}}` placeholder keeps the parameter's **declared type** — `num_images` arrives
+  as `4`, not `"4"` — which is why the API field name and the UI field name may differ.
+- `{{prompt}}`, `{{image}}`, `{{image2}}` and `{{seconds}}` are the standard slots; everything else comes from `params`.
+- `resultPath` (`images[0].url`) says where the artefact is in the response, so the caller never parses a provider's
+  envelope.
+- `method: GET` sends the rendered body as query parameters instead.
+
+**Preview is the test that costs nothing.** `ai.preview` renders the exact URL, headers and body an endpoint would send,
+with the key masked as `••••`; it never calls the network. A new provider is therefore provable offline, in a gate.
+
+**Credentials are write-only.** Keys live in `$SLATE_HOME/ai/keys.json` (mode 600), separate from the provider list, and
+no operation returns them — `ai.catalog` reports `hasKey` and nothing more. Only the owner may read or change any of it:
+these operations carry `ownerOnly`, which the HTTP surface enforces with a 403 before the registry is reached.
+
 ## 6. Identity, concurrency and collaboration
 
 ### 6.1 Identity

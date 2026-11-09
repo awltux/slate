@@ -2,6 +2,17 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Setup — AI connections
+
+- **A Setup tab, for the owner only.** Declare any number of AI providers and, within each, any number of endpoints —
+  one per model and capability. Nothing about a provider is hard-coded: fal's one key with a route per model and an
+  OpenAI-compatible host with one route and many models are both just data.
+- **Parameters are declared once** and placed by a body template (`"num_images": "{{param:num_images}}"`), so each API's
+  unique shape is expressible without a new adapter. Parameters keep their declared types — `4`, not `"4"`.
+- **Preview proves a connection without spending anything**: it renders the exact request, with the key masked, and
+  never calls the network.
+- **Keys are write-only.** Setup can replace a key but never display it, and only the owner can open the tab at all.
+
 ## Remote review
 
 - **A review link is the only door that needs no account.** Signed, expiring and revocable, it shows the film and the
