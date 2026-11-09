@@ -756,12 +756,18 @@ async function gate7(steps: string[]): Promise<void> {
   });
   steps.push("library: a character and a style sheet");
 
-  await op(projectId, "entity.update", {
-    entityId: keeper.data.entityId,
-    prompt: "Elias, 60s, salt-crusted coat, lamplight from below, three-quarter view",
-    styleId: style.data.entityId,
-  });
-  steps.push("prompt: the agent's draft stored beside the description, with a style applied");
+  await op(projectId, "entity.update", { entityId: keeper.data.entityId, styleId: style.data.entityId });
+  const expanded = await op<{ prompt: string; via: string; styleId: string | null }>(
+    projectId,
+    "prompt.expand",
+    {
+      entityId: keeper.data.entityId,
+    },
+  );
+  assert(expanded.data.prompt.includes("weathered lighthouse keeper"), "Expand must use the description");
+  assert(expanded.data.prompt.includes("Sodium noir"), "Expand must fold in the style sheet");
+  assert(expanded.data.styleId === style.data.entityId, "Expand must report the style it used");
+  steps.push(`prompt: expanded from the description via ${expanded.data.via}, with the style applied`);
 
   const generated = await op<{ candidates: Array<{ id: string }>; spentUsd: number; styleId: string | null }>(
     projectId,

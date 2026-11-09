@@ -1,11 +1,11 @@
 {
   "gate": 7,
   "status": "passed",
-  "base": "http://127.0.0.1:51711",
+  "base": "http://127.0.0.1:61343",
   "steps": [
-    "project: prj_3c52acba33f14fc3b09f676a7ad32c53",
+    "project: prj_c313ebf6e2b24162b78bd5d961adbd33",
     "library: a character and a style sheet",
-    "prompt: the agent's draft stored beside the description, with a style applied",
+    "prompt: expanded from the description via local, with the style applied",
     "candidates: 6 options for $0.12, style recorded",
     "sheet: six head rotations published as identity v1, 1.78m, consent granted",
     "media: the published sheet image is served to the browser",
