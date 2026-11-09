@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
@@ -13,6 +13,15 @@ import { type OpContext, createRegistry } from "../ops/index.js";
 import { createApp } from "./http/app.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    await stat(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const EXIT_CODES: Record<string, number> = {
   approval_required: 3,
@@ -59,12 +68,19 @@ async function serveCommand(options: { port: string; host: string; home: string;
     );
   }
 
+  const staticDir = options.staticDir ? resolve(options.staticDir) : undefined;
+  if (!staticDir || !(await exists(join(staticDir, "index.html")))) {
+    console.warn(
+      `Slate: no built UI at ${staticDir ?? "(none)"}. Run "pnpm build:web"; the API is still available.`,
+    );
+  }
+
   const app = createApp({
     home,
     clock: systemClock,
     run: (argv) => runCommand(argv),
     vendorDir: vendorDir(),
-    staticDir: options.staticDir,
+    staticDir,
   });
 
   const port = Number(options.port);
@@ -149,7 +165,7 @@ async function main() {
     .option("-p, --port <port>", "port", "7788")
     .option("--host <host>", "bind address", "127.0.0.1")
     .option("--home <dir>", "Slate home", slateHome())
-    .option("--static <dir>", "directory containing the built web UI", join(repoRoot, "web", "dist"))
+    .option("--static-dir <dir>", "directory containing the built web UI", join(repoRoot, "web", "dist"))
     .action(serveCommand);
 
   program
@@ -169,6 +185,36 @@ async function main() {
     .option("--root <dir>", "project folder", ".")
     .option("--json", "print the operation envelope")
     .action(capabilitiesCommand);
+
+  program
+    .command("op")
+    .description("Run any operation by name (the generic headless surface)")
+    .argument("<name>", "operation, for example story.set or shot.create")
+    .option("--root <dir>", "project folder", ".")
+    .option("--input <json>", "operation input as JSON", "{}")
+    .option("--json", "print the envelope (default: the data only)")
+    .action(async (name: string, options: { root: string; input: string; json?: boolean }) => {
+      let input: unknown;
+      try {
+        input = JSON.parse(options.input);
+      } catch {
+        throw new CliFailure(
+          printFailure({
+            ok: false,
+            error: { code: "invalid_input", message: "--input must be JSON", retryable: false },
+          }),
+        );
+      }
+      const root = resolve(options.root);
+      const envelope = await createRegistry().execute(name, input, contextFor(root, "cli"));
+      if (options.json) {
+        console.log(JSON.stringify(envelope, null, 2));
+        if (!envelope.ok) throw new CliFailure(EXIT_CODES[envelope.error.code] ?? 1);
+        return;
+      }
+      if (!envelope.ok) throw new CliFailure(printFailure(envelope));
+      console.log(JSON.stringify(envelope.data, null, 2));
+    });
 
   await program.parseAsync(process.argv);
 }
