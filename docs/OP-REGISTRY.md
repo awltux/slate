@@ -12,8 +12,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
 | `cut.get` | read | `cut_get` | The current cut: its items, total duration and the last render. |
 | `cut.render` | write | `cut_render` | Render the cut to MP4 through the assembly chain (FFmpeg concat for now). |
-| `entity.create` | write | `entity_create` | Define a character, location or prop in the library. |
-| `entity.list` | read | `entity_list` | The library: characters, locations and props with their current sheet. |
+| `entity.angles` | read | `entity_angles` | The six headshot rotations a character sheet must cover. |
+| `entity.create` | write | `entity_create` | Define a character, location, prop or style in the library. |
+| `entity.delete` | destructive | `entity_delete` | Delete an entity that nothing references. |
+| `entity.generate` | spend | `entity_generate` | Generate candidate images from an entity's prompt (or a variant's), priced per image. |
+| `entity.list` | read | `entity_list` | The library: entities with their sheets, variants and candidates. |
+| `entity.update` | write | `entity_update` | Set an entity's description, its generation prompt, or the style sheet it uses. |
 | `estimate.create` | read | `estimate_create` | Price a batch of takes for the given tier before anything is submitted. |
 | `frame.attach` | write | `frame_attach` | Attach an image to a shot slot (board, first or last), copied into the project by content hash. |
 | `graph.stale` | read | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
@@ -31,11 +35,11 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `service.set-path` | write | `service_set-path` | Point a service at a specific executable, after checking that it runs. |
 | `session.brief` | read | `session_brief` | A bounded read of where the film stands: the cheapest way for a new session to start. |
 | `set.attach` | write | `set_attach` | Attach a digital set: a validated manifest, plus the .blend it came from when available. |
-| `sheet.publish` | write | `sheet_publish` | Publish a new version of an entity's sheet from a set of view images. |
+| `sheet.select` | write | `sheet_select` | Publish a sheet from chosen candidates, for the identity or a variant. |
 | `shot.create` | write | `shot_create` | Add a shot to a scene; it is built from that scene's current text. |
 | `shot.get` | read | `shot_get` | One shot with its readiness checks and staleness. |
 | `shot.rebase` | write | `shot_rebase` | Record that a shot has been re-checked against its scene's current text. |
-| `shot.set-entities` | write | `shot_set-entities` | Set the entities in a shot and pin their current sheet versions. |
+| `shot.set-entities` | write | `shot_set-entities` | Set the entities in a shot and pin their current identity sheets. |
 | `shot.update` | write | `shot_update` | Change a shot. Pass acceptScene to record that it was re-checked against the current scene. |
 | `spend.approve` | spend | `spend_approve` | Approve an estimate and receive a single-use token that a generation job must present. |
 | `spend.summary` | read | `spend_summary` | The budget, what is committed, and the most recent money movements. |
@@ -44,6 +48,9 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `take.generate` | spend | `take_generate` | Generate takes for an approved estimate. Requires the approval token from spend.approve. |
 | `take.list` | read | `take_list` | Takes, optionally for one shot, with which one is selected. |
 | `take.select` | write | `take_select` | Choose the take that represents a shot. |
+| `variant.create` | write | `variant_create` | Add a wardrobe item or state variant, with its own description and prompt. |
+| `variant.delete` | destructive | `variant_delete` | Delete a wardrobe item or state variant from an entity. |
+| `variant.update` | write | `variant_update` | Change a wardrobe item's name, description or prompt. |
 
 ## Input schemas
 
@@ -179,6 +186,17 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `entity.angles`
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `entity.create`
 
 ```json
@@ -190,12 +208,17 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "enum": [
         "character",
         "location",
-        "prop"
+        "prop",
+        "style"
       ]
     },
     "name": {
       "type": "string",
       "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "default": ""
     },
     "aliases": {
       "type": "array",
@@ -217,6 +240,62 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `entity.delete`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `entity.generate`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8,
+      "default": 4
+    },
+    "variantId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "seed": {
+      "type": "integer",
+      "default": 0
+    }
+  },
+  "required": [
+    "entityId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `entity.list`
 
 ```json
@@ -228,10 +307,44 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "enum": [
         "character",
         "location",
-        "prop"
+        "prop",
+        "style"
       ]
     }
   },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `entity.update`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "styleId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
@@ -757,7 +870,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
-### `sheet.publish`
+### `sheet.select`
 
 ```json
 {
@@ -766,7 +879,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "entityId": {
       "type": "string"
     },
-    "views": {
+    "images": {
       "type": "array",
       "items": {
         "type": "object",
@@ -775,28 +888,37 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
             "type": "string",
             "enum": [
               "front",
-              "three-quarter",
-              "profile",
+              "three-quarter-left",
+              "profile-left",
               "back",
+              "profile-right",
+              "three-quarter-right",
               "close-up",
               "detail",
-              "expression",
-              "costume",
-              "lighting"
+              "lighting",
+              "plate",
+              "palette",
+              "texture"
             ]
           },
-          "sourcePath": {
-            "type": "string",
-            "minLength": 1
+          "candidateId": {
+            "type": "string"
           }
         },
         "required": [
           "role",
-          "sourcePath"
+          "candidateId"
         ],
         "additionalProperties": false
       },
       "minItems": 1
+    },
+    "variantId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
     },
     "heightM": {
       "type": "number",
@@ -830,7 +952,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   },
   "required": [
     "entityId",
-    "views"
+    "images"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
@@ -1190,6 +1312,100 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   },
   "required": [
     "takeId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `variant.create`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "default": ""
+    },
+    "prompt": {
+      "type": "string",
+      "default": ""
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId",
+    "name"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `variant.delete`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "variantId": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId",
+    "variantId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `variant.update`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "variantId": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId",
+    "variantId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

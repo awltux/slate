@@ -116,7 +116,7 @@ export function shotReadiness(shot: Shot, production: ProductionDocument): Readi
           },
   );
 
-  const unpublished = entities.filter((entity) => entity && entity.versions.length === 0);
+  const unpublished = entities.filter((entity) => entity && entity.identity === null);
   const resolved = entities.filter((entity): entity is NonNullable<(typeof entities)[number]> =>
     Boolean(entity),
   );
@@ -134,15 +134,15 @@ export function shotReadiness(shot: Shot, production: ProductionDocument): Readi
           status: "pass",
           detail:
             resolved.length > 0
-              ? resolved.map((entity) => `${entity.name} v${entity.versions.length}`).join(", ")
+              ? resolved.map((entity) => `${entity.name} v${entity.identity?.version ?? 0}`).join(", ")
               : "",
         },
   );
 
   const characters = resolved.filter((entity) => entity.kind === "character");
   const thin = characters.filter((entity) => {
-    const views = entity.versions.at(-1)?.views ?? [];
-    const hasCloseUp = views.some((view) => view.role === "close-up" || view.role === "expression");
+    const views = entity.identity?.images ?? [];
+    const hasCloseUp = views.some((view) => view.role === "close-up");
     return views.length < 3 || !hasCloseUp;
   });
   checks.push(
@@ -157,7 +157,7 @@ export function shotReadiness(shot: Shot, production: ProductionDocument): Readi
   );
 
   const blocked = resolved.filter((entity) => {
-    const consent = entity.versions.at(-1)?.rights.likenessConsent;
+    const consent = entity.identity?.rights.likenessConsent;
     return consent === "pending" || consent === "expired";
   });
   checks.push(

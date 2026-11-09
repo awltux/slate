@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { hashValue } from "../../domain/canonical.js";
 import type { Endpoint } from "./endpoints.js";
 import type { RunProbe } from "./probe.js";
 
@@ -71,4 +72,30 @@ export async function withTempFile<T>(suffix: string, use: (file: string) => Pro
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * A still candidate for a sheet: deterministic in the prompt hash and the option index, so "generate four options"
+ * produces four reproducible options and picking the third one later means the same picture.
+ */
+export async function renderStill(
+  input: { binary: string; prompt: string; index: number; width: number; height: number; outputFile: string },
+  run: RunProbe,
+): Promise<void> {
+  // Distinct colours per option, so "generate four and pick one" is visibly a choice rather than four copies.
+  const digest = hashValue({ prompt: input.prompt, index: input.index }).replace(/[^0-9a-f]/g, "");
+  const colour = `0x${digest.slice(0, 6).padEnd(6, "0")}`;
+  const result = await run([
+    input.binary,
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `color=c=${colour}:s=${input.width}x${input.height}`,
+    "-frames:v",
+    "1",
+    input.outputFile,
+  ]);
+  if (result.failedToStart) throw new Error(`ffmpeg could not be started at ${input.binary}`);
+  if (result.code !== 0) throw new Error(`ffmpeg failed: ${result.stderr.slice(-400)}`);
 }

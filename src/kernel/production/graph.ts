@@ -46,7 +46,7 @@ function entityPinProblem(
   for (const entityId of entityIds) {
     const entity = production.entities[entityId];
     if (!entity) return `entity ${entityId} is missing`;
-    const current = entity.versions.at(-1)?.version ?? 0;
+    const current = entity.identity?.version ?? 0;
     const pinned = pins[entityId];
     if (pinned === undefined) return `${entity.name} is not pinned to a sheet version`;
     if (pinned !== current) return `${entity.name} sheet v${pinned} → v${current}`;

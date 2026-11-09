@@ -1,231 +1,226 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
 import { testContext } from "../helpers/context.js";
-
-const PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-  "base64",
-);
+import { fakeFfmpeg } from "../helpers/fake-ffmpeg.js";
 
 function expectOk<T>(result: Envelope<T> | FailureEnvelope): Envelope<T> {
   if (!result.ok) throw new Error(`expected success, got ${result.error.code}: ${result.error.message}`);
   return result;
 }
 
+function expectFail(result: Envelope<unknown> | FailureEnvelope): {
+  error: { code: string; message: string };
+} {
+  if (result.ok) throw new Error("expected failure");
+  return { error: result.error };
+}
+
 let root: string;
 let home: string;
 let registry: ReturnType<typeof createRegistry>;
 let context: OpContext;
-let viewFile: string;
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "slate-ent-"));
-  home = await mkdtemp(join(tmpdir(), "slate-ent-home-"));
-  viewFile = join(root, "..", `view-${Date.now()}.png`);
-  await writeFile(viewFile, PNG);
+  root = await mkdtemp(join(tmpdir(), "slate-lib-"));
+  home = await mkdtemp(join(tmpdir(), "slate-lib-home-"));
   registry = createRegistry();
-  context = testContext(root, { home });
-  expectOk(await registry.execute("project.create", { root, name: "The Last Light" }, context));
+  const ffmpeg = fakeFfmpeg();
+  context = testContext(root, { home, run: ffmpeg.run, tool: ffmpeg.tool });
+  expectOk(await registry.execute("project.create", { root, name: "The Last Light", budgetUsd: 5 }, context));
 });
 
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
   await rm(home, { recursive: true, force: true });
-  await rm(viewFile, { force: true });
 });
 
-async function planShot() {
-  const scene = expectOk(
-    await registry.execute(
-      "scene.create",
-      { heading: { intExt: "INT", location: "LANTERN ROOM", timeOfDay: "NIGHT" } },
-      context,
-    ),
-  ).data as { sceneId: string };
+async function defineCharacter(description = "A weathered lighthouse keeper in his sixties.") {
   return expectOk(
-    await registry.execute(
-      "shot.create",
-      {
-        sceneId: scene.sceneId,
-        size: "MCU",
-        angle: "EYE",
-        movement: "STATIC",
-        durationSec: 5,
-        description: "Elias at the wick.",
-      },
-      context,
-    ),
-  ).data as { shotId: string; number: string };
-}
-
-async function keeper() {
-  const entity = expectOk(
-    await registry.execute("entity.create", { kind: "character", name: "The keeper" }, context),
+    await registry.execute("entity.create", { kind: "character", name: "The keeper", description }, context),
   ).data as { entityId: string };
-  return entity.entityId;
 }
 
-describe("entities and sheets", () => {
-  it("publishes a version with views, height and consent", async () => {
-    const entityId = await keeper();
-    const published = expectOk(
+async function generate(entityId: string, count = 6, variantId: string | null = null) {
+  return expectOk(await registry.execute("entity.generate", { entityId, count, variantId }, context))
+    .data as {
+    candidates: Array<{ id: string; assetId: string }>;
+    spentUsd: number;
+    remainingUsd: number;
+  };
+}
+
+describe("defining an entity", () => {
+  it("keeps the description, and the prompt the agent writes from it", async () => {
+    const entity = await defineCharacter();
+    expectOk(
       await registry.execute(
-        "sheet.publish",
+        "entity.update",
+        { entityId: entity.entityId, prompt: "Elias, 60s, salt-crusted coat, lamplight from below" },
+        context,
+      ),
+    );
+
+    const list = expectOk(await registry.execute("entity.list", {}, context)).data as {
+      entities: Array<{ name: string; description: string; prompt: string; version: number }>;
+    };
+    expect(list.entities[0]?.description).toContain("lighthouse keeper");
+    expect(list.entities[0]?.prompt).toContain("salt-crusted");
+    expect(list.entities[0]?.version).toBe(0);
+  });
+
+  it("refuses to generate without a prompt or a description", async () => {
+    const entity = expectOk(
+      await registry.execute("entity.create", { kind: "prop", name: "The lantern" }, context),
+    ).data as { entityId: string };
+    const failure = expectFail(
+      await registry.execute("entity.generate", { entityId: entity.entityId }, context),
+    );
+    expect(failure.error.code).toBe("readiness_failed");
+  });
+});
+
+describe("generating and selecting", () => {
+  it("generates candidates and prices them", async () => {
+    const entity = await defineCharacter();
+    const generated = await generate(entity.entityId, 4);
+    expect(generated.candidates).toHaveLength(4);
+    expect(generated.spentUsd).toBeCloseTo(0.08, 2);
+    expect(generated.remainingUsd).toBeCloseTo(4.92, 2);
+  });
+
+  it("publishes an identity sheet from chosen candidates and reports missing angles", async () => {
+    const entity = await defineCharacter();
+    const generated = await generate(entity.entityId, 6);
+    const images = generated.candidates.slice(0, 4).map((candidate, index) => ({
+      role: ["front", "profile-left", "three-quarter-left", "back"][index],
+      candidateId: candidate.id,
+    }));
+
+    const sheet = expectOk(
+      await registry.execute("sheet.select", { entityId: entity.entityId, images }, context),
+    ).data as { version: number; images: unknown[]; missingAngles: string[] };
+
+    expect(sheet.version).toBe(1);
+    expect(sheet.images).toHaveLength(4);
+    expect(sheet.missingAngles).toEqual(["profile-right", "three-quarter-right"]);
+  });
+
+  it("publishes a variant sheet for an outfit, with its own prompt", async () => {
+    const entity = await defineCharacter();
+    const variant = expectOk(
+      await registry.execute(
+        "variant.create",
         {
-          entityId,
-          views: [
-            { role: "front", sourcePath: viewFile },
-            { role: "three-quarter", sourcePath: viewFile },
-            { role: "close-up", sourcePath: viewFile },
-          ],
-          heightM: 1.78,
-          rights: { licence: "original", likenessConsent: "granted" },
+          entityId: entity.entityId,
+          name: "Storm coat",
+          description: "Oilskin, soaked through",
+          prompt: "same keeper, heavy oilskin storm coat, soaked, no umbrella",
         },
         context,
       ),
-    ).data as {
-      version: number;
-      views: Array<{ role: string }>;
-      heightM: number | null;
-      likenessConsent: string;
+    ).data as { variantId: string };
+
+    const generated = await generate(entity.entityId, 2, variant.variantId);
+    const sheet = expectOk(
+      await registry.execute(
+        "sheet.select",
+        {
+          entityId: entity.entityId,
+          images: [{ role: "front", candidateId: generated.candidates[0]?.id }],
+          variantId: variant.variantId,
+        },
+        context,
+      ),
+    ).data as { version: number };
+
+    expect(sheet.version).toBe(1);
+    const list = expectOk(await registry.execute("entity.list", {}, context)).data as {
+      entities: Array<{ variants: Array<{ name: string; prompt: string; version: number }> }>;
     };
-
-    expect(published.version).toBe(1);
-    expect(published.views.map((view) => view.role)).toEqual(["front", "three-quarter", "close-up"]);
-    expect(published.heightM).toBe(1.78);
-    expect(published.likenessConsent).toBe("granted");
-  });
-
-  it("defaults a character to pending consent and a location to not required", async () => {
-    const character = await keeper();
-    const location = expectOk(
-      await registry.execute("entity.create", { kind: "location", name: "Lantern room" }, context),
-    ).data as { entityId: string };
-
-    const charSheet = expectOk(
-      await registry.execute(
-        "sheet.publish",
-        { entityId: character, views: [{ role: "front", sourcePath: viewFile }] },
-        context,
-      ),
-    ).data as { likenessConsent: string };
-    const locSheet = expectOk(
-      await registry.execute(
-        "sheet.publish",
-        { entityId: location.entityId, views: [{ role: "lighting", sourcePath: viewFile }] },
-        context,
-      ),
-    ).data as { likenessConsent: string };
-
-    expect(charSheet.likenessConsent).toBe("pending");
-    expect(locSheet.likenessConsent).toBe("not-required");
-  });
-
-  it("pins the current version when entities are set on a shot", async () => {
-    const entityId = await keeper();
-    await registry.execute(
-      "sheet.publish",
-      { entityId, views: [{ role: "front", sourcePath: viewFile }] },
-      context,
-    );
-    const shot = await planShot();
-
-    const pinned = expectOk(
-      await registry.execute("shot.set-entities", { shotId: shot.shotId, entityIds: [entityId] }, context),
-    ).data as { pins: Record<string, number> };
-
-    expect(pinned.pins[entityId]).toBe(1);
-    const stale = expectOk(await registry.execute("graph.stale", {}, context)).data as { count: number };
-    expect(stale.count).toBe(0);
+    expect(list.entities[0]?.variants[0]?.prompt).toContain("oilskin");
+    expect(list.entities[0]?.variants[0]?.version).toBe(1);
   });
 });
 
-describe("sheet versions and staleness", () => {
-  it("marks only the shots pinned to the old version, with the change as the cause", async () => {
-    const entityId = await keeper();
-    await registry.execute(
-      "sheet.publish",
-      { entityId, views: [{ role: "front", sourcePath: viewFile }], rights: { likenessConsent: "granted" } },
-      context,
-    );
-    const pinnedShot = await planShot();
-    const untouchedShot = await planShot();
+describe("editing and deleting", () => {
+  it("edits an entry's description", async () => {
+    const entity = await defineCharacter("old words");
+    await registry.execute("entity.update", { entityId: entity.entityId, description: "new words" }, context);
+    const list = expectOk(await registry.execute("entity.list", {}, context)).data as {
+      entities: Array<{ description: string }>;
+    };
+    expect(list.entities[0]?.description).toBe("new words");
+  });
+
+  it("deletes an entity nothing references", async () => {
+    const entity = await defineCharacter();
+    expectOk(await registry.execute("entity.delete", { entityId: entity.entityId }, context));
+    const list = expectOk(await registry.execute("entity.list", {}, context)).data as { entities: unknown[] };
+    expect(list.entities).toHaveLength(0);
+  });
+
+  it("refuses to delete an entity a shot uses, and says which", async () => {
+    const entity = await defineCharacter();
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LANTERN ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "MCU", angle: "EYE", movement: "STATIC", durationSec: 5 },
+        context,
+      ),
+    ).data as { shotId: string; number: string };
     await registry.execute(
       "shot.set-entities",
-      { shotId: pinnedShot.shotId, entityIds: [entityId] },
+      { shotId: shot.shotId, entityIds: [entity.entityId] },
       context,
     );
 
-    const republished = expectOk(
+    const failure = expectFail(
+      await registry.execute("entity.delete", { entityId: entity.entityId }, context),
+    );
+    expect(failure.error.code).toBe("conflict");
+    expect(failure.error.message).toContain(shot.number);
+  });
+
+  it("refuses to delete a style that another entity uses", async () => {
+    const style = expectOk(
+      await registry.execute("entity.create", { kind: "style", name: "Sodium noir" }, context),
+    ).data as { entityId: string };
+    const entity = await defineCharacter();
+    await registry.execute("entity.update", { entityId: entity.entityId, styleId: style.entityId }, context);
+
+    const failure = expectFail(
+      await registry.execute("entity.delete", { entityId: style.entityId }, context),
+    );
+    expect(failure.error.code).toBe("conflict");
+    expect(failure.error.message).toContain("style of");
+  });
+
+  it("deletes a variant", async () => {
+    const entity = await defineCharacter();
+    const variant = expectOk(
+      await registry.execute("variant.create", { entityId: entity.entityId, name: "Storm coat" }, context),
+    ).data as { variantId: string };
+    expectOk(
       await registry.execute(
-        "sheet.publish",
-        { entityId, views: [{ role: "expression", sourcePath: viewFile }] },
+        "variant.delete",
+        { entityId: entity.entityId, variantId: variant.variantId },
         context,
       ),
     );
-    expect(republished.stale.added).toEqual([pinnedShot.shotId]);
-
-    const stale = expectOk(await registry.execute("graph.stale", {}, context)).data as {
-      nodes: Array<{ id: string; cause: string }> | null;
-      count: number;
+    const list = expectOk(await registry.execute("entity.list", {}, context)).data as {
+      entities: Array<{ variants: unknown[] }>;
     };
-    expect(stale.count).toBe(1);
-    expect(stale.nodes?.[0]?.cause).toContain("v1 → v2");
-
-    const other = expectOk(await registry.execute("shot.get", { shotId: untouchedShot.shotId }, context))
-      .data as {
-      stale: { stale: boolean };
-    };
-    expect(other.stale.stale).toBe(false);
-  });
-
-  it("re-pins on rebase so the badge can clear", async () => {
-    const entityId = await keeper();
-    await registry.execute(
-      "sheet.publish",
-      { entityId, views: [{ role: "front", sourcePath: viewFile }] },
-      context,
-    );
-    const shot = await planShot();
-    await registry.execute("shot.set-entities", { shotId: shot.shotId, entityIds: [entityId] }, context);
-    await registry.execute(
-      "sheet.publish",
-      { entityId, views: [{ role: "expression", sourcePath: viewFile }] },
-      context,
-    );
-
-    const rebased = expectOk(await registry.execute("shot.rebase", { shotId: shot.shotId }, context));
-    expect(rebased.stale.cleared).toContain(shot.shotId);
-    const stale = expectOk(await registry.execute("graph.stale", {}, context)).data as { count: number };
-    expect(stale.count).toBe(0);
-  });
-});
-
-describe("readiness for entities", () => {
-  it("warns when a shot lists nobody, and fails when consent is pending", async () => {
-    const entityId = await keeper();
-    await registry.execute(
-      "sheet.publish",
-      { entityId, views: [{ role: "front", sourcePath: viewFile }] },
-      context,
-    );
-    const shot = await planShot();
-
-    const nobody = expectOk(await registry.execute("shot.get", { shotId: shot.shotId }, context)).data as {
-      readiness: Array<{ id: string; status: string }>;
-    };
-    expect(nobody.readiness.find((check) => check.id === "entities-resolved")?.status).toBe("warn");
-
-    await registry.execute("shot.set-entities", { shotId: shot.shotId, entityIds: [entityId] }, context);
-    const pending = expectOk(await registry.execute("shot.get", { shotId: shot.shotId }, context)).data as {
-      readiness: Array<{ id: string; status: string; detail: string }>;
-    };
-    expect(pending.readiness.find((check) => check.id === "entities-resolved")?.status).toBe("pass");
-    expect(pending.readiness.find((check) => check.id === "consent")?.status).toBe("fail");
-    expect(pending.readiness.find((check) => check.id === "sheet-coverage")?.status).toBe("warn");
+    expect(list.entities[0]?.variants).toHaveLength(0);
   });
 });

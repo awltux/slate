@@ -3,6 +3,7 @@ import { z } from "zod";
 import { hashValue } from "../../domain/canonical.js";
 import { SlateError } from "../../domain/result.js";
 import { AssetSchema } from "../production/assets.js";
+import { DeliverySchema } from "../production/delivery.js";
 import { EntitySchema } from "../production/entities.js";
 import { BlockoutSchema, SetSchema } from "../production/previz.js";
 import { projectPaths } from "./paths.js";
@@ -170,6 +171,7 @@ export const ProductionDocumentSchema = z
     takes: z.record(z.string(), TakeSchema).default({}),
     sets: z.record(z.string(), SetSchema).default({}),
     entities: z.record(z.string(), EntitySchema).default({}),
+    delivery: DeliverySchema.nullable().default(null),
     blockouts: z.record(z.string(), BlockoutSchema).default({}),
     assets: z.record(z.string(), AssetSchema).default({}),
     cut: CutSchema.default({ items: [], rendered: null }),
@@ -202,6 +204,7 @@ export function emptyProductionDocument(revision: number, commit: string): Produ
     takes: {},
     sets: {},
     entities: {},
+    delivery: null,
     blockouts: {},
     assets: {},
     cut: { items: [], rendered: null },

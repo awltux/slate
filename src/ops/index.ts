@@ -1,6 +1,18 @@
 import { capabilitiesGet } from "./capabilities.js";
 import { cutBuild, cutGet, cutRender } from "./cut.js";
-import { entityCreate, entityList, sheetPublish, shotSetEntities } from "./entity.js";
+import { entityGenerate } from "./entity-generate.js";
+import {
+  entityAngles,
+  entityCreate,
+  entityDelete,
+  entityList,
+  entityUpdate,
+  sheetSelect,
+  shotSetEntities,
+  variantCreate,
+  variantDelete,
+  variantUpdate,
+} from "./entity.js";
 import { frameAttach } from "./frame.js";
 import { graphStale, sessionBrief } from "./graph.js";
 import { historyRevert, projectHistory } from "./history.js";
@@ -39,8 +51,15 @@ export function createRegistry(): OpRegistry {
     serviceSetPath,
     serviceClearPath,
     entityCreate,
-    sheetPublish,
+    entityUpdate,
+    entityDelete,
+    entityAngles,
+    entityGenerate,
+    sheetSelect,
     entityList,
+    variantCreate,
+    variantUpdate,
+    variantDelete,
     shotSetEntities,
     setAttach,
     blockoutAttach,
