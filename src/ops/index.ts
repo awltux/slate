@@ -20,7 +20,7 @@ import { historyRevert, projectHistory } from "./history.js";
 import { blockoutAttach, previzGet, setAttach } from "./previz.js";
 import { projectCreate, projectRename } from "./project.js";
 import { OpRegistry } from "./registry.js";
-import { sceneCreate, sceneList, sceneUpdate } from "./scene.js";
+import { sceneCreate, sceneList, sceneSetLocation, sceneUpdate } from "./scene.js";
 import { serviceClearPath, serviceSetPath } from "./service.js";
 import { shotCreate, shotGet, shotRebase, shotUpdate } from "./shot.js";
 import { estimateCreate, spendApprove, spendSummary } from "./spend.js";
@@ -39,6 +39,7 @@ export function createRegistry(): OpRegistry {
     storyGet,
     storySet,
     sceneCreate,
+    sceneSetLocation,
     sceneUpdate,
     sceneList,
     shotCreate,

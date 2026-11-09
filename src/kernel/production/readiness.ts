@@ -76,6 +76,30 @@ export function shotReadiness(shot: Shot, production: ProductionDocument): Readi
       : { id: "number-unique", label: "Shot number is unique", status: "pass", detail: shot.number },
   );
 
+  // A shot with no frame of its own can still render if its scene points at a location with a sheet.
+  const sceneForBackdrop = production.scenes[shot.sceneId];
+  const sceneLocation = sceneForBackdrop?.locationEntityId
+    ? production.entities[sceneForBackdrop.locationEntityId]
+    : null;
+  const background = sceneLocation?.identity?.images[0]?.assetId ?? null;
+  checks.push(
+    shot.frames.board || shot.frames.first
+      ? { id: "background", label: "A frame or a location backdrop exists", status: "pass", detail: "" }
+      : background
+        ? {
+            id: "background",
+            label: "A frame or a location backdrop exists",
+            status: "pass",
+            detail: `falls back to ${sceneLocation?.name ?? "the location sheet"}`,
+          }
+        : {
+            id: "background",
+            label: "A frame or a location backdrop exists",
+            status: "warn",
+            detail: "no board frame and no location linked to this scene",
+          },
+  );
+
   const missingLines = (["situation", "desire", "conflict", "change", "result"] as const).filter(
     (line) => production.story.lines[line].trim() === "",
   );

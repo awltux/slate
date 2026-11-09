@@ -126,6 +126,7 @@ describe("shots and readiness", () => {
       "described",
       "duration",
       "number-unique",
+      "background",
       "story",
       "entities-resolved",
       "sheet-published",

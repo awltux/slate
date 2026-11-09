@@ -104,6 +104,8 @@ export const SceneSchema = z
     synopsis: z.string(),
     body: z.string(),
     shotIds: z.array(z.string().startsWith("sht_")),
+    /** Optional link to a location entity whose sheet is the scene background. */
+    locationEntityId: z.string().startsWith("ent_").nullable().default(null),
     createdAt: z.string(),
     updatedAt: z.string(),
   })

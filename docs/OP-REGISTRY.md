@@ -32,6 +32,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `project.rename` | write | `project_rename` | Change the project name. |
 | `scene.create` | write | `scene_create` | Add a scene. Numbers are assigned in order and are never reused. |
 | `scene.list` | read | `scene_list` | Scenes with their shots, readiness and staleness. |
+| `scene.set-location` | write | `scene_set-location` | Link a scene to a location entity (or clear the link). Its sheet becomes the scene background. |
 | `scene.update` | write | `scene_update` | Change a scene. Its shots become stale because they were reviewed against the old text. |
 | `service.clear-path` | write | `service_clear-path` | Forget an explicit executable path and go back to discovery. |
 | `service.set-path` | write | `service_set-path` | Point a service at a specific executable, after checking that it runs. |
@@ -656,6 +657,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "string",
       "default": ""
     },
+    "locationEntityId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "expectedRevision": {
       "type": "integer"
     }
@@ -677,6 +684,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
+```
+
+### `scene.set-location`
+
+```json
+{}
 ```
 
 ### `scene.update`

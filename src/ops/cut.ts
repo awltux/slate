@@ -82,14 +82,17 @@ export const cutBuild = defineOp({
     const { production: before } = await loadDocuments(context);
     const items: Array<{ shotId: string; assetId: string; durationSec: number }> = [];
     for (const { shot } of orderedShots(before)) {
-      const assetId = shot.frames.first ?? shot.frames.board;
+      // A shot's own frame wins; otherwise the scene's location sheet stands in as the background plate.
+      const sceneLocation = before.scenes[shot.sceneId]?.locationEntityId;
+      const cover = sceneLocation ? before.entities[sceneLocation]?.identity?.images[0]?.assetId : undefined;
+      const assetId = shot.frames.first ?? shot.frames.board ?? cover;
       if (!assetId) continue;
       items.push({ shotId: shot.id, assetId, durationSec: shot.durationSec });
     }
     if (items.length === 0) {
       throw new SlateError(
         "readiness_failed",
-        "no shot has a frame yet; attach a board to at least one shot",
+        "no shot has a frame yet; attach a board, or link the scene to a location with a sheet",
         {
           detail: { checks: [{ id: "has-frames", status: "fail", detail: "no shot has a frame" }] },
         },
