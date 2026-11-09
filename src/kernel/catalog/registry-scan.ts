@@ -55,6 +55,9 @@ export function parseUninstallRegistry(output: string): InstallEntry[] {
 const APPLICATIONS: Array<{ match: RegExp; service: ServiceId; executables: string[] }> = [
   { match: /blender/iu, service: "blender", executables: ["blender.exe"] },
   { match: /openshot/iu, service: "openshot-cli", executables: ["openshot-cli.exe", "openshot-qt.exe"] },
+  // mpv ships as a portable archive that registers itself, so the install location is wherever it was unpacked.
+  { match: /(^|[^a-z])mpv([^a-z]|$)/iu, service: "mpv", executables: ["mpv.exe", "mpv"] },
+  { match: /mlt|melt/iu, service: "melt", executables: ["melt.exe", "melt", "melt-7.exe"] },
 ];
 
 async function exists(file: string): Promise<boolean> {

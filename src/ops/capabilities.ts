@@ -2,11 +2,15 @@ import { basename } from "node:path";
 import { z } from "zod";
 import { ChainResolutionSchema, probeAndCache, readCapabilities } from "../kernel/catalog/capabilities.js";
 import { SERVICE_IDS } from "../kernel/catalog/services.js";
+import { readConfig } from "../kernel/config.js";
 import { projectPaths } from "../kernel/workspace/paths.js";
 import { readProjectDocument } from "../kernel/workspace/project-doc.js";
 import { defineOp } from "./registry.js";
 
-/** Public shape: a host binary path never leaves the daemon. */
+/**
+ * The public shape of a service. `installPath` is null for a caller that is not privileged: a reviewer must never
+ * learn the host's directory layout, while the owner needs the path to fix a wrong install.
+ */
 export const PublicServiceSchema = z
   .object({
     id: z.enum(SERVICE_IDS),
@@ -16,6 +20,7 @@ export const PublicServiceSchema = z
     source: z.enum(["env", "vendor", "registry", "known", "path", "none"]),
     version: z.string().nullable(),
     binaryName: z.string().nullable(),
+    installPath: z.string().nullable(),
     detail: z.string(),
   })
   .strict();
@@ -40,6 +45,7 @@ export const capabilitiesGet = defineOp({
   run: async (input, context) => {
     const paths = projectPaths(context.root);
     const project = await readProjectDocument(context.root);
+    const config = await readConfig(context.home);
 
     const cached = input.refresh ? null : await readCapabilities(paths);
     const snapshot =
@@ -48,6 +54,7 @@ export const capabilitiesGet = defineOp({
         run: context.run,
         vendorDir: context.vendorDir,
         now: context.clock.now(),
+        overrides: config.paths,
       }));
 
     const degraded = snapshot.chains.filter((chain) => chain.degraded);
@@ -64,6 +71,7 @@ export const capabilitiesGet = defineOp({
           source: service.source,
           version: service.version,
           binaryName: service.binary ? basename(service.binary) : null,
+          installPath: context.privileged ? service.binary : null,
           detail: service.detail,
         })),
         chains: snapshot.chains,

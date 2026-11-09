@@ -6,13 +6,14 @@ import { fixedClock } from "../../src/domain/clock.js";
 import type { RunProbe } from "../../src/kernel/catalog/probe.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
 import { callTool, toolDefinitions, toolName } from "../../src/surfaces/mcp/tools.js";
+import { testContext } from "../helpers/context.js";
 
 const clock = fixedClock("2026-11-09T10:00:00.000Z");
 const missing = { code: null, stdout: "", stderr: "ENOENT", failedToStart: true };
 const run: RunProbe = async () => missing;
 
 function contextFor(root: string): OpContext {
-  return { root, actor: "agent", clock, run, vendorDir: join("C:", "slate", "vendor") };
+  return testContext(root, { run, actor: "agent" });
 }
 
 describe("tool names", () => {

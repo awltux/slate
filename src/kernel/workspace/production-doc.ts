@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { hashValue } from "../../domain/canonical.js";
 import { SlateError } from "../../domain/result.js";
+import { AssetSchema } from "../production/assets.js";
 import { projectPaths } from "./paths.js";
 
 export const IntExtSchema = z.enum(["INT", "EXT", "INT/EXT"]);
@@ -39,6 +40,17 @@ export const ShotMovementSchema = z.enum([
  * A shot records the scene hash it was last reviewed against. That is the whole staleness mechanism: if the scene's
  * hash no longer matches, the shot is stale, and the cause is the scene — not a flag someone must remember to clear.
  */
+export const FRAME_ROLES = ["board", "first", "last"] as const;
+export type FrameRole = (typeof FRAME_ROLES)[number];
+
+export const ShotFramesSchema = z
+  .object({
+    board: z.string().startsWith("ast_").optional(),
+    first: z.string().startsWith("ast_").optional(),
+    last: z.string().startsWith("ast_").optional(),
+  })
+  .strict();
+
 export const ShotSchema = z
   .object({
     id: z.string().startsWith("sht_"),
@@ -50,6 +62,7 @@ export const ShotSchema = z
     durationSec: z.number().positive().max(120),
     description: z.string(),
     builtFromSceneHash: z.string(),
+    frames: ShotFramesSchema.default({}),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -88,6 +101,32 @@ export const StoryRevisionSchema = z
   })
   .strict();
 
+export const CutItemSchema = z
+  .object({
+    shotId: z.string().startsWith("sht_"),
+    assetId: z.string().startsWith("ast_"),
+    durationSec: z.number().positive(),
+  })
+  .strict();
+
+export const CutSchema = z
+  .object({
+    items: z.array(CutItemSchema),
+    rendered: z
+      .object({
+        assetId: z.string().startsWith("ast_"),
+        at: z.string(),
+        via: z.string(),
+        width: z.number().int().positive(),
+        height: z.number().int().positive(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
+export type Cut = z.infer<typeof CutSchema>;
+
 export const ProductionDocumentSchema = z
   .object({
     format: z.literal("slate.production"),
@@ -102,6 +141,8 @@ export const ProductionDocumentSchema = z
       .strict(),
     scenes: z.record(z.string(), SceneSchema),
     shots: z.record(z.string(), ShotSchema),
+    assets: z.record(z.string(), AssetSchema).default({}),
+    cut: CutSchema.default({ items: [], rendered: null }),
   })
   .strict();
 
@@ -128,6 +169,8 @@ export function emptyProductionDocument(revision: number, commit: string): Produ
     story: { lines: emptyFiveLines(), revisions: [] },
     scenes: {},
     shots: {},
+    assets: {},
+    cut: { items: [], rendered: null },
   };
 }
 

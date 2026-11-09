@@ -150,6 +150,40 @@ describe("resolveChains", () => {
     expect(assembly?.reason).toContain("unverified");
   });
 
+  it("reads a version from a sibling command when the executable rejects --version", async () => {
+    const cli = "E:\\OpenShotVideoEditor\\openshot-cli.exe";
+    const sibling = "E:\\OpenShotVideoEditor\\openshot-qt-cmd.exe";
+    const states = await probeServices({
+      vendorDir,
+      now: "2026-11-09T10:00:00.000Z",
+      hints: { "openshot-cli": [cli] },
+      run: async (argv) =>
+        argv[0] === cli
+          ? { code: 2, stdout: "", stderr: "unrecognized arguments: --version", failedToStart: false }
+          : argv[0] === sibling
+            ? ran("4.1.1")
+            : missing,
+    });
+    const openshot = states.find((state) => state.id === "openshot-cli");
+    expect(openshot?.status).toBe("green");
+    expect(openshot?.version).toBe("4.1.1");
+    expect(openshot?.detail).toContain("openshot-qt-cmd.exe");
+  });
+
+  it("finds a portable mpv registered in the uninstall registry", async () => {
+    const mpv = "E:\\Downloads\\mpv-x86_64\\mpv.exe";
+    const states = await probeServices({
+      vendorDir,
+      now: "2026-11-09T10:00:00.000Z",
+      hints: { mpv: [mpv] },
+      run: async (argv) => (argv[0] === mpv ? ran("mpv v0.42.0-14-gd91123d9a Copyright") : missing),
+    });
+    const state = states.find((candidate) => candidate.id === "mpv");
+    expect(state?.status).toBe("green");
+    expect(state?.version).toBe("v0.42.0-14-gd91123d9a");
+    expect(state?.source).toBe("registry");
+  });
+
   it("falls back to ffmpeg and explains what is lost", async () => {
     const states = await probeServices({
       vendorDir,

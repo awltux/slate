@@ -85,9 +85,26 @@ async function probeOne(definition: ServiceDefinition, deps: ProbeDeps): Promise
     if (result.failedToStart) continue;
 
     const matched = definition.versionPattern.exec(result.stdout + result.stderr);
-    const version = matched?.[1] ?? null;
+    let version = matched?.[1] ?? null;
+    let versionVia: string | null = null;
 
-    if (result.code === 0 && version) {
+    if (!version && definition.versionProbe) {
+      // The executing binary cannot report its version; a sibling command can. Report which one answered.
+      for (const sibling of definition.versionProbe(candidate.path)) {
+        const siblingResult = await deps.run([sibling, ...definition.versionArgs]);
+        if (siblingResult.failedToStart) continue;
+        const siblingMatch = definition.versionPattern.exec(siblingResult.stdout + siblingResult.stderr);
+        if (siblingMatch?.[1]) {
+          version = siblingMatch[1];
+          versionVia = sibling.split(/[\\/]/u).pop() ?? sibling;
+          break;
+        }
+      }
+    }
+
+    // A version obtained from a sibling proves the install; the primary command's exit code is then irrelevant
+    // (openshot-cli rejects --version with exit 2 while its sibling reports 4.1.1).
+    if (version) {
       return {
         id: definition.id,
         displayName: definition.displayName,
@@ -96,7 +113,9 @@ async function probeOne(definition: ServiceDefinition, deps: ProbeDeps): Promise
         binary: candidate.path,
         source: candidate.source,
         version,
-        detail: `${definition.displayName} ${version} — ${SOURCE_LABEL[candidate.source]}`,
+        detail: `${definition.displayName} ${version} — ${SOURCE_LABEL[candidate.source]}${
+          versionVia ? ` (version reported by ${versionVia})` : ""
+        }`,
       };
     }
 

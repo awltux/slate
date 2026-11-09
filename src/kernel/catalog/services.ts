@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export const SERVICE_IDS = ["ffmpeg", "ffprobe", "mpv", "openshot-cli", "melt", "blender"] as const;
 export type ServiceId = (typeof SERVICE_IDS)[number];
@@ -13,6 +13,8 @@ export interface ServiceDefinition {
   executable: string;
   versionArgs: string[];
   versionPattern: RegExp;
+  /** Other binaries that can report this application's version when the executable itself cannot. */
+  versionProbe?: (binary: string) => string[];
   /** Pinned copies downloaded by `slate setup`. */
   vendorPaths: (vendorDir: string) => string[];
   /** Conventional install directories for this platform. */
@@ -78,6 +80,11 @@ export function serviceDefinitions(): ServiceDefinition[] {
       executable: `openshot-cli${exe}`,
       versionArgs: ["--version"],
       versionPattern: /(\d+\.\d+(?:\.\d+)?)/u,
+      // openshot-cli accepts no --version; the sibling command reports the application version.
+      versionProbe: (binary) => {
+        const dir = dirname(binary);
+        return [join(dir, `openshot-qt-cmd${exe}`), join(dir, `openshot-qt${exe}`)];
+      },
       vendorPaths: () => [],
       knownPaths: () => [],
     },

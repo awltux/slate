@@ -8,6 +8,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | Operation | Policy | MCP tool | Summary |
 |---|---|---|---|
 | `capabilities.get` | read | `capabilities_get` | Probe the host toolchain and report the chain that will run each stage, with the reason. |
+| `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
+| `cut.get` | read | `cut_get` | The current cut: its items, total duration and the last render. |
+| `cut.render` | write | `cut_render` | Render the cut to MP4 through the assembly chain (FFmpeg concat for now). |
+| `frame.attach` | write | `frame_attach` | Attach an image to a shot slot (board, first or last), copied into the project by content hash. |
 | `graph.stale` | read | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
 | `plan.vocabulary` | read | `plan_vocabulary` | Valid values for shot and scene fields. |
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
@@ -15,6 +19,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `scene.create` | write | `scene_create` | Add a scene. Numbers are assigned in order and are never reused. |
 | `scene.list` | read | `scene_list` | Scenes with their shots, readiness and staleness. |
 | `scene.update` | write | `scene_update` | Change a scene. Its shots become stale because they were reviewed against the old text. |
+| `service.clear-path` | write | `service_clear-path` | Forget an explicit executable path and go back to discovery. |
+| `service.set-path` | write | `service_set-path` | Point a service at a specific executable, after checking that it runs. |
 | `session.brief` | read | `session_brief` | A bounded read of where the film stands: the cheapest way for a new session to start. |
 | `shot.create` | write | `shot_create` | Add a shot to a scene; it is built from that scene's current text. |
 | `shot.get` | read | `shot_get` | One shot with its readiness checks and staleness. |
@@ -36,6 +42,94 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "default": false
     }
   },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `cut.build`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `cut.get`
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `cut.render`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "width": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 7680,
+      "default": 1280
+    },
+    "height": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 4320,
+      "default": 720
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `frame.attach`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "shotId": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "board",
+        "first",
+        "last"
+      ]
+    },
+    "sourcePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "shotId",
+    "role",
+    "sourcePath"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
@@ -255,6 +349,18 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
+```
+
+### `service.clear-path`
+
+```json
+{}
+```
+
+### `service.set-path`
+
+```json
+{}
 ```
 
 ### `session.brief`

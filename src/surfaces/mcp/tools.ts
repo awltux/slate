@@ -13,7 +13,8 @@ export interface McpToolDefinition {
 
 /** DSH shows a stdio server's tools as `mcp__slate__<name>`, so the raw name must be snake_case and stable. */
 export function toolName(operation: string): string {
-  return operation.replaceAll(".", "_");
+  // Tool names must be [a-z0-9_]: dots separate domains and hyphens would not survive a DeepSeek function name.
+  return operation.replaceAll(".", "_").replaceAll("-", "_");
 }
 
 function inputShape(op: AnyOp): ZodRawShape {

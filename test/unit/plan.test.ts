@@ -6,13 +6,13 @@ import { fixedClock } from "../../src/domain/clock.js";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
 import type { RunProbe } from "../../src/kernel/catalog/probe.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
+import { testContext } from "../helpers/context.js";
 
 const clock = fixedClock("2026-11-09T10:00:00.000Z");
 const missing = { code: null, stdout: "", stderr: "ENOENT", failedToStart: true };
 
 function contextFor(root: string): OpContext {
-  const run: RunProbe = async () => missing;
-  return { root, actor: "director", clock, run, vendorDir: join("C:", "slate", "vendor") };
+  return testContext(root);
 }
 
 function expectOk<T>(result: Envelope<T> | FailureEnvelope): Envelope<T> {

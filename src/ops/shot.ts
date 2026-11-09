@@ -28,6 +28,9 @@ const ShotViewSchema = z
     movement: z.string(),
     durationSec: z.number(),
     description: z.string(),
+    frames: z
+      .object({ board: z.string().optional(), first: z.string().optional(), last: z.string().optional() })
+      .strict(),
     builtFromSceneHash: z.string(),
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -95,6 +98,7 @@ export const shotCreate = defineOp({
           durationSec: input.durationSec,
           description: input.description,
           builtFromSceneHash,
+          frames: {},
           createdAt: now,
           updatedAt: now,
         };
@@ -249,6 +253,7 @@ export const shotGet = defineOp({
           movement: shot.movement,
           durationSec: shot.durationSec,
           description: shot.description,
+          frames: shot.frames,
           builtFromSceneHash: shot.builtFromSceneHash,
           createdAt: shot.createdAt,
           updatedAt: shot.updatedAt,

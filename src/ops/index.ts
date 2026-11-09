@@ -1,9 +1,12 @@
 import { capabilitiesGet } from "./capabilities.js";
+import { cutBuild, cutGet, cutRender } from "./cut.js";
+import { frameAttach } from "./frame.js";
 import { graphStale, sessionBrief } from "./graph.js";
 import { projectHistory } from "./history.js";
 import { projectCreate } from "./project.js";
 import { OpRegistry } from "./registry.js";
 import { sceneCreate, sceneList, sceneUpdate } from "./scene.js";
+import { serviceClearPath, serviceSetPath } from "./service.js";
 import { shotCreate, shotGet, shotRebase, shotUpdate } from "./shot.js";
 import { storyGet, storySet } from "./story.js";
 import { planVocabulary } from "./vocabulary.js";
@@ -23,6 +26,12 @@ export function createRegistry(): OpRegistry {
     shotUpdate,
     shotRebase,
     shotGet,
+    frameAttach,
+    cutGet,
+    cutBuild,
+    cutRender,
+    serviceSetPath,
+    serviceClearPath,
     graphStale,
     sessionBrief,
     planVocabulary,

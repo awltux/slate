@@ -10,6 +10,8 @@ import { authenticate, readUsers } from "../../auth/users.js";
 import type { Clock } from "../../domain/clock.js";
 import { SlateError } from "../../domain/result.js";
 import type { RunProbe } from "../../kernel/catalog/probe.js";
+import { createToolResolver } from "../../kernel/catalog/tool-resolver.js";
+import { readProductionDocument } from "../../kernel/workspace/production-doc.js";
 import { type OpRegistry, createRegistry } from "../../ops/index.js";
 import { EventHub } from "./events.js";
 import {
@@ -30,6 +32,29 @@ export interface AppOptions {
   registry?: OpRegistry;
   staticDir?: string;
   secureCookies?: boolean;
+}
+
+function contentTypeFor(file: string): string {
+  const extension = file.toLowerCase().split(".").pop() ?? "";
+  switch (extension) {
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "webp":
+      return "image/webp";
+    case "mp4":
+      return "video/mp4";
+    case "webm":
+      return "video/webm";
+    case "wav":
+      return "audio/wav";
+    case "mp3":
+      return "audio/mpeg";
+    default:
+      return "application/octet-stream";
+  }
 }
 
 const LoginSchema = z.object({ username: z.string().min(1), password: z.string().min(1) }).strict();
@@ -65,6 +90,12 @@ export function createApp(options: AppOptions): Hono {
   const app = new Hono();
   const registry = options.registry ?? createRegistry();
   const hub = new EventHub();
+  const toolResolver = createToolResolver({
+    run: options.run,
+    vendorDir: options.vendorDir,
+    now: () => options.clock.now(),
+    home: options.home,
+  });
   let secretPromise: Promise<Buffer> | undefined;
   const secret = (): Promise<Buffer> => {
     secretPromise ??= loadSecret(options.home);
@@ -157,7 +188,16 @@ export function createApp(options: AppOptions): Hono {
     const result = await registry.execute(
       "project.create",
       { root: path, ...parsed.data },
-      { root: path, actor, clock: options.clock, run: options.run, vendorDir: options.vendorDir },
+      {
+        root: path,
+        home: options.home,
+        actor,
+        clock: options.clock,
+        run: options.run,
+        vendorDir: options.vendorDir,
+        privileged: true,
+        tool: toolResolver,
+      },
     );
 
     if (!result.ok) return c.json(result);
@@ -197,10 +237,13 @@ export function createApp(options: AppOptions): Hono {
     const body = await c.req.json().catch(() => ({}));
     const result = await registry.execute(name, body, {
       root: project.path,
+      home: options.home,
       actor: await displayNameFor(identity.userId),
       clock: options.clock,
       run: options.run,
       vendorDir: options.vendorDir,
+      privileged: canWrite(identity.role),
+      tool: toolResolver,
     });
 
     if (result.ok) {
@@ -231,6 +274,45 @@ export function createApp(options: AppOptions): Hono {
       }
       unsubscribe();
     });
+  });
+
+  // Media is addressed by asset id, never by path, and served only to a signed-in member of this host.
+  app.get("/p/:projectId/media/:assetId", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to read media" });
+
+    const projects = await readProjects(options.home);
+    const project = projects.find((entry) => entry.id === c.req.param("projectId"));
+    if (!project) throw new HTTPException(404, { message: "project is not registered on this host" });
+
+    const production = await readProductionDocument(project.path);
+    const asset = production?.assets[c.req.param("assetId")];
+    if (!asset) throw new HTTPException(404, { message: "no such asset" });
+
+    const bytes = await readFile(join(project.path, asset.path)).catch(() => null);
+    if (!bytes) throw new HTTPException(404, { message: "asset file is missing" });
+
+    const headers: Record<string, string> = {
+      "content-type": contentTypeFor(asset.path),
+      "accept-ranges": "bytes",
+      "cache-control": "private, max-age=60",
+    };
+
+    const range = c.req.header("range");
+    const match = range ? /^bytes=(\d*)-(\d*)$/u.exec(range) : null;
+    if (match) {
+      const start = match[1] === "" ? 0 : Number(match[1]);
+      const end = match[2] === "" ? bytes.length - 1 : Math.min(Number(match[2]), bytes.length - 1);
+      if (Number.isNaN(start) || Number.isNaN(end) || start > end) {
+        return new Response(null, { status: 416, headers: { "content-range": `bytes */${bytes.length}` } });
+      }
+      return new Response(bytes.subarray(start, end + 1), {
+        status: 206,
+        headers: { ...headers, "content-range": `bytes ${start}-${end}/${bytes.length}` },
+      });
+    }
+
+    return new Response(bytes, { headers });
   });
 
   if (options.staticDir) {

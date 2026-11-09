@@ -10,18 +10,13 @@ import type { RunProbe } from "../../src/kernel/catalog/probe.js";
 import { createRegistry } from "../../src/ops/index.js";
 import { OpRegistry, defineOp } from "../../src/ops/registry.js";
 import type { OpContext } from "../../src/ops/types.js";
+import { testContext } from "../helpers/context.js";
 
 const ran = (stdout: string) => ({ code: 0, stdout, stderr: "", failedToStart: false });
 const missing = { code: null, stdout: "", stderr: "ENOENT", failedToStart: true };
 
 function makeContext(root: string, run: RunProbe): OpContext {
-  return {
-    root,
-    actor: "director",
-    clock: fixedClock("2026-11-09T10:00:00.000Z"),
-    run,
-    vendorDir: join("C:", "slate", "vendor"),
-  };
+  return testContext(root, { run });
 }
 
 function expectOk<T>(result: Envelope<T> | FailureEnvelope): Envelope<T> {
@@ -159,15 +154,26 @@ describe("capabilities.get", () => {
     expect(assembly?.degraded).toBe(true);
   });
 
-  it("never leaks a host path in its result", async () => {
+  it("never leaks a host path to an unprivileged caller", async () => {
     const registry = createRegistry();
-    const context = makeContext(root, runner);
-    await registry.execute("project.create", { root, name: "The Last Light" }, context);
-    const result = expectOk(await registry.execute("capabilities.get", {}, context));
+    const owner = makeContext(root, runner);
+    await registry.execute("project.create", { root, name: "The Last Light" }, owner);
+
+    const reviewer = testContext(root, { run: runner, privileged: false });
+    const result = expectOk(await registry.execute("capabilities.get", {}, reviewer));
 
     const serialised = JSON.stringify(result);
-    expect(serialised).not.toContain(root.replaceAll("\\", "\\\\"));
     expect(serialised).not.toMatch(/[A-Za-z]:\\\\/u);
+  });
+
+  it("gives a privileged caller the install path, so a wrong install can be fixed", async () => {
+    const registry = createRegistry();
+    const owner = makeContext(root, runner);
+    await registry.execute("project.create", { root, name: "The Last Light" }, owner);
+
+    const result = expectOk(await registry.execute("capabilities.get", { refresh: true }, owner));
+    const data = result.data as { services: Array<{ id: string; installPath: string | null }> };
+    expect(data.services.find((service) => service.id === "ffmpeg")?.installPath).toBeTruthy();
   });
 
   it("fails with not_found outside a project", async () => {

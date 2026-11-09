@@ -1,7 +1,8 @@
 import type { z } from "zod";
 import type { Clock } from "../domain/clock.js";
 import type { Warning } from "../domain/result.js";
-import type { RunProbe } from "../kernel/catalog/probe.js";
+import type { RunProbe, ServiceState } from "../kernel/catalog/probe.js";
+import type { ServiceId } from "../kernel/catalog/services.js";
 
 export type OpPolicy = "read" | "write" | "spend" | "destructive";
 
@@ -9,10 +10,22 @@ export type OpPolicy = "read" | "write" | "spend" | "destructive";
 export interface OpContext {
   /** Absolute project root. For `project.create` this is the folder the project will be created in. */
   root: string;
+  /** Host-level Slate home: users, tokens, config and vendored binaries. Never inside a project. */
+  home: string;
   actor: string;
   clock: Clock;
   run: RunProbe;
   vendorDir: string;
+  /**
+   * True when the actor may see host paths and change host configuration (owner or editor). Host paths never reach an
+   * unprivileged caller, so the rule "ids, not paths" still holds for reviewers.
+   */
+  privileged: boolean;
+  /**
+   * Resolve a tool to the binary that will run it. Operations must never assume a bare name is on PATH: the probe
+   * may have found the tool in a discovered install folder instead.
+   */
+  tool: (id: ServiceId) => Promise<ServiceState>;
 }
 
 export interface OpOutcome<T> {

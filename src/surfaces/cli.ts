@@ -9,6 +9,7 @@ import { ensureOwner } from "../auth/users.js";
 import { systemClock } from "../domain/clock.js";
 import type { Envelope, FailureEnvelope } from "../domain/result.js";
 import { runCommand } from "../kernel/adapters/command-runner.js";
+import { createToolResolver } from "../kernel/catalog/tool-resolver.js";
 import { slateHome, vendorDir } from "../kernel/home.js";
 import { type OpContext, createRegistry } from "../ops/index.js";
 import { createApp } from "./http/app.js";
@@ -33,8 +34,24 @@ const EXIT_CODES: Record<string, number> = {
   forbidden: 6,
 };
 
+const toolResolver = createToolResolver({
+  run: (argv) => runCommand(argv),
+  vendorDir: vendorDir(),
+  now: () => systemClock.now(),
+  home: slateHome(),
+});
+
 function contextFor(root: string, actor: string): OpContext {
-  return { root, actor, clock: systemClock, run: (argv) => runCommand(argv), vendorDir: vendorDir() };
+  return {
+    root,
+    home: slateHome(),
+    actor,
+    clock: systemClock,
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    privileged: true,
+    tool: toolResolver,
+  };
 }
 
 function printFailure(failure: FailureEnvelope): number {
