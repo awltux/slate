@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, type ProjectSummary, runOp, subscribe } from "../api.js";
+import { Plan } from "./Plan.js";
+import { Write } from "./Write.js";
 
 interface ServiceRow {
   id: string;
@@ -36,10 +38,10 @@ interface Commit {
   touched: string[];
 }
 
-type Tab = "health" | "activity";
+type Tab = "write" | "plan" | "health" | "activity";
 
 export function ProjectView({ project }: { project: ProjectSummary }) {
-  const [tab, setTab] = useState<Tab>("health");
+  const [tab, setTab] = useState<Tab>("write");
 
   return (
     <div className="stack">
@@ -51,6 +53,12 @@ export function ProjectView({ project }: { project: ProjectSummary }) {
       </div>
 
       <div className="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === "write"} onClick={() => setTab("write")}>
+          Write
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "plan"} onClick={() => setTab("plan")}>
+          Plan
+        </button>
         <button type="button" role="tab" aria-selected={tab === "health"} onClick={() => setTab("health")}>
           Health
         </button>
@@ -64,7 +72,10 @@ export function ProjectView({ project }: { project: ProjectSummary }) {
         </button>
       </div>
 
-      {tab === "health" ? <Health projectId={project.id} /> : <Activity projectId={project.id} />}
+      {tab === "write" ? <Write projectId={project.id} /> : null}
+      {tab === "plan" ? <Plan projectId={project.id} /> : null}
+      {tab === "health" ? <Health projectId={project.id} /> : null}
+      {tab === "activity" ? <Activity projectId={project.id} /> : null}
     </div>
   );
 }
