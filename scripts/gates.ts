@@ -60,11 +60,11 @@ async function signIn(): Promise<void> {
   csrf = ((await response.json()) as { data: { csrf: string } }).data.csrf;
 }
 
-async function newProject(name: string): Promise<string> {
+async function newProject(name: string, budgetUsd = 200): Promise<string> {
   const created = await fetch(`${base}/api/projects`, {
     method: "POST",
     headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
-    body: JSON.stringify({ name, runtimeSeconds: 90, aspectRatio: "16:9", budgetUsd: 200 }),
+    body: JSON.stringify({ name, runtimeSeconds: 90, aspectRatio: "16:9", budgetUsd }),
   });
   const payload = (await created.json()) as Envelope<{ projectId: string }>;
   assert(payload.ok, "project creation must succeed");
@@ -421,6 +421,147 @@ async function gate3(steps: string[]): Promise<void> {
   steps.push("media: refused without a session");
 }
 
+async function gate4(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light", 3);
+  steps.push(`project: ${projectId} with a $3 ceiling`);
+
+  await op(projectId, "story.set", { lines: FIVE_LINES });
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
+  });
+  const shotA = await op<{ shotId: string; number: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "MCU",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 5,
+    description: "Elias turns the wick down for the last time.",
+  });
+  const shotB = await op<{ shotId: string; number: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "WS",
+    angle: "LOW",
+    movement: "PUSH",
+    durationSec: 5,
+    description: "The lens swings past him and the room empties.",
+  });
+
+  const ffmpeg = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("ffmpeg");
+  assert(Boolean(ffmpeg.binary), "gate 4 needs FFmpeg to make a board");
+  const boards = await mkdtemp(join(tmpdir(), "slate-budget-"));
+  const board = join(boards, "3a.png");
+  const made = await runCommand([
+    ffmpeg.binary as string,
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=0x101820:s=1280x720",
+    "-frames:v",
+    "1",
+    board,
+  ]);
+  assert(made.code === 0, "ffmpeg must make the board");
+
+  await op(projectId, "frame.attach", { shotId: shotA.data.shotId, role: "board", sourcePath: board });
+  steps.push("plan: two 5s shots, one with a board");
+
+  const estimate = await op<{ estimateId: string; usd: number; remainingUsd: number }>(
+    projectId,
+    "estimate.create",
+    {
+      shotIds: [shotA.data.shotId],
+      tier: "final",
+    },
+  );
+  assert(
+    Math.abs(estimate.data.usd - 2) < 0.001,
+    `a 5s final take must price at $2, got $${estimate.data.usd}`,
+  );
+  assert(Math.abs(estimate.data.remainingUsd - 3) < 0.001, "nothing is committed before a submit");
+  steps.push(`estimate: $${estimate.data.usd.toFixed(2)} for shot ${shotA.data.number}, $3 available`);
+
+  const approval = await op<{ token: string }>(projectId, "spend.approve", {
+    estimateId: estimate.data.estimateId,
+  });
+  assert(approval.data.token.length > 40, "approval must return a signed token");
+  steps.push("approval: signed token issued");
+
+  const generated = await op<{
+    jobId: string;
+    takeIds: string[];
+    spentUsd: number;
+    remainingUsd: number;
+  }>(projectId, "take.generate", { token: approval.data.token, seed: 7 });
+  assert(generated.data.takeIds.length === 1, "one take must be produced");
+  assert(Math.abs(generated.data.remainingUsd - 1) < 0.001, "the reservation must leave $1");
+  steps.push(`take: ${generated.data.takeIds[0]} for $${generated.data.spentUsd.toFixed(2)}, $1 left`);
+
+  const takes = await op<{ takes: Array<{ id: string; selected: boolean; assetId: string }> }>(
+    projectId,
+    "take.list",
+    {
+      shotId: shotA.data.shotId,
+    },
+  );
+  assert(takes.data.takes.length === 1, "the take must be listed");
+  assert(takes.data.takes[0]?.selected === true, "the first take is selected by default");
+  steps.push("takes: one take, selected, with its asset");
+
+  const job = await op<{ status: string; takeIds: string[] }>(projectId, "job.get", {
+    jobId: generated.data.jobId,
+  });
+  assert(job.data.status === "ready", "the job must be recorded as ready");
+  steps.push("job: ready, with its take ids");
+
+  const replay = await fetch(`${base}/p/${projectId}/api/op/take.generate`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ token: approval.data.token }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; error?: { code: string } }>);
+  assert(
+    replay.ok === false && replay.error?.code === "policy_rejected",
+    "the same approval must not be spent twice",
+  );
+  steps.push("approval: single use enforced");
+
+  const secondEstimate = await op<{ estimateId: string; usd: number }>(projectId, "estimate.create", {
+    shotIds: [shotB.data.shotId],
+    tier: "final",
+  });
+  assert(Math.abs(secondEstimate.data.usd - 2) < 0.001, "the second shot also prices at $2");
+
+  const blocked = await fetch(`${base}/p/${projectId}/api/op/spend.approve`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ estimateId: secondEstimate.data.estimateId }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; error?: { code: string } }>);
+  assert(
+    blocked.ok === false && blocked.error?.code === "budget_exhausted",
+    "a $2 batch with $1 left must be refused",
+  );
+  steps.push("budget: $2 batch refused with $1 remaining");
+
+  const spend = await op<{ committedUsd: number; remainingUsd: number; entries: Array<{ kind: string }> }>(
+    projectId,
+    "spend.summary",
+  );
+  assert(
+    Math.abs(spend.data.committedUsd - 2) < 0.001 && Math.abs(spend.data.remainingUsd - 1) < 0.001,
+    "the ledger must agree",
+  );
+  assert(
+    spend.data.entries.some((entry) => entry.kind === "reservation"),
+    "the reservation must be on the ledger",
+  );
+  steps.push("ledger: $2 committed, $1 remaining, reservation recorded");
+}
+
 async function browserFlow(steps: string[]): Promise<void> {
   try {
     const { chromium } = await import("playwright");
@@ -432,6 +573,18 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber >= 4) {
+      // The project was prepared through the API; open it and look at the take that was generated.
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.click('role=tab[name="Shoot"]');
+      await page.waitForSelector("text=Budget", { timeout: 20_000 });
+      await page.waitForSelector("video", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "shoot.png"), fullPage: true });
+      steps.push("ui: take, budget and selection visible in the browser");
+      await instance.close();
+      return;
+    }
 
     if (gateNumber >= 3) {
       // The project was prepared through the API; open it and look at the cut.
@@ -515,6 +668,7 @@ async function main(): Promise<number> {
     if (gateNumber === 1) await gate1(steps);
     else if (gateNumber === 2) await gate2(steps);
     else if (gateNumber === 3) await gate3(steps);
+    else if (gateNumber === 4) await gate4(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

@@ -1,0 +1,18 @@
+{
+  "gate": 4,
+  "status": "passed",
+  "base": "http://127.0.0.1:60190",
+  "steps": [
+    "project: prj_dd5dd4f5c9344fd99f6086b83ea02078 with a $3 ceiling",
+    "plan: two 5s shots, one with a board",
+    "estimate: $2.00 for shot 1A, $3 available",
+    "approval: signed token issued",
+    "take: tke_b3cffe76664a470ebba5bdf367f9cb0b for $2.00, $1 left",
+    "takes: one take, selected, with its asset",
+    "job: ready, with its take ids",
+    "approval: single use enforced",
+    "budget: $2 batch refused with $1 remaining",
+    "ledger: $2 committed, $1 remaining, reservation recorded",
+    "ui: take, budget and selection visible in the browser"
+  ]
+}
