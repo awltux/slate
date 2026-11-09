@@ -250,6 +250,27 @@ function EntityCard({
     }
   }
 
+  async function expand() {
+    setBusy(true);
+    setError(null);
+    try {
+      // Expand what is on screen, not what was last saved: the button sits beside the field it reads.
+      await runOp(projectId, "entity.update", { entityId: entity.id, description });
+      const result = await runOp<{ prompt: string; via: string }>(projectId, "prompt.expand", {
+        entityId: entity.id,
+      });
+      setPrompt(result.data.prompt);
+      if (result.data.via === "local") {
+        setError("no model configured — the prompt was composed locally");
+      }
+      await onChange();
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveDetails() {
     await run(() =>
       runOp(projectId, "entity.update", {
@@ -335,21 +356,33 @@ function EntityCard({
       </div>
 
       <div className="stack" style={{ gap: "0.4rem" }}>
-        <textarea
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          aria-label={`Description of ${entity.name}`}
-          rows={2}
-          placeholder="Description in the director's words"
-          style={{
-            background: "var(--panel-2)",
-            border: "1px solid var(--line)",
-            borderRadius: 8,
-            padding: "0.5rem",
-            color: "inherit",
-            font: "inherit",
-          }}
-        />
+        <div className="row" style={{ alignItems: "flex-start", gap: "0.5rem" }}>
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            aria-label={`Description of ${entity.name}`}
+            rows={2}
+            placeholder="Description in the director's words — Expand turns it into a prompt"
+            style={{
+              flex: 1,
+              background: "var(--panel-2)",
+              border: "1px solid var(--line)",
+              borderRadius: 8,
+              padding: "0.5rem",
+              color: "inherit",
+              font: "inherit",
+            }}
+          />
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void expand()}
+            disabled={busy || description.trim() === ""}
+            title="Write a generation prompt from this description, using the style sheet"
+          >
+            {busy ? "Expanding…" : "Expand"}
+          </button>
+        </div>
         <textarea
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
@@ -386,7 +419,7 @@ function EntityCard({
             </select>
           )}
           <button type="button" onClick={() => void saveDetails()} disabled={busy}>
-            Save description and prompt
+            Save
           </button>
           <div className="spacer" />
           <input
