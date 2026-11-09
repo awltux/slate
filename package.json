@@ -23,7 +23,8 @@
     "serve": "tsx src/surfaces/cli.ts serve",
     "gate:2": "tsx scripts/gates.ts 2",
     "docs:registry": "tsx scripts/registry-doc.ts",
-    "check:registry": "tsx scripts/registry-doc.ts --check"
+    "check:registry": "tsx scripts/registry-doc.ts --check",
+    "gate:3": "tsx scripts/gates.ts 3"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",

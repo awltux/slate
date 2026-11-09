@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import { ensureOwner } from "../src/auth/users.js";
+import { addUser, ensureOwner } from "../src/auth/users.js";
 import { systemClock } from "../src/domain/clock.js";
 import { runCommand } from "../src/kernel/adapters/command-runner.js";
+import { createToolResolver } from "../src/kernel/catalog/tool-resolver.js";
 import { vendorDir } from "../src/kernel/home.js";
 import { createApp } from "../src/surfaces/http/app.js";
 import { mcpSmoke } from "./mcp-smoke.js";
@@ -34,6 +35,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 let base = "";
 let cookie = "";
+let projectId = "";
 let csrf = "";
 
 async function op<T>(projectId: string, name: string, input: unknown = {}): Promise<Envelope<T>> {
@@ -94,7 +96,7 @@ async function gate1(steps: string[]): Promise<void> {
   await signIn();
   steps.push("auth: owner signed in");
 
-  const projectId = await newProject("The Last Light");
+  projectId = await newProject("The Last Light");
   steps.push(`project: ${projectId}`);
 
   const capabilities = await op<{
@@ -110,8 +112,27 @@ async function gate1(steps: string[]): Promise<void> {
   assert(html.includes('<div id="root">'), "the built UI must be served");
   steps.push("ui: index served");
 
-  assert(!/[A-Za-z]:\\\\/u.test(JSON.stringify(capabilities)), "capabilities must not leak a host path");
-  steps.push("leak: no host paths");
+  // A reviewer may look at the film but must never learn the host's directory layout.
+  const viewerSession = await fetch(`${base}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "reviewer", password: "gate-viewer-123" }),
+  });
+  assert(viewerSession.status === 200, "the reviewer account must sign in");
+  const viewerCookie = (viewerSession.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+  const viewerCsrf = ((await viewerSession.json()) as { data: { csrf: string } }).data.csrf;
+  const viewerCaps = (await fetch(`${base}/p/${projectId}/api/op/capabilities.get`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: viewerCookie, "x-slate-csrf": viewerCsrf },
+    body: "{}",
+  }).then((response) => response.json())) as { data: { services: Array<{ installPath: string | null }> } };
+
+  assert(!/[A-Za-z]:\\\\/u.test(JSON.stringify(viewerCaps)), "a reviewer must not receive a host path");
+  assert(
+    viewerCaps.data.services.every((service) => service.installPath === null),
+    "a reviewer must not receive install paths",
+  );
+  steps.push("leak: reviewer sees no host paths");
 
   const dir = await mkdtemp(join(tmpdir(), "slate-headless-"));
   const created = await cli(["project", "create", dir, "--name", "Headless", "--json"]);
@@ -122,7 +143,7 @@ async function gate1(steps: string[]): Promise<void> {
 
 async function gate2(steps: string[]): Promise<void> {
   await signIn();
-  const projectId = await newProject("The Last Light");
+  projectId = await newProject("The Last Light");
   steps.push(`project: ${projectId}`);
 
   await op(projectId, "story.set", { lines: FIVE_LINES, note: "first pass" });
@@ -275,6 +296,107 @@ async function gate2(steps: string[]): Promise<void> {
   steps.push(`mcp: ${mcp.tools.length} tools over stdio (${mcp.protocolVersion}), story.set called`);
 }
 
+async function gate3(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light");
+  steps.push(`project: ${projectId}`);
+
+  await op(projectId, "story.set", { lines: FIVE_LINES });
+
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
+  });
+  const shotA = await op<{ shotId: string; number: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "MCU",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 5,
+    description: "Elias turns the wick down; his hands are steady.",
+  });
+  const shotB = await op<{ shotId: string; number: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "WS",
+    angle: "LOW",
+    movement: "PUSH",
+    durationSec: 3,
+    description: "The lens turns and the room swings past him.",
+  });
+  steps.push(`shots: ${shotA.data.number} (5s), ${shotB.data.number} (3s)`);
+
+  // Real images, generated locally: the render must work on a still-frame animatic before any model is involved.
+  const ffmpeg = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("ffmpeg");
+  assert(Boolean(ffmpeg.binary), "gate 3 needs FFmpeg to generate boards and render");
+
+  const boards = await mkdtemp(join(tmpdir(), "slate-boards-"));
+  const boardA = join(boards, "3a.png");
+  const boardB = join(boards, "3b.png");
+  const makeBoard = (colour: string, target: string) =>
+    runCommand([
+      ffmpeg.binary as string,
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${colour}:s=1280x720`,
+      "-frames:v",
+      "1",
+      target,
+    ]);
+  const a = await makeBoard("0x1a2430", boardA);
+  const b = await makeBoard("0x6b4a20", boardB);
+  assert(a.code === 0 && b.code === 0, "ffmpeg must produce the board images");
+  steps.push("boards: two 1280x720 images generated locally");
+
+  const attachedA = await op<{ assetId: string }>(projectId, "frame.attach", {
+    shotId: shotA.data.shotId,
+    role: "board",
+    sourcePath: boardA,
+  });
+  const attachedB = await op<{ assetId: string }>(projectId, "frame.attach", {
+    shotId: shotB.data.shotId,
+    role: "board",
+    sourcePath: boardB,
+  });
+  assert(attachedA.data.assetId.startsWith("ast_"), "a frame must become a project asset");
+  steps.push("frames: boards copied into the project by content hash");
+
+  const built = await op<{ items: Array<{ number: string }>; totalSeconds: number }>(
+    projectId,
+    "cut.build",
+    {},
+  );
+  assert(built.data.items.length === 2, "the cut must contain both shots");
+  assert(Math.abs(built.data.totalSeconds - 8) < 0.001, "the cut must be 8 seconds long");
+  steps.push("cut: 2 items in scene order, 8.0s total");
+
+  const rendered = await op<{
+    rendered: { assetId: string; via: string } | null;
+    warning: string | null;
+  }>(projectId, "cut.render", { width: 1280, height: 720 });
+  assert(rendered.data.rendered !== null, "the cut must render");
+  steps.push(`render: ${rendered.data.rendered?.via} → ${rendered.data.rendered?.assetId}`);
+
+  const mediaUrl = `${base}/p/${projectId}/media/${rendered.data.rendered?.assetId}`;
+  const full = await fetch(mediaUrl, { headers: { cookie } });
+  assert(full.status === 200, `media must be served (got ${full.status})`);
+  assert(full.headers.get("content-type") === "video/mp4", "the render must be served as MP4");
+  const bytes = new Uint8Array(await full.arrayBuffer());
+  assert(bytes.length > 10_000, `the render must have substance (${bytes.length} bytes)`);
+
+  const ranged = await fetch(mediaUrl, { headers: { cookie, range: "bytes=0-99" } });
+  assert(ranged.status === 206, `range requests must work (got ${ranged.status})`);
+  steps.push(`media: ${bytes.length} bytes, type video/mp4, range supported`);
+
+  const anonymous = await fetch(mediaUrl);
+  assert(anonymous.status === 401, "media must not be readable without a session");
+  steps.push("media: refused without a session");
+}
+
 async function browserFlow(steps: string[]): Promise<void> {
   try {
     const { chromium } = await import("playwright");
@@ -286,6 +408,18 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber >= 3) {
+      // The project was prepared through the API; open it and look at the cut.
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.click("text=Cut");
+      await page.waitForSelector("text=The cut", { timeout: 20_000 });
+      await page.waitForSelector("video", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "cut.png"), fullPage: true });
+      steps.push("ui: rendered cut visible in the browser");
+      await instance.close();
+      return;
+    }
 
     await page.fill("form input[placeholder='The Last Light']", "The Last Light");
     await page.click("text=Create project");
@@ -334,6 +468,8 @@ async function main(): Promise<number> {
   await mkdir(artifactDir, { recursive: true });
   const home = await mkdtemp(join(tmpdir(), `slate-gate${gateNumber}-`));
   await ensureOwner(home, systemClock, "gate-password-123");
+  // A reviewer exists on every gate host so the privilege boundary is exercised end to end.
+  await addUser(home, { username: "reviewer", password: "gate-viewer-123", role: "viewer" }, systemClock);
 
   const app = createApp({
     home,
@@ -354,6 +490,7 @@ async function main(): Promise<number> {
   try {
     if (gateNumber === 1) await gate1(steps);
     else if (gateNumber === 2) await gate2(steps);
+    else if (gateNumber === 3) await gate3(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);
