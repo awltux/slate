@@ -2,7 +2,7 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
-## Slice 2 — story to shot list (in progress)
+## Slice 2 — story to shot list
 
 - **Slate finds the tools you already have.** Applications installed somewhere other than `PATH` — a different drive,
   a versioned folder — are discovered from the system's own install records. The health panel now says where each
