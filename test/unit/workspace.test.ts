@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fixedClock } from "../../src/domain/clock.js";
-import { commitProject } from "../../src/kernel/workspace/commit.js";
+import { commitDocuments } from "../../src/kernel/workspace/commit.js";
 import { readCommits } from "../../src/kernel/workspace/commits.js";
 import { readProjectDocument } from "../../src/kernel/workspace/project-doc.js";
 import { initProject } from "../../src/kernel/workspace/scaffold.js";
@@ -74,19 +74,19 @@ describe("readProjectDocument", () => {
   });
 });
 
-describe("commitProject", () => {
+describe("commitDocuments", () => {
   it("increments the revision, links the parent and snapshots the previous document", async () => {
     const created = await create();
 
-    const result = await commitProject({
+    const result = await commitDocuments({
       root,
       actor: "director",
       intent: "rename project",
       touched: ["project"],
       clock: fixedClock("2026-11-09T10:05:00.000Z"),
       expectedRevision: created.project.revision,
-      mutate: (document) => {
-        document.name = "The Last Light (v2)";
+      mutate: ({ project }) => {
+        project.name = "The Last Light (v2)";
       },
     });
 
@@ -108,7 +108,7 @@ describe("commitProject", () => {
   it("rejects a stale expected revision with a conflict", async () => {
     const created = await create();
     await expect(
-      commitProject({
+      commitDocuments({
         root,
         actor: "director",
         intent: "nope",
@@ -123,14 +123,14 @@ describe("commitProject", () => {
   it("refuses a mutation that produces an invalid document, leaving the file untouched", async () => {
     const created = await create();
     await expect(
-      commitProject({
+      commitDocuments({
         root,
         actor: "director",
         intent: "blank the name",
         touched: ["project"],
         clock: fixedClock("2026-11-09T10:07:00.000Z"),
-        mutate: (document) => {
-          document.name = "";
+        mutate: ({ project }) => {
+          project.name = "";
         },
       }),
     ).rejects.toMatchObject({ code: "invalid_document" });

@@ -8,13 +8,20 @@ import { writeFileAtomic } from "./atomic.js";
 import { type CommitRecord, appendCommit } from "./commits.js";
 import { type ProjectPaths, projectPaths } from "./paths.js";
 import {
+  type ProductionDocument,
+  ProductionDocumentSchema,
+  emptyProductionDocument,
+  productionDocumentJson,
+  readProductionDocument,
+} from "./production-doc.js";
+import {
   type ProjectDocument,
   ProjectDocumentSchema,
   projectDocumentJson,
   readProjectDocument,
 } from "./project-doc.js";
 
-export interface CommitRequest {
+export interface CommitDocumentsRequest {
   root: string;
   actor: string;
   intent: string;
@@ -23,62 +30,86 @@ export interface CommitRequest {
   clock: Clock;
   /** Revision the caller read. A mismatch is a conflict, never an overwrite. */
   expectedRevision?: number;
-  mutate: (document: ProjectDocument) => void;
+  mutate: (documents: { project: ProjectDocument; production: ProductionDocument }) => void;
 }
 
-export interface CommitResult {
+export interface CommitDocumentsResult {
   project: ProjectDocument;
+  production: ProductionDocument;
   commit: CommitRecord;
   paths: ProjectPaths;
 }
 
-/**
- * Apply one change to `project.json` and record it: snapshot, mutate, validate, atomic write, append commit.
- * The commit log is written last, so a crash leaves a document that the log does not describe — recoverable.
- */
-export async function commitProject(request: CommitRequest): Promise<CommitResult> {
-  const paths = projectPaths(request.root);
-  const current = await readProjectDocument(request.root);
+function invalid(
+  label: string,
+  error: { issues: Array<{ path: (string | number)[]; message: string }> },
+): SlateError {
+  return new SlateError("invalid_document", `the change produced an invalid ${label}`, {
+    detail: {
+      issues: error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+    },
+  });
+}
 
-  if (request.expectedRevision !== undefined && request.expectedRevision !== current.revision) {
-    throw new SlateError("conflict", "project changed since it was read", {
-      detail: { expectedRevision: request.expectedRevision, actualRevision: current.revision },
+/**
+ * One revision clock for both documents. Snapshot, mutate, bump the shared revision, write the documents, then
+ * append the commit — so a crash leaves a state the log does not describe, which is recoverable, rather than a log
+ * claiming a change that never landed.
+ */
+export async function commitDocuments(request: CommitDocumentsRequest): Promise<CommitDocumentsResult> {
+  const paths = projectPaths(request.root);
+  const currentProject = await readProjectDocument(request.root);
+  const currentProduction =
+    (await readProductionDocument(request.root)) ??
+    emptyProductionDocument(currentProject.revision, currentProject.commit);
+
+  if (request.expectedRevision !== undefined && request.expectedRevision !== currentProject.revision) {
+    throw new SlateError("conflict", "the project changed since it was read", {
+      detail: { expectedRevision: request.expectedRevision, actualRevision: currentProject.revision },
     });
   }
 
-  const snapshotDir = join(paths.historyDir, current.commit);
+  const snapshotDir = join(paths.historyDir, currentProject.commit);
   await mkdir(snapshotDir, { recursive: true });
   await copyFile(paths.projectFile, join(snapshotDir, "project.json"));
-
-  const draft = structuredClone(current);
-  request.mutate(draft);
-  draft.revision = current.revision + 1;
-  draft.updatedAt = request.clock.now();
-  draft.commit = newId("cmt");
-
-  const parsed = ProjectDocumentSchema.safeParse(draft);
-  if (!parsed.success) {
-    throw new SlateError("invalid_document", "the change produced an invalid project document", {
-      detail: {
-        issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
-      },
-    });
+  if (await readProductionDocument(request.root)) {
+    await copyFile(paths.productionFile, join(snapshotDir, "production.json"));
   }
-  const next = parsed.data;
-  await writeFileAtomic(paths.projectFile, projectDocumentJson(next));
+
+  const draft = {
+    project: structuredClone(currentProject),
+    production: structuredClone(currentProduction),
+  };
+  request.mutate(draft);
+
+  const revision = currentProject.revision + 1;
+  const commit = newId("cmt");
+  draft.project.revision = revision;
+  draft.project.updatedAt = request.clock.now();
+  draft.project.commit = commit;
+  draft.production.revision = revision;
+  draft.production.commit = commit;
+
+  const project = ProjectDocumentSchema.safeParse(draft.project);
+  if (!project.success) throw invalid("project document", project.error);
+  const production = ProductionDocumentSchema.safeParse(draft.production);
+  if (!production.success) throw invalid("production document", production.error);
+
+  await writeFileAtomic(paths.productionFile, productionDocumentJson(production.data));
+  await writeFileAtomic(paths.projectFile, projectDocumentJson(project.data));
 
   const record: CommitRecord = {
-    id: next.commit as CommitId,
-    parent: current.commit as CommitId,
-    at: next.updatedAt,
+    id: commit as CommitId,
+    parent: currentProject.commit as CommitId,
+    at: project.data.updatedAt,
     actor: request.actor,
     intent: request.intent,
-    revision: next.revision,
+    revision,
     touched: request.touched,
-    projectHash: hashValue(next),
-    productionHash: null,
+    projectHash: hashValue(project.data),
+    productionHash: hashValue(production.data),
   };
   await appendCommit(paths, record);
 
-  return { project: next, commit: record, paths };
+  return { project: project.data, production: production.data, commit: record, paths };
 }
