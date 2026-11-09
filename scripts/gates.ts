@@ -734,9 +734,106 @@ async function gate6(steps: string[]): Promise<void> {
 
 async function gate7(steps: string[]): Promise<void> {
   await signIn();
-  projectId = await newProject("The Last Light");
+  projectId = await newProject("The Last Light", 10);
   steps.push(`project: ${projectId}`);
 
+  const ffmpeg = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("ffmpeg");
+  assert(Boolean(ffmpeg.binary), "gate 7 needs FFmpeg to render candidates");
+
+  const keeper = await op<{ entityId: string }>(projectId, "entity.create", {
+    kind: "character",
+    name: "The keeper",
+    description: "A weathered lighthouse keeper in his sixties, salt in his beard.",
+  });
+  const style = await op<{ entityId: string }>(projectId, "entity.create", {
+    kind: "style",
+    name: "Sodium noir",
+    description: "Amber practicals, deep shadows, wet stone.",
+  });
+  steps.push("library: a character and a style sheet");
+
+  await op(projectId, "entity.update", {
+    entityId: keeper.data.entityId,
+    prompt: "Elias, 60s, salt-crusted coat, lamplight from below, three-quarter view",
+    styleId: style.data.entityId,
+  });
+  steps.push("prompt: the agent's draft stored beside the description, with a style applied");
+
+  const generated = await op<{ candidates: Array<{ id: string }>; spentUsd: number; styleId: string | null }>(
+    projectId,
+    "entity.generate",
+    { entityId: keeper.data.entityId, count: 6 },
+  );
+  assert(generated.data.candidates.length === 6, "six candidates must be generated");
+  assert(generated.data.styleId === style.data.entityId, "generation must record the style it used");
+  steps.push(`candidates: 6 options for $${generated.data.spentUsd.toFixed(2)}, style recorded`);
+
+  const angles = [
+    "front",
+    "three-quarter-left",
+    "profile-left",
+    "back",
+    "profile-right",
+    "three-quarter-right",
+  ];
+  const identity = await op<{ version: number; missingAngles: string[]; images: Array<{ assetId: string }> }>(
+    projectId,
+    "sheet.select",
+    {
+      entityId: keeper.data.entityId,
+      images: angles.map((role, index) => ({ role, candidateId: generated.data.candidates[index]?.id })),
+      heightM: 1.78,
+      rights: { licence: "original", likenessConsent: "granted" },
+    },
+  );
+  assert(identity.data.version === 1, "the first sheet must be v1");
+  assert(identity.data.images.length === 6, "the headshot sheet must hold six rotations");
+  assert(identity.data.missingAngles.length === 0, "all six angles must be covered");
+  steps.push("sheet: six head rotations published as identity v1, 1.78m, consent granted");
+
+  // A sheet whose images cannot be fetched is not a sheet: the browser must be able to show it.
+  const sheetMedia = await fetch(`${base}/p/${projectId}/media/${identity.data.images[0]?.assetId}`, {
+    headers: { cookie },
+  });
+  assert(sheetMedia.status === 200, `a published sheet image must be served, got ${sheetMedia.status}`);
+  assert(
+    (sheetMedia.headers.get("content-type") ?? "").startsWith("image/"),
+    "the sheet image must be served as an image",
+  );
+  steps.push("media: the published sheet image is served to the browser");
+
+  const outfit = await op<{ variantId: string }>(projectId, "variant.create", {
+    entityId: keeper.data.entityId,
+    name: "Storm coat",
+    description: "Oilskin, soaked through",
+    prompt: "same keeper, heavy oilskin storm coat, soaked, hood down",
+  });
+  const outfitCandidates = await op<{ candidates: Array<{ id: string }> }>(projectId, "entity.generate", {
+    entityId: keeper.data.entityId,
+    variantId: outfit.data.variantId,
+    count: 2,
+  });
+  const outfitSheet = await op<{ version: number }>(projectId, "sheet.select", {
+    entityId: keeper.data.entityId,
+    variantId: outfit.data.variantId,
+    images: [{ role: "front", candidateId: outfitCandidates.data.candidates[0]?.id }],
+  });
+  assert(outfitSheet.data.version === 1, "the outfit gets its own sheet version");
+  steps.push("wardrobe: an outfit with its own prompt generated and published as v1");
+
+  const listed = await op<{
+    entities: Array<{ name: string; version: number; variants: Array<{ name: string; version: number }> }>;
+  }>(projectId, "entity.list");
+  const keeperView = listed.data.entities.find((entity) => entity.name === "The keeper");
+  assert(keeperView?.version === 1, "the identity sheet is v1");
+  assert(keeperView?.variants[0]?.version === 1, "the outfit sheet is v1");
+  steps.push("library: identity and outfit readable with their versions");
+
+  // A character in a shot cannot be deleted; a style applied to one cannot either.
   const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
     heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
   });
@@ -746,119 +843,31 @@ async function gate7(steps: string[]): Promise<void> {
     angle: "EYE",
     movement: "STATIC",
     durationSec: 5,
-    description: "Elias turns the wick down for the last time.",
+    description: "Elias turns the wick down.",
   });
-
-  const ffmpeg = await createToolResolver({
-    run: (argv) => runCommand(argv),
-    vendorDir: vendorDir(),
-    now: () => systemClock.now(),
-  })("ffmpeg");
-  assert(Boolean(ffmpeg.binary), "gate 7 needs FFmpeg to stand in for sheet views");
-  const binary = ffmpeg.binary as string;
-  const work = await mkdtemp(join(tmpdir(), "slate-library-"));
-  const view = (colour: string, file: string) =>
-    runCommand([
-      binary,
-      "-y",
-      "-f",
-      "lavfi",
-      "-i",
-      `color=c=${colour}:s=512x512`,
-      "-frames:v",
-      "1",
-      join(work, file),
-    ]);
-
-  assert((await view("0x8a6a4a", "front.png")).code === 0, "front view must render");
-  assert((await view("0x7a5a3a", "three-quarter.png")).code === 0, "three-quarter view must render");
-  assert((await view("0x6a4a2a", "close-up.png")).code === 0, "close-up view must render");
-  assert((await view("0x14202c", "lighting.png")).code === 0, "location view must render");
-  steps.push("stand-in views: three for the keeper, one for the location");
-
-  const keeper = await op<{ entityId: string }>(projectId, "entity.create", {
-    kind: "character",
-    name: "The keeper",
-    aliases: ["Elias"],
-  });
-  const lighthouse = await op<{ entityId: string }>(projectId, "entity.create", {
-    kind: "location",
-    name: "Lighthouse lantern room",
-  });
-  steps.push("library: one character, one location");
-
-  const v1 = await op<{ version: number; views: unknown[]; heightM: number | null; likenessConsent: string }>(
-    projectId,
-    "sheet.publish",
-    {
-      entityId: keeper.data.entityId,
-      views: [
-        { role: "front", sourcePath: join(work, "front.png") },
-        { role: "three-quarter", sourcePath: join(work, "three-quarter.png") },
-        { role: "close-up", sourcePath: join(work, "close-up.png") },
-      ],
-      heightM: 1.78,
-      rights: { licence: "original", likenessConsent: "granted" },
-    },
-  );
-  assert(v1.data.version === 1 && v1.data.views.length === 3, "the keeper's sheet must publish three views");
-  assert(v1.data.heightM === 1.78, "the measurement must survive");
-  assert(v1.data.likenessConsent === "granted", "consent must be recorded");
-
-  await op(projectId, "sheet.publish", {
-    entityId: lighthouse.data.entityId,
-    views: [{ role: "lighting", sourcePath: join(work, "lighting.png") }],
-    rights: { licence: "original" },
-  });
-  steps.push("sheets: keeper v1 (front, three-quarter, close-up, 1.78m), location v1");
-
   await op(projectId, "shot.set-entities", {
     shotId: shot.data.shotId,
-    entityIds: [keeper.data.entityId, lighthouse.data.entityId],
+    entityIds: [keeper.data.entityId, style.data.entityId],
   });
 
-  const ready = await op<{ readiness: Array<{ id: string; status: string; detail: string }> }>(
-    projectId,
-    "shot.get",
-    { shotId: shot.data.shotId },
+  const refused = await fetch(`${base}/p/${projectId}/api/op/entity.delete`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ entityId: keeper.data.entityId }),
+  }).then(
+    (response) => response.json() as Promise<{ ok: boolean; error?: { code: string; message: string } }>,
   );
-  const check = (id: string) => ready.data.readiness.find((item) => item.id === id);
-  assert(check("entities-resolved")?.status === "pass", "entities must resolve");
-  assert(check("sheet-published")?.status === "pass", "both entities have a sheet");
-  assert(check("sheet-coverage")?.status === "pass", "three views including a close-up is enough");
-  assert(check("consent")?.status === "pass", "granted consent passes");
-  steps.push("readiness: entities resolved, sheets published, face covered, consent settled");
+  assert(refused.ok === false && refused.error?.code === "conflict", "a used entity must not be deletable");
+  assert(refused.error?.message.includes(shot.data.number), "the refusal must name the shot that uses it");
+  steps.push("delete: refused while a shot uses the character, naming the shot");
 
-  const stale = await op<{ count: number }>(projectId, "graph.stale");
-  assert(stale.data.count === 0, "a freshly pinned shot is not stale");
-
-  const v2 = await op<{ version: number }>(projectId, "sheet.publish", {
-    entityId: keeper.data.entityId,
-    views: [{ role: "expression", sourcePath: join(work, "close-up.png") }],
-    note: "new close-up",
+  const spare = await op<{ entityId: string }>(projectId, "entity.create", {
+    kind: "prop",
+    name: "Spare lamp",
   });
-  assert(v2.data.version === 2, "publishing must create v2");
-
-  const afterV2 = await op<{ nodes: Array<{ id: string; cause: string }> | null; count: number }>(
-    projectId,
-    "graph.stale",
-  );
-  assert(afterV2.data.count === 1, `publishing v2 must stale the shot, got ${afterV2.data.count}`);
-  assert(
-    afterV2.data.nodes?.[0]?.cause.includes("v1 → v2"),
-    `the cause must name the change: ${afterV2.data.nodes?.[0]?.cause}`,
-  );
-  steps.push("staleness: keeper v1 → v2 marks exactly the pinned shot stale");
-
-  const rebased = await op<{ stale: boolean }>(projectId, "shot.rebase", { shotId: shot.data.shotId });
-  assert(rebased.data.stale === false, "re-checking re-pins the entity and clears the badge");
-  steps.push("rebase: the shot re-pins to v2 and is fresh again");
-
-  const library = await op<{ entities: Array<{ name: string; version: number }> }>(projectId, "entity.list");
-  assert(library.data.entities.length === 2, "the library lists both entities");
-  steps.push("library: two entities with their current versions");
+  await op(projectId, "entity.delete", { entityId: spare.data.entityId });
+  steps.push("delete: an unused prop is removed");
 }
-
 interface Credentials {
   cookie: string;
   csrf: string;

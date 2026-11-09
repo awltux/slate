@@ -1,16 +1,18 @@
 {
   "gate": 7,
   "status": "passed",
-  "base": "http://127.0.0.1:55427",
+  "base": "http://127.0.0.1:49793",
   "steps": [
-    "project: prj_6399d04b7ce64a37afe36d2bff803594",
-    "stand-in views: three for the keeper, one for the location",
-    "library: one character, one location",
-    "sheets: keeper v1 (front, three-quarter, close-up, 1.78m), location v1",
-    "readiness: entities resolved, sheets published, face covered, consent settled",
-    "staleness: keeper v1 → v2 marks exactly the pinned shot stale",
-    "rebase: the shot re-pins to v2 and is fresh again",
-    "library: two entities with their current versions",
+    "project: prj_ba23d3cdec354beb8d29a1cb655bc0de",
+    "library: a character and a style sheet",
+    "prompt: the agent's draft stored beside the description, with a style applied",
+    "candidates: 6 options for $0.12, style recorded",
+    "sheet: six head rotations published as identity v1, 1.78m, consent granted",
+    "media: the published sheet image is served to the browser",
+    "wardrobe: an outfit with its own prompt generated and published as v1",
+    "library: identity and outfit readable with their versions",
+    "delete: refused while a shot uses the character, naming the shot",
+    "delete: an unused prop is removed",
     "ui: the keeper sheet visible in the browser"
   ]
 }

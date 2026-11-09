@@ -1,7 +1,7 @@
 {
   "gate": 8,
   "status": "passed",
-  "base": "http://127.0.0.1:61407",
+  "base": "http://127.0.0.1:52772",
   "steps": [
     "presence: Owner and editor see each other",
     "conflict: the second writer is refused, not silently merged",
