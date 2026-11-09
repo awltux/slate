@@ -42,16 +42,18 @@ export async function probeServices(deps: ProbeDeps): Promise<ServiceState[]> {
 }
 
 async function probeOne(definition: ServiceDefinition, deps: ProbeDeps): Promise<ServiceState> {
-  const attempted: string[] = [];
-  const label = (binary: string) =>
-    binary.startsWith(deps.vendorDir) ? relative(deps.vendorDir, binary) : binary;
+  const looked: string[] = [];
 
   for (const binary of definition.binaries(deps.vendorDir)) {
-    attempted.push(label(binary));
+    const vendored = binary.startsWith(deps.vendorDir);
+    looked.push(
+      vendored ? "vendor" : binary.includes("/") || binary.includes("\\") ? "known locations" : "PATH",
+    );
+
     const result = await deps.run([binary, ...definition.versionArgs]);
     if (result.failedToStart) continue;
 
-    const source: "path" | "vendor" = binary.startsWith(deps.vendorDir) ? "vendor" : "path";
+    const source: "path" | "vendor" = vendored ? "vendor" : "path";
     const matched = definition.versionPattern.exec(result.stdout + result.stderr);
     const version = matched?.[1] ?? null;
 
@@ -90,6 +92,7 @@ async function probeOne(definition: ServiceDefinition, deps: ProbeDeps): Promise
     binary: null,
     source: "none",
     version: null,
-    detail: `not found (looked for ${attempted.join(", ")})`,
+    // Never the host paths: this detail is shown to remote clients.
+    detail: `not found (searched ${[...new Set(looked)].join(", ")})`,
   };
 }

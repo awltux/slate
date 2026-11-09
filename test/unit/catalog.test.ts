@@ -55,7 +55,8 @@ describe("probeServices", () => {
     const states = await probeServices({ vendorDir, now: "2026-11-09T10:00:00.000Z", run: runner({}) });
     const melt = states.find((state) => state.id === "melt");
     expect(melt?.status).toBe("red");
-    expect(melt?.detail).toContain("looked for melt");
+    expect(melt?.detail).toContain("not found");
+    expect(melt?.detail).not.toContain("C:");
     expect(states.filter((state) => state.status === "red")).toHaveLength(6);
   });
 });
