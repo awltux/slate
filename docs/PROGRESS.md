@@ -11,11 +11,30 @@ four surfaces exist.
 | 4 | Spend with approval | `pnpm gate:4` | **done** | [shoot](../artifacts/4/shoot.png) · [report](../artifacts/4/report.json) |
 | 5 | Plan editing | `pnpm gate:5` | **done** | [plan-edit](../artifacts/5/plan-edit.png) · [report](../artifacts/5/report.json) |
 | 6 | Previz | `pnpm gate:6` | **done** | [previz](../artifacts/6/previz.png) · [report](../artifacts/6/report.json) |
-| 7 | Library: entities and sheets | `pnpm gate:7` | **next** | — |
-| 8 | Collaboration | `pnpm gate:8` | pending | — |
-| 9 | Finish & deliver | `pnpm gate:9` | pending | — |
+| 7 | Library: entities and sheets | `pnpm gate:7` | **done** | [library](../artifacts/7/library.png) · [report](../artifacts/7/report.json) |
+| 8 | Collaboration | `pnpm gate:8` | **done** | [collaboration](../artifacts/8/collaboration.png) · [report](../artifacts/8/report.json) |
+| 9 | Finish & deliver | `pnpm gate:9` | **next** | — |
 | 10 | Remote review | `pnpm gate:10` | pending | — |
 | 11 | Polish | `pnpm gate:11` | pending | — |
+
+## Slice 8 — what it proves
+
+- **Presence is a notice, not a lock.** The daemon keeps an in-memory registry of who is on which page, expiring after
+  45 seconds. It never blocks a write; the conflict check does that.
+- **Concurrency is refused, not merged.** A write carries `expectedRevision`; the second writer gets `conflict` with the
+  head revision named, and the Plan page offers a reload instead of pretending the write landed.
+- **Undo is scoped and attributable.** Only the head commit can be reverted, and only by its author (or an owner):
+  reverting a buried commit would discard other people's later work. The undo is itself a commit, so it can be undone.
+- **Roles do the rest.** Viewer reads, editor writes, owner also changes host configuration and sees install paths.
+
+## Slice 7 — what it proves
+
+- **Characters, locations and props are entities with versioned sheets.** Views are what a model is conditioned on,
+  `heightM` is what a proxy is scaled from, and rights gate the expensive tier.
+- **Publishing never edits.** A new sheet is a new version; shots that pinned the old one become stale, with the
+  version change as the cause, and nothing else moves.
+- **Consent defaults to pending for a character**, which fails the readiness check rather than being quietly allowed.
+- **The library is visible**: versions, views, measurements and consent, with the ability to define new entities.
 
 ## Slice 6 — what it proves
 
@@ -26,88 +45,62 @@ four surfaces exist.
   geometrically consistent by construction.
 - **Continuity becomes geometry.** The camera records lens, height and which side of the line of action it sits on;
   `axisSide` is data, so a deliberate axis break is visible rather than argued about.
-- **The browser shows the cheap gate**: sets, blockout status per shot, stills and the animatic, all before a single
-  frame is generated.
 
 ## Slice 5 — what it proves
 
-- **The plan is editable from the browser.** A shot's number, framing, angle, movement, duration and description are
-  edited in the row itself; a scene's heading, synopsis and body in place above its shots.
-- **Editing is a review, and the system says what it broke.** Saving a shot records that it was checked against the
-  scene as it stands; editing the scene marks exactly its own shots stale and shows the cause next to each one.
-- **Re-check is one click**, and it clears the badge by recording the scene hash the shot was reviewed against — not by
-  regenerating anything.
-- **No new operations were needed.** `scene.update` and `shot.update` already existed and were reachable from the CLI
-  and MCP; this slice was the missing door, which is why it shipped in a fraction of the time the others took.
+- **The plan is editable from the browser** — a shot in its row, a scene in place above its shots.
+- **Editing is a review, and the system says what it broke**: saving a shot records that it was checked against the
+  scene as it stands; editing the scene marks exactly its own shots stale, with the cause beside each one.
+- **Re-check is one click**, clearing the badge by recording what was reviewed — not by regenerating anything.
 
 ## Slice 4 — what it proves
 
-- **An estimate is a record, not a message.** `estimate.create` prices each shot against a catalog entry and stores
-  the result; nothing is charged.
-- **Approval is signed.** `spend.approve` returns a token naming the estimate, its price and an expiry. The token is
-  single use and void if the estimate's hash changes, so a plan edited after approval cannot ride the same yes.
-- **Spending reserves before rendering.** The reservation lands in `.slate/ledger.jsonl` before the first frame; a
-  failed job refunds. Two concurrent submits cannot both pass a ceiling check that neither has decremented.
-- **The loop is whole without a key.** The local gateway renders a deterministic clip from the shot's board, so
-  drafts cost a fraction ($$0.05/s) and finals cost more ($$0.40/s) — the ladder is visible in the numbers.
-- **The browser shows the decision**: `$2.00 of $3.00`, what a batch will cost, and what came back.
+- **An estimate is a record, not a message.** `estimate.create` prices each shot against a catalog entry and stores it.
+- **Approval is signed, single use, and void if the plan changes.** The token names the estimate, its price and expiry.
+- **Spending reserves before rendering**; a failed job refunds, and concurrent submits cannot both pass a ceiling check
+  that neither has decremented.
+- **The loop is whole without a key**: the local gateway renders deterministically, draft at $0.05/s and final at
+  $0.40/s, so the cost ladder is visible in the numbers.
 
 ## Slice 3 — what it proves
 
-- **A frame becomes an asset.** Attaching a board copies it into the project under a content hash; the document
-  records the asset, never the path it came from.
-- **The cut is a selection list.** Shot, frame, duration — in scene order. Building it is one commit; rendering
-  references it, so a re-cut does not lose the take that was chosen.
-- **It plays.** FFmpeg renders the selections to MP4 (exact durations, pinned by a gate assertion), the render is
-  ingested as an asset, and the browser plays it from `/p/:id/media/:assetId` with range support — but only for a
+- **A frame becomes an asset** by content hash; the document never records the path it came from.
+- **The cut is a selection list** — shot, frame, duration — and rendering references it, so a re-cut does not lose the
+  take that was chosen.
+- **It plays**: FFmpeg renders exact durations (pinned by a gate assertion) and media is served by asset id, only to a
   signed-in caller.
-- **Host paths are privileged.** The owner sees where each tool was found (hover over the name on Health); a reviewer
-  receives `null` and no path anywhere in the payload.
-- **Rename is a commit.** The project name lives in the document, so changing it is versioned, attributable, and
-  visible to every surface at once.
 
 ## Slice 2 — what it proved
 
-- **The five lines are a document, not a prompt.** Each save keeps a revision with author, time and note, and the
-  page names which lines are still missing.
-- **A scene becomes a shot list.** Scene numbering is assigned, never reused; shots carry framing, angle, movement,
-  duration and a description.
-- **Readiness is data.** `shot.create` returns five named checks — scene-linked, described, duration, number-unique,
-  story — with pass/warn/fail, so the agent can say *what* is missing instead of disabling a button.
-- **Staleness is derived, and scoped.** Editing scene 1 marks its two shots stale and leaves scene 2 alone; the
-  envelope reports `stale.added`, and `shot.rebase` reports `stale.cleared`.
-- **One revision clock.** Project and production documents share a revision and a commit id; a write against a stale
-  revision is a `conflict`, never an overwrite.
-- **All four surfaces.** MCP serves the registry over stdio, and `docs/OP-REGISTRY.md` is generated and checked.
+- **The five lines are a document, not a prompt**, with a revision per save.
+- **A scene becomes a shot list**, numbered and never reused.
+- **Readiness is data**: named checks with pass/warn/fail instead of a disabled button.
+- **Staleness is derived and scoped**; the envelope reports what a change invalidated.
+- **One revision clock** across project and production documents.
 
 ## Backlog — known gaps
 
 Not future features to invent: things the GUIDE promises, or the product obviously needs, with an honest note on what
-already exists. "Operation exists" means it is reachable from the CLI and MCP today; only the browser has no way in.
+already exists.
 
-| Item | Operation | Browser |
-|---|---|---|
-| **Edit a scene** (heading, synopsis, body) | `scene.update` exists | **missing** |
-| **Edit a shot** (number, framing, angle, movement, duration, description) | `shot.update` exists | **missing** |
-| Delete a scene or a shot | missing — needs cascade rules for takes and cut items | missing |
-| Scene intent note (GUIDE §17 handoff) | missing | missing |
-| Coverage plan (GUIDE §7, master plus variants) | missing | missing |
-| Project settings after creation (runtime, aspect, budget) | missing — only `project.create` sets them | missing |
-| Upload a board from the browser | `frame.attach` takes a server-side path | missing |
-| Compare two takes side by side | `take.list` returns both | missing |
-| Conform a take into its slot (trim/retime) | `cut.build` uses planned durations | missing |
-| B-roll from source footage (import, not generate) | missing | missing |
-| Library (cross-project sheets) | missing | last |
-| Finish: mix, subtitles, titles, upscale | missing | slice 8 |
-| Presence, conflicts, per-user undo | partial: node-scoped `touched` + `expectedRevision` | slice 6 |
-| Remote review link | missing | slice 9 |
-
-Editing a scene or a shot is the first thing a director tries to do after the first plan exists, and today it can only
-be done by an agent. It is the next slice after spend.
+| Item | State |
+|---|---|
+| Sheet-conditioned generation (pass pinned views to the gateway) | provenance field exists; the local gateway has no reference input |
+| Delete a scene or shot | missing — needs cascade rules for takes and cut items |
+| Scene intent note (GUIDE §17 handoff) | missing |
+| Coverage plan (GUIDE §7: master plus variants) | missing |
+| Project settings after creation (runtime, aspect, budget) | only `project.create` sets them |
+| Upload images from the browser (boards, sheet views) | operations take server-side paths |
+| Compare two takes side by side | `take.list` returns both; the page stacks them |
+| Conform a take into its slot (trim/retime) | `cut.build` uses planned durations |
+| B-roll from source footage | missing |
+| Cross-project library | the library is per project |
+| Finish: mix, subtitles, titles, upscale | slice 9 |
+| Remote review link | slice 10 |
+| Conflict handling outside the Plan page | only Plan sends `expectedRevision` so far |
 
 ## Notes
 
 - `artifacts/` is committed: screenshots are the evidence that a slice exists.
-- The cut is stored inline in `production.json` for now, not in `cut/<id>.json` as `docs/ARCHITECTURE.md` §5.3
-  describes. One document means one commit and no cross-file sync; the projections (OTIO/EDL) will be separate files
-  when they exist.
+- The cut lives inline in `production.json` rather than in `cut/<id>.json` as `docs/ARCHITECTURE.md` §5.3 describes.
+  One document means one commit and no cross-file sync; projections (OTIO/EDL) become files when they exist.
