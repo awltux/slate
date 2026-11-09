@@ -189,7 +189,7 @@ description ──(agent)──► prompt ──(generate)──► candidates �
 - **A shot** lists the entities in frame (`entityIds`) and **pins** the sheet versions it was conditioned on:
   `pins: { entityId: sheetVersion }`.
 
-**Deleting is a reference question.** An entry can be deleted only when nothing points at it: a shot that lists it, or
+**Two scopes, one shape.** A project has a library of the entities it uses. The host has a library of items shared by\nevery project: pushing copies an entity (images included) into it as a versioned item, importing brings a copy back.\nA project entity is always a *clone* - it records which library version it came from and its own edits never touch the\nshared item - so "newer" is a version comparison, not a conflict.\n\n**Deleting is a reference question.** An entry can be deleted only when nothing points at it: a shot that lists it, or
 another entity styled by it. The refusal names what is using it, because "cannot delete" without a reason is a puzzle,
 not an error.
 

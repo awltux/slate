@@ -1,9 +1,9 @@
 {
   "gate": 7,
   "status": "passed",
-  "base": "http://127.0.0.1:51180",
+  "base": "http://127.0.0.1:51711",
   "steps": [
-    "project: prj_b2e9c89f76b64055a82de124fb8c6348",
+    "project: prj_3c52acba33f14fc3b09f676a7ad32c53",
     "library: a character and a style sheet",
     "prompt: the agent's draft stored beside the description, with a style applied",
     "candidates: 6 options for $0.12, style recorded",
@@ -15,6 +15,9 @@
     "scene: linked to the lantern room, backdrop served from its sheet",
     "delete: refused while a shot uses the character, naming the shot",
     "delete: an unused prop is removed",
-    "ui: the keeper sheet visible in the browser"
+    "library: pushed v1, edited locally without changing it, pulled it back",
+    "library: v3 published, the imported clone flagged as behind",
+    "ui: the project library shows sheets, push and pull",
+    "ui: the shared library lists the published item with its import button"
   ]
 }

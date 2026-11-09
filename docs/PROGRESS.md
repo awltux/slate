@@ -35,6 +35,9 @@ four surfaces exist.
   version change as the cause, and nothing else moves.
 - **Consent defaults to pending for a character**, which fails the readiness check rather than being quietly allowed.
 - **The library is visible**: versions, views, measurements and consent, with the ability to define new entities.
+- **Two scopes**: the project library holds the entries a project uses; the app library (a tab beside the project
+  selector) holds what is shared across projects. Push publishes a versioned copy, pull refreshes the clone, import
+  brings a shared item into a project, and the Pull button highlights when the shared version has moved on.
 
 ## Slice 6 — what it proves
 

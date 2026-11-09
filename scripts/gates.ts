@@ -904,6 +904,62 @@ async function gate7(steps: string[]): Promise<void> {
   });
   await op(projectId, "entity.delete", { entityId: spare.data.entityId });
   steps.push("delete: an unused prop is removed");
+
+  // The app-level library: push publishes a version, the local copy stays a clone, pull refreshes it.
+  const pushed = await op<{ id: string; version: number; coverAssetId: string | null }>(
+    projectId,
+    "library.push",
+    {
+      entityId: keeper.data.entityId,
+    },
+  );
+  assert(pushed.data.version === 1, "the first push must publish v1");
+  assert(
+    pushed.data.coverAssetId?.startsWith("last_"),
+    "the library item must own a copy of the cover image",
+  );
+
+  const coverResponse = await fetch(`${base}/library/${pushed.data.coverAssetId}`, { headers: { cookie } });
+  assert(coverResponse.status === 200, "the shared cover must be served to a signed-in user");
+
+  await op(projectId, "entity.update", {
+    entityId: keeper.data.entityId,
+    prompt: "rewritten locally after publishing",
+  });
+  const beforePull = await op<{ items: Array<{ version: number }> }>(projectId, "library.list", {});
+  assert(beforePull.data.items.length === 1, "one global item after the first push");
+  assert(beforePull.data.items[0]?.version === 1, "editing locally must not bump the global version");
+
+  const pulled = await op<{ version: number }>(projectId, "library.pull", { entityId: keeper.data.entityId });
+  assert(pulled.data.version === 1, "pull must take the published version");
+  steps.push("library: pushed v1, edited locally without changing it, pulled it back");
+
+  const repushed = await op<{ version: number }>(projectId, "library.push", {
+    entityId: keeper.data.entityId,
+  });
+  assert(repushed.data.version === 2, "re-pushing must publish v2");
+
+  const imported = await op<{ entityId: string; version: number }>(projectId, "library.import", {
+    libraryId: pushed.data.id,
+    name: "The keeper (imported)",
+  });
+  assert(imported.data.version === 2, "an import takes the current global version");
+
+  await op(projectId, "entity.update", { entityId: keeper.data.entityId, prompt: "v3 prompt" });
+  await op(projectId, "library.push", { entityId: keeper.data.entityId });
+
+  const links = await op<{
+    items: unknown[];
+    links: Array<{ entityId: string; newer: boolean; localVersion: number | null; globalVersion: number }>;
+  }>(projectId, "library.list", {});
+  assert(links.data.items.length === 1, "one item is shared, not one per push");
+  const importedLink = links.data.links.find((link) => link.entityId === imported.data.entityId);
+  assert(importedLink?.newer === true, "the imported clone must report that the global version moved on");
+  assert(
+    importedLink?.localVersion === 2 && importedLink?.globalVersion === 3,
+    "versions must be readable for the badge",
+  );
+  steps.push("library: v3 published, the imported clone flagged as behind");
 }
 interface Credentials {
   cookie: string;
@@ -1178,11 +1234,20 @@ async function browserFlow(steps: string[]): Promise<void> {
 
     if (gateNumber === 7) {
       await page.selectOption('select[aria-label="Project"]', projectId);
-      await page.click('role=tab[name="Library"]');
+      // The header also has a Library tab now, so scope this to the project's own tab strip.
+      await page.click('main [role="tab"]:has-text("Library")');
       await page.waitForSelector("text=every entity", { timeout: 20_000 }).catch(() => undefined);
       await page.waitForSelector("img", { timeout: 20_000 });
+      await page.waitForSelector('button:has-text("Push")', { timeout: 20_000 });
       await page.screenshot({ path: join(artifactDir, "library.png"), fullPage: true });
-      steps.push("ui: the keeper sheet visible in the browser");
+      steps.push("ui: the project library shows sheets, push and pull");
+
+      // The app-level library is a tab beside the project selector.
+      await page.click('header [role="tab"]:has-text("Library")');
+      await page.waitForSelector("text=Shared across every project", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "app-library.png"), fullPage: true });
+      steps.push("ui: the shared library lists the published item with its import button");
+
       await instance.close();
       return;
     }
