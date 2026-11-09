@@ -48,6 +48,8 @@ export function Plan({ projectId }: { projectId: string }) {
   const [scenes, setScenes] = useState<SceneSummary[] | null>(null);
   const [vocabulary, setVocabulary] = useState<Vocabulary>(FALLBACK_VOCABULARY);
   const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [conflict, setConflict] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -57,6 +59,8 @@ export function Plan({ projectId }: { projectId: string }) {
       ]);
       setScenes(list.data.scenes);
       setVocabulary(words.data);
+      setRevision(list.version);
+      setConflict(false);
     } catch (caught) {
       setError(message(caught));
     }
@@ -87,6 +91,22 @@ export function Plan({ projectId }: { projectId: string }) {
 
   return (
     <div className="stack">
+      {conflict ? (
+        <div className="card">
+          <div className="row">
+            <span className="chip warn">changed underneath you</span>
+            <span className="muted">
+              Someone else wrote to this project after you loaded it. Your change was refused rather than
+              overwriting theirs.
+            </span>
+            <div className="spacer" />
+            <button type="button" className="primary" onClick={() => void load()}>
+              Reload the plan
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="card">
         <div className="row">
           <h2 style={{ margin: 0 }}>The plan</h2>
@@ -97,7 +117,13 @@ export function Plan({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      <NewScene projectId={projectId} vocabulary={vocabulary} onCreated={load} />
+      <NewScene
+        projectId={projectId}
+        vocabulary={vocabulary}
+        revision={revision}
+        onConflict={() => setConflict(true)}
+        onCreated={load}
+      />
 
       {scenes.map((scene) => (
         <SceneCard
@@ -105,6 +131,8 @@ export function Plan({ projectId }: { projectId: string }) {
           projectId={projectId}
           scene={scene}
           vocabulary={vocabulary}
+          revision={revision}
+          onConflict={() => setConflict(true)}
           onChange={load}
         />
       ))}
@@ -115,10 +143,14 @@ export function Plan({ projectId }: { projectId: string }) {
 function NewScene({
   projectId,
   vocabulary,
+  revision,
+  onConflict,
   onCreated,
 }: {
   projectId: string;
   vocabulary: Vocabulary;
+  revision: number;
+  onConflict: () => void;
   onCreated: () => Promise<void>;
 }) {
   const [intExt, setIntExt] = useState(vocabulary.intExt[0] ?? "INT");
@@ -132,10 +164,14 @@ function NewScene({
     setBusy(true);
     setError(null);
     try {
-      await runOp(projectId, "scene.create", { heading: { intExt, location, timeOfDay } });
+      await runOp(projectId, "scene.create", {
+        heading: { intExt, location, timeOfDay },
+        expectedRevision: revision,
+      });
       setLocation("");
       await onCreated();
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "conflict") onConflict();
       setError(message(caught));
     } finally {
       setBusy(false);
@@ -184,11 +220,15 @@ function SceneCard({
   projectId,
   scene,
   vocabulary,
+  revision,
+  onConflict,
   onChange,
 }: {
   projectId: string;
   scene: SceneSummary;
   vocabulary: Vocabulary;
+  revision: number;
+  onConflict: () => void;
   onChange: () => Promise<void>;
 }) {
   const [size, setSize] = useState("MCU");
@@ -208,6 +248,7 @@ function SceneCard({
     try {
       await runOp(projectId, "shot.create", {
         sceneId: scene.id,
+        expectedRevision: revision,
         size,
         angle,
         movement,
@@ -217,6 +258,7 @@ function SceneCard({
       setDescription("");
       await onChange();
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "conflict") onConflict();
       setError(message(caught));
     } finally {
       setBusy(false);
@@ -225,7 +267,7 @@ function SceneCard({
 
   async function rebase(shotId: string) {
     try {
-      await runOp(projectId, "shot.rebase", { shotId });
+      await runOp(projectId, "shot.rebase", { shotId, expectedRevision: revision });
       await onChange();
     } catch (caught) {
       setError(message(caught));
@@ -239,6 +281,8 @@ function SceneCard({
           projectId={projectId}
           scene={scene}
           vocabulary={vocabulary}
+          revision={revision}
+          onConflict={onConflict}
           onDone={async () => {
             setEditingScene(false);
             await onChange();
@@ -288,6 +332,8 @@ function SceneCard({
                   projectId={projectId}
                   shot={shot}
                   vocabulary={vocabulary}
+                  revision={revision}
+                  onConflict={onConflict}
                   onDone={async () => {
                     setEditingShot(null);
                     await onChange();
@@ -398,12 +444,16 @@ function SceneEditor({
   projectId,
   scene,
   vocabulary,
+  revision,
+  onConflict,
   onDone,
   onCancel,
 }: {
   projectId: string;
   scene: SceneSummary;
   vocabulary: Vocabulary;
+  revision: number;
+  onConflict: () => void;
   onDone: () => Promise<void>;
   onCancel: () => void;
 }) {
@@ -422,12 +472,14 @@ function SceneEditor({
     try {
       await runOp(projectId, "scene.update", {
         sceneId: scene.id,
+        expectedRevision: revision,
         heading: { intExt, location, timeOfDay },
         synopsis,
         body,
       });
       await onDone();
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "conflict") onConflict();
       setError(message(caught));
     } finally {
       setBusy(false);
@@ -504,12 +556,16 @@ function ShotEditorRow({
   projectId,
   shot,
   vocabulary,
+  revision,
+  onConflict,
   onDone,
   onCancel,
 }: {
   projectId: string;
   shot: ShotSummary;
   vocabulary: Vocabulary;
+  revision: number;
+  onConflict: () => void;
   onDone: () => Promise<void>;
   onCancel: () => void;
 }) {
@@ -530,6 +586,7 @@ function ShotEditorRow({
       // Editing a shot is a review of it: it is checked against the scene as it stands now.
       await runOp(projectId, "shot.update", {
         shotId: shot.id,
+        expectedRevision: revision,
         number,
         size,
         angle,
@@ -540,6 +597,7 @@ function ShotEditorRow({
       });
       await onDone();
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "conflict") onConflict();
       setError(message(caught));
     } finally {
       setBusy(false);

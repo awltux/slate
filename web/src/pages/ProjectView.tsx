@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, type ProjectSummary, runOp, subscribe } from "../api.js";
+import { ApiError, type PresenceUser, type ProjectSummary, pingPresence, runOp, subscribe } from "../api.js";
 import { CutPage } from "./Cut.js";
 import { Library } from "./Library.js";
 import { Plan } from "./Plan.js";
@@ -48,10 +48,12 @@ type Tab = "write" | "plan" | "previz" | "shoot" | "cut" | "library" | "health" 
 
 export function ProjectView({
   project,
+  me,
   canRename,
   onRenamed,
 }: {
   project: ProjectSummary;
+  me: string;
   canRename: boolean;
   onRenamed: () => Promise<void> | void;
 }) {
@@ -60,11 +62,27 @@ export function ProjectView({
   const [draft, setDraft] = useState(project.name);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [others, setOthers] = useState<PresenceUser[]>([]);
   const nameInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDraft(project.name);
   }, [project.name]);
+
+  // Presence is a notice, not a lock: it tells you who else is in the room, and the conflict check still decides writes.
+  useEffect(() => {
+    let cancelled = false;
+    const ping = async () => {
+      const users = await pingPresence(project.id, tab);
+      if (!cancelled) setOthers(users.filter((user) => user.displayName !== me));
+    };
+    void ping();
+    const timer = setInterval(() => void ping(), 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [project.id, tab, me]);
 
   // Focus moves only when the operator chooses to rename, never on load.
   useEffect(() => {
@@ -136,6 +154,20 @@ export function ProjectView({
         {renameError ? <p className="error">{renameError}</p> : null}
         <p className="muted" style={{ margin: 0 }}>
           {project.id}
+          {others.length > 0 ? (
+            <span style={{ marginLeft: "0.75rem" }}>
+              {others.map((user) => (
+                <span
+                  key={user.userId}
+                  className="chip"
+                  style={{ marginRight: 6 }}
+                  title={`viewing ${user.page}`}
+                >
+                  {user.displayName}
+                </span>
+              ))}
+            </span>
+          ) : null}
         </p>
       </div>
 
@@ -178,7 +210,7 @@ export function ProjectView({
       {tab === "cut" ? <CutPage projectId={project.id} /> : null}
       {tab === "library" ? <Library projectId={project.id} /> : null}
       {tab === "health" ? <Health projectId={project.id} /> : null}
-      {tab === "activity" ? <Activity projectId={project.id} /> : null}
+      {tab === "activity" ? <Activity projectId={project.id} me={me} /> : null}
     </div>
   );
 }
@@ -323,9 +355,10 @@ function Health({ projectId }: { projectId: string }) {
   );
 }
 
-function Activity({ projectId }: { projectId: string }) {
+function Activity({ projectId, me }: { projectId: string; me: string }) {
   const [commits, setCommits] = useState<Commit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [undoing, setUndoing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -340,6 +373,19 @@ function Activity({ projectId }: { projectId: string }) {
     void load();
     return subscribe(projectId, () => void load());
   }, [load, projectId]);
+
+  async function undo(commitId: string) {
+    setUndoing(true);
+    setError(null);
+    try {
+      await runOp(projectId, "history.revert", { commitId });
+      await load();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+    } finally {
+      setUndoing(false);
+    }
+  }
 
   if (error) {
     return (
@@ -363,7 +409,7 @@ function Activity({ projectId }: { projectId: string }) {
       {commits.length === 0 ? (
         <p className="empty">Nothing has changed yet.</p>
       ) : (
-        commits.map((commit) => (
+        commits.map((commit, index) => (
           <div className="commit" key={commit.id}>
             <time>{new Date(commit.at).toLocaleString()}</time>
             <div>
@@ -371,6 +417,13 @@ function Activity({ projectId }: { projectId: string }) {
               <div className="muted mono" style={{ fontSize: 12 }}>
                 r{commit.revision} · {commit.actor} · {commit.id}
               </div>
+            </div>
+            <div>
+              {index === 0 && commit.actor === me ? (
+                <button type="button" onClick={() => void undo(commit.id)} disabled={undoing}>
+                  {undoing ? "Undoing…" : "Undo"}
+                </button>
+              ) : null}
             </div>
           </div>
         ))

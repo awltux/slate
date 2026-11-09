@@ -140,3 +140,23 @@ export function subscribe(projectId: string, onEvent: (type: string, data: unkno
   }
   return () => source.close();
 }
+
+export interface PresenceUser {
+  userId: string;
+  displayName: string;
+  page: string;
+  objectId: string | null;
+}
+
+/** Report what this window is looking at, and get back everyone else looking at the same project. */
+export async function pingPresence(projectId: string, page: string): Promise<PresenceUser[]> {
+  const response = await fetch(`/p/${projectId}/api/presence`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json", ...(csrfToken ? { "x-slate-csrf": csrfToken } : {}) },
+    body: JSON.stringify({ page }),
+  });
+  if (!response.ok) return [];
+  const payload = (await response.json()) as { data?: { users?: PresenceUser[] } };
+  return payload.data?.users ?? [];
+}

@@ -95,6 +95,7 @@ export function App() {
         {active ? (
           <ProjectView
             project={active}
+            me={session.user.displayName}
             canRename={session.user.role === "owner" || session.user.role === "editor"}
             onRenamed={refreshProjects}
           />
