@@ -4,8 +4,8 @@ One row per slice (`AGENTS.md` §3). A slice is `done` only when its gate passes
 
 | # | Slice | Gate | Status | Evidence |
 |---|---|---|---|---|
-| 1 | Boot, auth, health | `pnpm gate:1` | **in progress** | — |
-| 2 | Story → shots | `pnpm gate:2` | pending | — |
+| 1 | Boot, auth, health | `pnpm gate:1` | **done** | [health](../artifacts/1/health.png) · [projects](../artifacts/1/projects.png) · [report](../artifacts/1/report.json) |
+| 2 | Story → shots | `pnpm gate:2` | **next** | — |
 | 3 | A cut you can watch | `pnpm gate:3` | pending | — |
 | 4 | Spend with approval | `pnpm gate:4` | pending | — |
 | 5 | Previz | `pnpm gate:5` | pending | — |
@@ -14,24 +14,24 @@ One row per slice (`AGENTS.md` §3). A slice is `done` only when its gate passes
 | 8 | Remote review | `pnpm gate:8` | pending | — |
 | 9 | Polish | `pnpm gate:9` | pending | — |
 
-## Now
+## Slice 1 — what it proves
 
-Slice 1. Foundation being laid:
+- A host-level owner account, a signed session cookie, CSRF on every mutation, and role-based refusal of writes.
+- A project folder created from the browser: `project.json`, the media/story/work directories, and a genesis
+  commit.
+- The toolchain probe, resolved into four stage chains with a reason per stage. On this host FFmpeg is found at a
+  known install location even though it is not on `PATH`, and the UI says plainly that assembly will be
+  "hard cuts only".
+- The same operations through the CLI with `SLATE_HEADLESS=1` — no daemon, no HTTP.
+- No host path in any operation result (asserted by the gate).
 
-- [x] repo, toolchain, SDLC contract
-- [x] canonical hashing, ids, result envelope
-- [x] project scaffold + commit log
-- [x] service probes + resolved chains
-- [x] operation registry with `project.create`, `capabilities.get`
-- [ ] `slate setup`: vendor FFmpeg (hash-verified download)
-- [ ] HTTP server: auth, sessions, CSRF, signed media
-- [ ] UI shell: login, Health, Activity
-- [ ] CLI + MCP surfaces for the slice-1 operations
-- [ ] `gate:1`, `gate:ui:1`, `gate:headless:1`
+## Slice 2 — next
+
+Story → shot list, in the browser: five lines, a Fountain screenplay with anchored patches, scenes and shots, and
+readiness returned as named checks. First write operations beyond project creation, so this is where the touched-set
+and conflict rules get exercised.
 
 ## Notes
 
-- Slice-1 acceptance: on a machine with no `ffmpeg` on `PATH`, a new user logs in, creates a project, and sees the
-  toolchain status and the resolved assembly chain (`ffmpeg-concat` when OpenShot/`melt` are absent), with the
-  reason shown.
+- `artifacts/` is committed: screenshots are the evidence that a slice exists.
 - The `lighthouse` fixture project is created in slice 2 and shared by every later gate.
