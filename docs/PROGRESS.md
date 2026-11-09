@@ -19,9 +19,11 @@ One row per slice (`AGENTS.md` §3). A slice is `done` only when its gate passes
 Slice 1. Foundation being laid:
 
 - [x] repo, toolchain, SDLC contract
-- [ ] canonical hashing, ids, result envelope
-- [ ] project scaffold + commit log
-- [ ] service probes + resolved chains (`slate setup` vendors FFmpeg)
+- [x] canonical hashing, ids, result envelope
+- [x] project scaffold + commit log
+- [x] service probes + resolved chains
+- [x] operation registry with `project.create`, `capabilities.get`
+- [ ] `slate setup`: vendor FFmpeg (hash-verified download)
 - [ ] HTTP server: auth, sessions, CSRF, signed media
 - [ ] UI shell: login, Health, Activity
 - [ ] CLI + MCP surfaces for the slice-1 operations
