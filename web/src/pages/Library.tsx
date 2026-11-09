@@ -12,6 +12,25 @@ const ANGLES = [
 
 const OTHER_ROLES = ["close-up", "detail", "lighting", "plate", "palette", "texture"] as const;
 
+interface GlobalItem {
+  id: string;
+  kind: string;
+  name: string;
+  version: number;
+  updatedAt: string;
+  coverAssetId: string | null;
+  sourceProjectId: string;
+}
+
+interface LibraryLink {
+  entityId: string;
+  entityName: string;
+  libraryId: string;
+  localVersion: number | null;
+  globalVersion: number;
+  newer: boolean;
+}
+
 interface Candidate {
   id: string;
   assetId: string;
@@ -36,6 +55,8 @@ interface EntityView {
   prompt: string;
   aliases: string[];
   styleId: string | null;
+  libraryId: string | null;
+  libraryVersion: number | null;
   version: number;
   images: Array<{ role: string; assetId: string }>;
   missingAngles: string[];
@@ -53,6 +74,8 @@ function message(caught: unknown): string {
 
 export function Library({ projectId }: { projectId: string }) {
   const [entities, setEntities] = useState<EntityView[] | null>(null);
+  const [items, setItems] = useState<GlobalItem[]>([]);
+  const [links, setLinks] = useState<LibraryLink[]>([]);
   const [kind, setKind] = useState("character");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -61,8 +84,13 @@ export function Library({ projectId }: { projectId: string }) {
 
   const load = useCallback(async () => {
     try {
-      const result = await runOp<{ entities: EntityView[] }>(projectId, "entity.list", {});
+      const [result, library] = await Promise.all([
+        runOp<{ entities: EntityView[] }>(projectId, "entity.list", {}),
+        runOp<{ items: GlobalItem[]; links: LibraryLink[] }>(projectId, "library.list", {}),
+      ]);
       setEntities(result.data.entities);
+      setItems(library.data.items);
+      setLinks(library.data.links);
     } catch (caught) {
       setError(message(caught));
     }
@@ -71,6 +99,19 @@ export function Library({ projectId }: { projectId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function importItem(libraryId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await runOp(projectId, "library.import", { libraryId });
+      await load();
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function create(event: React.FormEvent) {
     event.preventDefault();
@@ -156,6 +197,7 @@ export function Library({ projectId }: { projectId: string }) {
           projectId={projectId}
           entity={entity}
           entities={entities}
+          link={links.find((entry) => entry.entityId === entity.id) ?? null}
           onChange={load}
           media={media}
         />
@@ -168,12 +210,14 @@ function EntityCard({
   projectId,
   entity,
   entities,
+  link,
   onChange,
   media,
 }: {
   projectId: string;
   entity: EntityView;
   entities: EntityView[];
+  link: LibraryLink | null;
   onChange: () => Promise<void>;
   media: (assetId: string) => string;
 }) {
@@ -239,6 +283,14 @@ function EntityCard({
     await run(() => runOp(projectId, "entity.delete", { entityId: entity.id }));
   }
 
+  async function push() {
+    await run(() => runOp(projectId, "library.push", { entityId: entity.id }));
+  }
+
+  async function pull() {
+    await run(() => runOp(projectId, "library.pull", { entityId: entity.id }));
+  }
+
   return (
     <div className="card stack">
       <div className="row">
@@ -249,7 +301,34 @@ function EntityCard({
         {entity.kind === "character" && entity.missingAngles.length > 0 && entity.version > 0 ? (
           <span className="chip warn">missing {entity.missingAngles.join(", ")}</span>
         ) : null}
+        {link ? (
+          <span className={`chip${link.newer ? " warn" : ""}`}>
+            global v{link.globalVersion}
+            {link.newer ? " · newer" : ""}
+          </span>
+        ) : (
+          <span className="chip">not published</span>
+        )}
         <div className="spacer" />
+        <button
+          type="button"
+          onClick={() => void push()}
+          disabled={busy}
+          title="Publish this version to the app library"
+        >
+          Push
+        </button>
+        {entity.libraryId ? (
+          <button
+            type="button"
+            className={link?.newer ? "primary" : ""}
+            onClick={() => void pull()}
+            disabled={busy}
+            title={link?.newer ? "The app library has a newer version" : "Refresh from the app library"}
+          >
+            Pull
+          </button>
+        ) : null}
         <button type="button" onClick={() => void remove()} disabled={busy} title="Delete when unused">
           Delete
         </button>

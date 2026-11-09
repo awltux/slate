@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, type ProjectSummary, type SessionData, getSession, listProjects, logout } from "./api.js";
+import { GlobalLibrary } from "./pages/GlobalLibrary.js";
 import { Login } from "./pages/Login.js";
 import { ProjectView } from "./pages/ProjectView.js";
 import { Projects } from "./pages/Projects.js";
@@ -7,6 +8,7 @@ import { Projects } from "./pages/Projects.js";
 export function App() {
   const [session, setSession] = useState<SessionData | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [view, setView] = useState<"project" | "library">("project");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,6 +76,24 @@ export function App() {
             </option>
           ))}
         </select>
+        <div className="tabs" role="tablist" style={{ marginLeft: "1rem" }}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "project"}
+            onClick={() => setView("project")}
+          >
+            Project
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "library"}
+            onClick={() => setView("library")}
+          >
+            Library
+          </button>
+        </div>
         <div className="spacer" />
         <span className="who">
           {session.user.displayName} · {session.user.role}
@@ -92,7 +112,13 @@ export function App() {
       </header>
 
       <main className="main">
-        {active ? (
+        {view === "library" ? (
+          <GlobalLibrary
+            activeProjectId={active?.id ?? null}
+            activeProjectName={active?.name ?? null}
+            onImported={() => setView("project")}
+          />
+        ) : active ? (
           <ProjectView
             project={active}
             me={session.user.displayName}

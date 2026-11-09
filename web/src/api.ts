@@ -160,3 +160,25 @@ export async function pingPresence(projectId: string, page: string): Promise<Pre
   const payload = (await response.json()) as { data?: { users?: PresenceUser[] } };
   return payload.data?.users ?? [];
 }
+
+export interface GlobalLibraryItem {
+  id: string;
+  kind: string;
+  name: string;
+  version: number;
+  updatedAt: string;
+  coverAssetId: string | null;
+  sourceProjectId: string;
+}
+
+/** The app-level library, shared by every project on this host. */
+export async function listGlobalLibrary(): Promise<GlobalLibraryItem[]> {
+  const response = await fetch("/api/library", { credentials: "same-origin" });
+  if (!response.ok) return [];
+  const payload = (await response.json()) as { data?: { items?: GlobalLibraryItem[] } };
+  return payload.data?.items ?? [];
+}
+
+export async function importFromLibrary(projectId: string, libraryId: string): Promise<void> {
+  await runOp(projectId, "library.import", { libraryId });
+}
