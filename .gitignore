@@ -1,0 +1,8 @@
+node_modules/
+dist/
+web/dist/
+vendor/
+artifacts/
+*.log
+.DS_Store
+.slate-cache/

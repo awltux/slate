@@ -1,0 +1,36 @@
+{
+  "name": "slate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Production system of record for AI film: plan, money, provenance.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "slate": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/surfaces/cli.ts dev",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "gate:1": "tsx scripts/gate.ts 1"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "commander": "^13.1.0",
+    "hono": "^4.7.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
