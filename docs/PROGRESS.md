@@ -28,7 +28,8 @@ four surfaces exist.
 
 - **Nothing is typed.** Import is the browser's file picker; export offers `Save a copy` through the save dialog, so a
   copy can go anywhere. The gate drives both: it picks the archive in a file input, opens the restored film, then
-  clicks Save a copy and asserts the download is named after the archive.
+  clicks Save a copy and asserts the download is named after the archive. Advanced is proved too: the host writes
+  straight into a folder, the notice says so, and no browser copy is offered for it.
 - **A film leaves and comes back as itself.** The gate builds a project with a scene, a shot and a generated frame,
   exports it to one 7z, deletes the project outright, imports the archive, and asserts the same project id, name and
   revision return with the frame still served.
