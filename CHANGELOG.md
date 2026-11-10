@@ -2,6 +2,18 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Model profiles, chosen per project
+
+- **A binding set is a profile, and there can be any number of them.** "Draft, cheap" and "Final, FLUX" are two sets
+  over the same endpoints, each naming the endpoint that serves each capability. Setup lists them as cards, each with a
+  selector per capability, and one of them is the host default.
+- **A project picks the profile it runs on**, from a Models control on its own page; left on `host default`, it follows
+  the installation's default set. The choice is a project write, so it is committed and attributable like any other edit.
+- **The choice decides the model.** Resolution runs your set, then the host default, then any endpoint of that
+  capability — and Preview names the profile that chose the endpoint, so you can see which model a film would call.
+- **Deleting an endpoint prunes it from every profile**, so no set keeps a dangling id.
+- **Existing configurations migrate**: a single flat binding map is read as one "Default" set, so nothing is lost.
+
 ## Scenes hold library items; frames are generated; the shoot runs between them
 
 - **A scene carries the library items that are in it** — the place, the people, the things, as many as you like. The

@@ -233,8 +233,13 @@ deploy for every model. So the AI layer is three declarations and one renderer:
 ```
 Provider   (transport)   id · name · baseUrl · auth { header, scheme: "Key {{key}}" } · credential
 Endpoint   (a model)     provider · capability · method · path · params[] · body template · resultPath
-Binding    (a choice)    capability → [endpoint ids], first that resolves wins
+Binding    (a profile)   id · name · capability → [endpoint ids], first that resolves wins
 ```
+
+**A binding set is a profile, and a project picks one.** "Draft, cheap" and "Final, FLUX" are two sets over the same
+endpoints; `project.aiBindingSetId` says which a film runs on, and null means the host default. Resolution is
+`project set → host default → any endpoint of that capability`, so a set that loses an endpoint degrades a film instead
+of breaking it. This is why a theme or a budget can change the models without touching the endpoints or the code.
 
 **The body template is the whole trick.** An endpoint declares the parameters it accepts (`num_images`, `strength`,
 `sync_mode`), and its body is ordinary JSON whose *strings* may reference them:

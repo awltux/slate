@@ -210,5 +210,5 @@ SLATE_HEADLESS=1 pnpm gate:1   # same slice with no daemon
 
 ## 13. Current work
 
-See `docs/PROGRESS.md`. The goal is slices 1–2: a project that boots, authenticates, reports its toolchain,
-carries a story into a shot list, and shows readiness — end to end, in the browser and headless.
+See `docs/PROGRESS.md`. Slices 1–13 are done, each with its gate and screenshots: boot through to model profiles chosen
+per project. The next slice comes from the backlog at the end of that file, not from this line.

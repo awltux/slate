@@ -17,6 +17,18 @@ four surfaces exist.
 | 10 | Remote review | `pnpm gate:10` | **done** | [review-link](../artifacts/10/review-link.png) · [report](../artifacts/10/report.json) |
 | 11 | Setup: AI connections | `pnpm gate:11` | **done** | [setup](../artifacts/11/setup.png) · [report](../artifacts/11/report.json) |
 | 12 | Scenes, frames and the shoot | `pnpm gate:12` | **done** | [plan](../artifacts/12/plan-expanded.png) · [report](../artifacts/12/report.json) |
+| 13 | Model profiles per project | `pnpm gate:13` | **done** | [profiles](../artifacts/13/binding-sets.png) · [project](../artifacts/13/project-binding.png) · [report](../artifacts/13/report.json) |
+
+## Slice 13 — what it proves
+
+- **Bindings became profiles.** Any number of binding sets can exist over the same endpoints, each naming the endpoint
+  that serves each capability, so one installation can offer a cheap draft and an expensive final at once.
+- **A project chooses the profile it runs on**, and the choice is a document write with a revision rather than a UI
+  preference: it is committed, attributable and undoable like any other edit.
+- **The choice decides the model.** Resolution runs `project set → host default → any endpoint of that capability`, and
+  `ai.preview` returns the profile that chose the endpoint, so the rung is reported rather than implied.
+- **Removing an endpoint prunes it from every set**, so a profile can never keep a dangling id.
+- **Old configurations still load**, migrating a flat binding map into one "Default" set on first read.
 
 ## Slice 12 — what it proves
 
