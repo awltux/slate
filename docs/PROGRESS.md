@@ -23,6 +23,15 @@ four surfaces exist.
 | 16 | Deleting a project, guarded | `pnpm gate:16` | **done** | [confirm](../artifacts/16/delete-project.png) · [after](../artifacts/16/projects-after-delete.png) · [report](../artifacts/16/report.json) |
 | 17 | References reach a remote model | `pnpm gate:17` | **done** | [transport](../artifacts/17/reference-transport.png) · [report](../artifacts/17/report.json) |
 | 18 | Project backup and restore | `pnpm gate:18` | **done** | [export](../artifacts/18/project-export.png) · [import](../artifacts/18/project-import.png) · [report](../artifacts/18/report.json) |
+| 19 | Health belongs to the host | `pnpm gate:19` | **done** | [host health](../artifacts/19/host-health.png) · [report](../artifacts/19/report.json) |
+
+## Slice 19 — what it proves
+
+- **Health is host state, and says so.** The panel moved to the top level, where it answers with no project open —
+  which is how a fresh host starts — and the cache moved with it: one snapshot in the home, not one copy per film.
+- **Every tool is listed once**, including the archiver, with its version and (for the owner) the install path that
+  explains a surprise.
+- **Probing again is the operator's fix**: it refreshes in place, so a tool installed a minute ago appears.
 
 ## Slice 18 — what it proves
 

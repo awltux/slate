@@ -2,6 +2,15 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Health is the host's, not a project's
+
+- **Health moved to the top level.** The toolchain is a property of the machine, so the same panel now answers for every
+  project — and it works with none selected, which is where a fresh host starts.
+- **One probe, one snapshot.** The result is cached once on the host instead of once per project, so switching films no
+  longer re-probes, and installing a tool shows up after a single "Probe again".
+- **It says what it is**: "How this host will run", with the chains, the tools and their versions, and the install path
+  on hover for the owner.
+
 ## A project can be backed up and restored
 
 - **No paths to type.** Import opens the browser's file picker for a `.7z`; Export offers "Save a copy…" through your
