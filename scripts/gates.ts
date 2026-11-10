@@ -1803,6 +1803,175 @@ async function gate14(steps: string[]): Promise<void> {
   await op(projectId, "entity.generate", { entityId: keeper.data.entityId, count: 1 });
 }
 
+async function gate15(steps: string[]): Promise<void> {
+  await signIn();
+
+  // A connection and a profile first: the project is created against them.
+  const provider = await fetch(`${base}/api/op/ai.provider.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      name: "fal",
+      kind: "fal",
+      baseUrl: "https://fal.run",
+      authScheme: "Key {{key}}",
+      apiKey: "gate-key",
+    }),
+  }).then((response) => response.json() as Promise<{ data: { id: string } }>);
+  const endpoint = await fetch(`${base}/api/op/ai.endpoint.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      providerId: provider.data.id,
+      name: "FLUX dev",
+      capability: "image",
+      path: "/fal-ai/flux/dev",
+    }),
+  }).then((response) => response.json() as Promise<{ data: { id: string } }>);
+  const profile = await fetch(`${base}/api/op/ai.bindingset.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ name: "Final, FLUX", bindings: { image: [endpoint.data.id] } }),
+  }).then((response) => response.json() as Promise<{ data: { id: string } }>);
+
+  // A style has to be in the app library to be chosen, so one is published from a throwaway project.
+  const sourceId = await newProject("Style source", 5);
+  const style = await op<{ entityId: string }>(sourceId, "entity.create", {
+    kind: "style",
+    name: "Claymation",
+    description: "stop-motion, felt, warm tungsten, shallow depth",
+  });
+  const styleCandidates = await op<{ candidates: Array<{ assetId: string }> }>(sourceId, "entity.generate", {
+    entityId: style.data.entityId,
+    count: 1,
+  });
+  await op(sourceId, "sheet.edit", {
+    entityId: style.data.entityId,
+    items: [{ assetId: styleCandidates.data.candidates[0]?.assetId, role: "palette" }],
+  });
+  await op(sourceId, "sheet.publish", { entityId: style.data.entityId });
+  await op(sourceId, "library.push", { entityId: style.data.entityId });
+
+  const styles = await fetch(`${base}/api/op/library.styles`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: "{}",
+  }).then(
+    (response) =>
+      response.json() as Promise<{ ok: boolean; data: { styles: Array<{ id: string; name: string }> } }>,
+  );
+  assert(styles.data.styles.length === 1, "the app library must list the style that was pushed");
+  steps.push("library: a style is available before any project exists");
+
+  // The project is created with every decision that shapes it.
+  const created = await fetch(`${base}/api/projects`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      name: "Vertical",
+      runtimeSeconds: 60,
+      aspectRatio: "9:16",
+      frameRate: 25,
+      resolutionPixels: 720,
+      budgetUsd: 40,
+      bindingSetId: profile.data.id,
+      styleLibraryId: styles.data.styles[0]?.id,
+    }),
+  }).then(
+    (response) =>
+      response.json() as Promise<{ ok: boolean; data: { projectId: string; styleId: string | null } }>,
+  );
+  assert(created.ok && created.data.projectId, "the project must be created");
+  projectId = created.data.projectId;
+  assert(created.data.styleId, "the chosen style must come into the project as a clone");
+  steps.push("create: a vertical project, 25 fps, 720 short edge, a profile and a style");
+
+  const projects = await fetch(`${base}/api/projects`, { headers: { cookie } }).then(
+    (response) =>
+      response.json() as Promise<{
+        data: {
+          projects: Array<{
+            id: string;
+            bindingSetId: string | null;
+            settings: {
+              aspectRatio: string;
+              frameRate: number;
+              resolutionPixels: number;
+              defaultStyleId: string | null;
+            };
+          }>;
+        };
+      }>,
+  );
+  const mine = projects.data.projects.find((project) => project.id === projectId);
+  assert(
+    mine?.settings.aspectRatio === "9:16",
+    `the shape must be stored, got ${mine?.settings.aspectRatio}`,
+  );
+  assert(mine?.settings.frameRate === 25, "the rate must be stored");
+  assert(mine?.settings.resolutionPixels === 720, "the short edge must be stored");
+  assert(mine?.bindingSetId === profile.data.id, "the profile must be the one chosen at creation");
+  assert(mine?.settings.defaultStyleId === created.data.styleId, "the style must be the default look");
+  steps.push("stored: shape, rate, profile and look are on the project, not implied by a form");
+
+  const brief = await op<{
+    project: {
+      settings: { frameRate: number; aspectRatio: string; defaultStyleId: string | null };
+      bindingSetId: string | null;
+    };
+  }>(projectId, "session.brief");
+  assert(brief.data.project.settings.frameRate === 25, "a new session must be told the rate");
+  assert(brief.data.project.bindingSetId === profile.data.id, "a new session must be told the profile");
+  steps.push("brief: a session reads the film's shape and profile without opening a form");
+
+  // The look applies to entries that name no style of their own.
+  const keeper = await op<{ entityId: string }>(projectId, "entity.create", {
+    kind: "character",
+    name: "The keeper",
+    description: "Salt in his beard, oilskin coat.",
+  });
+  const expanded = await op<{ prompt: string; styleId: string | null }>(projectId, "prompt.expand", {
+    entityId: keeper.data.entityId,
+  });
+  assert(
+    expanded.data.styleId === created.data.styleId,
+    "the project's style must be applied to a new entry",
+  );
+  assert(expanded.data.prompt.includes("Claymation"), "the prompt must carry the style it used");
+  steps.push("style: an entry with no style of its own is written with the project's look");
+
+  // The stills and the cut are made to the shape the project was created with.
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LANTERN ROOM", timeOfDay: "NIGHT" },
+  });
+  const shot = await op<{ shotId: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "WS",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 4,
+  });
+  const frame = await op<{ width: number; height: number }>(projectId, "frame.generate", {
+    shotId: shot.data.shotId,
+    role: "first",
+  });
+  assert(
+    frame.data.width === 720 && frame.data.height === 1280,
+    `a 9:16 film at 720 must render 720x1280, got ${frame.data.width}x${frame.data.height}`,
+  );
+  steps.push("frame: generated at 720x1280, the vertical shape the project was created with");
+
+  await op(projectId, "cut.build", {});
+  const rendered = await op<{ rendered: { width: number; height: number } | null }>(
+    projectId,
+    "cut.render",
+    {},
+  );
+  assert(rendered.data.rendered?.width === 720, "the cut must be rendered at the project's width");
+  assert(rendered.data.rendered?.height === 1280, "the cut must be rendered at the project's height");
+  steps.push("cut: rendered at the same 720x1280, from settings rather than a flag");
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -1883,6 +2052,35 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 15) {
+      await page.waitForSelector("text=New project", { timeout: 20_000 });
+      await page.fill('input[placeholder="The Last Light"]', "Vertical short");
+      await page.selectOption('select[aria-label="Aspect ratio"]', "9:16");
+      await page.selectOption('select[aria-label="Frame rate"]', "25");
+      await page.selectOption('select[aria-label="Resolution"]', "1080");
+      await page.selectOption('select[aria-label="Model profile"]', { index: 1 });
+      await page.selectOption('select[aria-label="Style sheet"]', { index: 1 });
+      // The form says the pixels the chosen shape produces, before the project exists.
+      const hint = await page.locator("text=at 25 fps").first().textContent();
+      assert(Boolean(hint?.includes("1080x1920")), `the form must state the frame size, got: ${hint}`);
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: join(artifactDir, "new-project.png"), fullPage: true });
+      steps.push("ui: the create form asks for shape, rate, models and a look");
+
+      await page.click('button:has-text("Create project")');
+      await page.waitForSelector('[aria-label="Project format"]', { timeout: 20_000 });
+      const format = await page.locator('[aria-label="Project format"]').first().textContent();
+      assert(Boolean(format?.includes("1080x1920")), `the project must state its shape, got: ${format}`);
+      assert(Boolean(format?.includes("25 fps")), "the project must state its rate");
+      assert(Boolean(format?.includes("project style")), "the project must state that it runs on a style");
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: join(artifactDir, "project-created.png"), fullPage: true });
+      steps.push("ui: the new project states 1080x1920 at 25 fps and its look");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 14) {
       await page.selectOption('select[aria-label="Project"]', projectId);
@@ -2251,6 +2449,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 12) await gate12(steps);
     else if (gateNumber === 13) await gate13(steps);
     else if (gateNumber === 14) await gate14(steps);
+    else if (gateNumber === 15) await gate15(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

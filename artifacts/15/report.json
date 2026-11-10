@@ -1,0 +1,16 @@
+{
+  "gate": 15,
+  "status": "passed",
+  "base": "http://127.0.0.1:54266",
+  "steps": [
+    "library: a style is available before any project exists",
+    "create: a vertical project, 25 fps, 720 short edge, a profile and a style",
+    "stored: shape, rate, profile and look are on the project, not implied by a form",
+    "brief: a session reads the film's shape and profile without opening a form",
+    "style: an entry with no style of its own is written with the project's look",
+    "frame: generated at 720x1280, the vertical shape the project was created with",
+    "cut: rendered at the same 720x1280, from settings rather than a flag",
+    "ui: the create form asks for shape, rate, models and a look",
+    "ui: the new project states 1080x1920 at 25 fps and its look"
+  ]
+}
