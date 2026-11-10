@@ -757,6 +757,7 @@ function ProviderForm({
           authHeader,
           authScheme,
           testPath,
+          testMethod,
         };
         if (provider) values.id = provider.id;
         // On an edit, a blank key field means "keep the one that is stored"; forgetting it is an explicit checkbox.

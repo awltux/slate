@@ -2834,6 +2834,23 @@ async function browserFlow(steps: string[]): Promise<void> {
       });
       await page.click('button[aria-label="Test endpoint gate image endpoint"]');
       await page.waitForSelector("text=gate image endpoint: the host answered 200", { timeout: 30_000 });
+      // The form must save the method it shows: this is the bug where the select was decoration and the button kept
+      // sending GET after a POST was chosen.
+      await page.click('button[aria-label="Edit gate poster"]');
+      await page.waitForSelector('select[aria-label="Edit test method"]', { timeout: 20_000 });
+      const chosen = await page.locator('select[aria-label="Edit test method"]').inputValue();
+      assert(chosen === "POST", `the form must show the saved method, got ${chosen}`);
+      await page.locator('button:has-text("Save provider")').last().click();
+      await page.waitForTimeout(1500);
+      await page.locator('button[aria-label="Test the connection to gate poster"]').click();
+      await page.waitForSelector("details pre", { timeout: 20_000 });
+      const sentLine = (await page.locator("details pre").first().textContent()) ?? "";
+      assert(
+        sentLine.trimStart().startsWith("POST "),
+        `pressing Test after saving POST must send POST, got: ${sentLine.split("\n")[0]}`,
+      );
+      steps.push("ui: the form saves the test method it shows, and Test sends it");
+
       steps.push("ui: a provider and each endpoint have a Test button, and both report the answer");
 
       await instance.close();
