@@ -70,6 +70,141 @@ const EndpointViewSchema = z
  * The setup view never returns a key. It says whether one exists, which is all a UI needs and all a log should ever
  * carry: a credential that can be read back through an API is a credential that leaks through one.
  */
+/**
+ * Prove a provider, or one of its endpoints, answers. A test is a reachability check and nothing else: it never sends the
+ * endpoint's body, so it cannot generate an image or cost anything. A 401 is a pass - the host answered, the key did not -
+ * and is reported as exactly that rather than as a failure.
+ */
+export const aiTest = defineOp({
+  name: "ai.test",
+  hostLevel: true,
+  policy: "read",
+  summary: "Check that a provider, or one of its endpoints, answers.",
+  input: z
+    .object({
+      providerId: z.string().optional(),
+      endpointId: z.string().optional(),
+    })
+    .strict(),
+  output: z
+    .object({
+      target: z.enum(["provider", "endpoint"]),
+      name: z.string(),
+      url: z.string(),
+      method: z.string(),
+      /** What the host answered, or null when it did not answer at all. */
+      status: z.number().int().nullable(),
+      reachable: z.boolean(),
+      /** What was actually sent, for debug: the credential is masked, never echoed back. */
+      request: z
+        .object({
+          method: z.string(),
+          url: z.string(),
+          headers: z.record(z.string(), z.string()),
+          body: z.string(),
+        })
+        .strict(),
+      /** What came back, truncated: a failing test is worth reading, not guessing at. */
+      response: z
+        .object({
+          status: z.number().int().nullable(),
+          body: z.string(),
+          /** The transport's own words when there was no answer at all. */
+          error: z.string().nullable(),
+        })
+        .strict(),
+      /** Whether the answer proves the credential was accepted, refused, or says nothing about it. */
+      auth: z.enum(["accepted", "refused", "unknown", "not-required"]),
+      ms: z.number().int(),
+      message: z.string(),
+    })
+    .strict(),
+  touched: () => [],
+  run: async (input, context) => {
+    const config = await readAiConfig(context.home);
+    const endpoint = input.endpointId ? config.endpoints.find((item) => item.id === input.endpointId) : null;
+    if (input.endpointId && !endpoint) {
+      throw new SlateError("not_found", `no endpoint ${input.endpointId}`);
+    }
+    const providerId = endpoint?.providerId ?? input.providerId ?? null;
+    const provider = providerId ? config.providers.find((item) => item.id === providerId) : null;
+    if (!provider) throw new SlateError("not_found", `no provider ${providerId ?? "(none given)"}`);
+
+    // A GET on the path, never the endpoint's real request: a test that spends money is not a test.
+    const path = endpoint?.path && !endpoint.path.includes("{{") ? endpoint.path : "";
+    const url = `${provider.baseUrl.replace(/\/$/, "")}${path.startsWith("/") || path === "" ? path : `/${path}`}`;
+    const keys = await readKeys(context.home);
+    const apiKey = keys[provider.id] ?? null;
+    const headers: Record<string, string> = {};
+    if (apiKey) {
+      headers[provider.auth.header] = provider.auth.scheme.replace("{{key}}", apiKey);
+    }
+    // The same headers with the secret replaced: shown to a person, so it must not print the key back.
+    const shownHeaders: Record<string, string> = {};
+    for (const [header, value] of Object.entries(headers)) {
+      shownHeaders[header] = apiKey ? value.replace(apiKey, "***") : value;
+    }
+
+    const send = context.http ?? httpPort;
+    const started = Date.now();
+    let status: number | null = null;
+    let body = "";
+    let failure: string | null = null;
+    try {
+      const response = await send({ url, method: "GET", headers });
+      status = response.status;
+      body = response.body.slice(0, 2_000);
+    } catch (error) {
+      status = null;
+      failure = error instanceof Error ? error.message : String(error);
+    }
+    const ms = Date.now() - started;
+
+    const ok = status !== null && status >= 200 && status < 300;
+    const auth: "accepted" | "refused" | "unknown" =
+      status === null
+        ? "unknown"
+        : status === 401 || status === 403
+          ? "refused"
+          : ok
+            ? "accepted"
+            : "unknown";
+
+    const message =
+      status === null
+        ? "no answer: the host is unreachable, blocked, or the address is wrong"
+        : auth === "refused"
+          ? `the host answered ${status}: the address is right, the key was refused`
+          : ok
+            ? `the host answered ${status}`
+            : status === 404 || status === 405
+              ? `the host answered ${status}: it is reachable, though this path may not answer a GET`
+              : `the host answered ${status}${body ? `: ${body}` : ""}`;
+
+    return {
+      data: {
+        target: endpoint ? ("endpoint" as const) : ("provider" as const),
+        name: endpoint ? `${endpoint.name}` : provider.name,
+        url,
+        method: "GET",
+        status,
+        reachable: status !== null,
+        request: { method: "GET", url, headers: shownHeaders, body: "" },
+        response: { status, body: status === null ? "" : body, error: failure },
+        auth,
+        ms,
+        message,
+      },
+      version: 0,
+      warnings:
+        status !== null
+          ? []
+          : [{ code: "service_unavailable", message: "the test could not reach the host" }],
+      next: ["ai.catalog"],
+    };
+  },
+});
+
 export const aiCatalog = defineOp({
   name: "ai.catalog",
   ownerOnly: true,

@@ -2,6 +2,14 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Test a provider, and each of its endpoints
+
+- **Every provider row has a Test button**, and every endpoint row has one too. They send **one GET** and report what the
+  host answered: how long it took, whether the address is right, and whether the key was accepted or refused.
+- **A test never generates anything.** It does not send the endpoint's body, so trying it cannot cost money — which is the
+  only kind of test worth having on a page full of paid models.
+- **A refusal is a pass with a reason**: `401` means the address is right and the key is wrong. An unreachable host says so
+  in words instead of throwing, so the row shows the truth instead of a crash.
 ## How each library type is written
 
 - **A library type now has instructions, not a hardcoded sentence.** Character, location, prop, style, costume and body

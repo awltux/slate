@@ -11,6 +11,7 @@ import {
   aiProviderSave,
   aiReferenceTest,
   aiRemove,
+  aiTest,
 } from "./ai.js";
 import { projectExport, projectImport } from "./archive.js";
 import { projectExportFolder, projectSetExportFolder } from "./archive.js";
@@ -94,6 +95,7 @@ export function createRegistry(): OpRegistry {
     entityDelete,
     entityAngles,
     aiCatalog,
+    aiTest,
     aiProviderSave,
     aiEndpointDraft,
     aiEndpointSave,

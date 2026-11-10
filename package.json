@@ -43,7 +43,8 @@
     "gate:19": "tsx scripts/gates.ts 19",
     "gate:20": "tsx scripts/gates.ts 20",
     "gate:21": "tsx scripts/gates.ts 21",
-    "gate:22": "tsx scripts/gates.ts 22"
+    "gate:22": "tsx scripts/gates.ts 22",
+    "gate:23": "tsx scripts/gates.ts 23"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",

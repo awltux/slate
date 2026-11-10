@@ -410,6 +410,31 @@ export interface ReferenceUploadResult {
 }
 
 /** Uploads a tiny image through a provider's declared file API, to prove it before a shot depends on it. */
+export interface ConnectionTest {
+  target: "provider" | "endpoint";
+  name: string;
+  url: string;
+  method: string;
+  status: number | null;
+  reachable: boolean;
+  auth: "accepted" | "refused" | "unknown" | "not-required";
+  ms: number;
+  message: string;
+  /** What was sent; the credential is masked, never echoed back. */
+  request: { method: string; url: string; headers: Record<string, string>; body: string };
+  /** What came back, and the transport's words when nothing did. */
+  response: { status: number | null; body: string; error: string | null };
+}
+
+/** Check that a provider, or one endpoint of it, answers. Sends a GET, never the generating request. */
+export async function testConnection(input: {
+  providerId?: string;
+  endpointId?: string;
+}): Promise<ConnectionTest> {
+  const result = await runGlobalOp<ConnectionTest>("ai.test", input);
+  return result.data;
+}
+
 export function testReferenceUpload(providerId: string): Promise<ReferenceUploadResult> {
   return runGlobalOp<ReferenceUploadResult>("ai.reference.test", { providerId }).then(
     (result) => result.data,

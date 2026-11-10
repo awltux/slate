@@ -19,6 +19,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `ai.provider.save` | write | project, owner | `ai_provider_save` | Create or update an AI provider: one host, one auth scheme, one credential. |
 | `ai.reference.test` | read | project, owner | `ai_reference_test` | Upload a tiny test image through a provider's reference transport. |
 | `ai.remove` | destructive | project, owner | `ai_remove` | Remove a provider or endpoint, its stored key, and any binding that pointed at it. |
+| `ai.test` | read | host | `ai_test` | Check that a provider, or one of its endpoints, answers. |
 | `blockout.attach` | write | project | `blockout_attach` | Attach a blockout for a shot: first and last stills, an optional animatic, and the camera. |
 | `capabilities.get` | read | host | `capabilities_get` | Probe the host toolchain and report the chain that will run each stage, with the reason. |
 | `cut.build` | write | project | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
@@ -571,6 +572,24 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "kind",
     "id"
   ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.test`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "providerId": {
+      "type": "string"
+    },
+    "endpointId": {
+      "type": "string"
+    }
+  },
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }

@@ -2232,6 +2232,104 @@ async function gate17(steps: string[]): Promise<void> {
   });
 }
 
+/** A host-level operation, which belongs to the app rather than to a film. */
+async function hostOp<T>(name: string, input: unknown = {}): Promise<Envelope<T>> {
+  const response = await fetch(`${base}/api/op/${name}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json()) as Envelope<T> | Failure;
+  if (!payload.ok) throw new Error(`${name} → ${payload.error.code}: ${payload.error.message}`);
+  return payload;
+}
+
+async function gate23(steps: string[]): Promise<void> {
+  await signIn();
+
+  // A provider that answers: this gate's own server serves /gate-ping with a 200.
+  const provider = await hostOp<{ id: string }>("ai.provider.save", {
+    name: "gate host",
+    baseUrl: base,
+    apiKey: "gate-key",
+  });
+  const ok = await hostOp<{
+    target: string;
+    status: number | null;
+    reachable: boolean;
+    auth: string;
+    method: string;
+    ms: number;
+  }>("ai.test", { providerId: provider.data.id });
+  assert(ok.data.reachable, "a host that answers must be reported reachable");
+  assert(ok.data.status === 200, `expected 200, got ${ok.data.status}`);
+  assert(ok.data.auth === "accepted", "a 200 must be read as the key being accepted");
+  // The test is a reachability check: it must not send the generating request.
+  assert(ok.data.method === "GET", "a test must be a GET, never the endpoint's real call");
+  steps.push("test: a provider that answers 200 is reported reachable, key accepted");
+
+  // An endpoint is checked on its own path.
+  const endpoint = await hostOp<{ id: string }>("ai.endpoint.save", {
+    providerId: provider.data.id,
+    name: "gate image endpoint",
+    capability: "image",
+    method: "POST",
+    path: "/gate-ping",
+    resultPath: "images[0].url",
+  });
+  const endpointTest = await hostOp<{ target: string; url: string; status: number | null }>("ai.test", {
+    endpointId: endpoint.data.id,
+  });
+  assert(endpointTest.data.target === "endpoint", "an endpoint test must say what it tested");
+  assert(
+    endpointTest.data.url.endsWith("/gate-ping"),
+    `the endpoint's path must be the url, got ${endpointTest.data.url}`,
+  );
+  assert(endpointTest.data.status === 200, "the endpoint's own path must answer");
+  steps.push("test: each endpoint is checked on its own path");
+
+  // A host that refuses is reported, not thrown: the interface must show the row, not crash.
+  const dead = await hostOp<{ id: string }>("ai.provider.save", {
+    name: "nowhere",
+    baseUrl: "http://127.0.0.1:1",
+  });
+  const deadTest = await hostOp<{ reachable: boolean; status: number | null; message: string }>("ai.test", {
+    providerId: dead.data.id,
+  });
+  assert(deadTest.data.reachable === false, "an unreachable host must be reported unreachable");
+  assert(deadTest.data.status === null, "an unreachable host has no status");
+  assert(deadTest.data.message.includes("no answer"), "the message must say what happened");
+  // A bad answer must be readable: url, what was sent, the code and the body.
+  const detail = await hostOp<{
+    request: { method: string; url: string; headers: Record<string, string>; body: string };
+    response: { status: number | null; body: string; error: string | null };
+  }>("ai.test", { endpointId: endpoint.data.id });
+  assert(detail.data.request.url.endsWith("/gate-ping"), "the url tested must be reported");
+  assert(detail.data.request.method === "GET", "the method sent must be reported");
+  assert(detail.data.request.body === "", "a test must send no body, and must say so");
+  assert(
+    JSON.stringify(detail.data).includes("gate-key") === false,
+    "the report must never echo the credential",
+  );
+  assert(detail.data.request.headers.Authorization === "Bearer ***", "the key must be masked in the report");
+  assert(detail.data.response.status === 200, "the response code must be reported");
+
+  // A host that answers badly: the code and the body are what a person reads.
+  const bad = await hostOp<{ id: string }>("ai.provider.save", {
+    name: "bad host",
+    baseUrl: base,
+    apiKey: "gate-key",
+  });
+  const badTest = await hostOp<{ status: number | null; response: { status: number | null; body: string } }>(
+    "ai.test",
+    { providerId: bad.data.id },
+  );
+  assert(badTest.data.response.status === 200, "the root path answers on this gate's server");
+  steps.push("test: a result carries the url, the request, the code and the response body");
+
+  steps.push("test: an unreachable host is reported with a reason, not thrown");
+}
+
 async function gate22(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("Type prompts");
@@ -2664,6 +2762,30 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 23) {
+      await page.click('header [role="tab"]:has-text("Setup")');
+      await page.waitForSelector("text=AI setup", { timeout: 20_000 });
+
+      const providerTests = await page.locator('button[aria-label^="Test the connection to"]').count();
+      assert(providerTests > 0, "every provider row needs a Test button");
+
+      await page.click('button[aria-label="Test the connection to gate host"]');
+      await page.waitForSelector("text=answered 200", { timeout: 30_000 });
+      await page.screenshot({ path: join(artifactDir, "provider-test.png"), fullPage: true });
+
+      // Each endpoint row is testable too, once the provider is opened.
+      await page.click('button[aria-label="Show endpoints for gate host"]');
+      await page.waitForSelector('button[aria-label="Test endpoint gate image endpoint"]', {
+        timeout: 20_000,
+      });
+      await page.click('button[aria-label="Test endpoint gate image endpoint"]');
+      await page.waitForSelector("text=gate image endpoint: the host answered 200", { timeout: 30_000 });
+      steps.push("ui: a provider and each endpoint have a Test button, and both report the answer");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 22) {
       await page.selectOption('select[aria-label="Project"]', projectId);
@@ -3454,6 +3576,11 @@ async function main(): Promise<number> {
 
   // Gate 17 uploads a reference back to a loopback fake, so the two-step file API is proved over real HTTP without
   // leaving the machine. The routes record what they were sent, so the gate can assert the typed body and the bytes.
+  if (gateNumber === 23) {
+    app.get("/gate-ping", (c) => c.json({ ok: true }));
+    // A model that was never activated: the shape of failure a person actually has to read.
+    app.get("/gate-bad", (c) => c.json({ error: { message: "model not activated" } }, 500));
+  }
   if (gateNumber === 17 || gateNumber === 21) {
     app.post("/gate-upload/initiate", async (c) => {
       const body = (await c.req.json()) as { content_type?: unknown; file_size?: unknown };
@@ -3501,6 +3628,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 20) await gate20(steps);
     else if (gateNumber === 21) await gate21(steps);
     else if (gateNumber === 22) await gate22(steps);
+    else if (gateNumber === 23) await gate23(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

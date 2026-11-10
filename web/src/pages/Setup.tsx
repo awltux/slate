@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, runGlobalOp, testReferenceUpload } from "../api.js";
+import { ApiError, type ConnectionTest, runGlobalOp, testConnection, testReferenceUpload } from "../api.js";
 
 interface ProviderView {
   id: string;
@@ -83,6 +83,8 @@ export function Setup() {
   const [editingEndpoint, setEditingEndpoint] = useState<string | null>(null);
   const [confirmDeleteEndpoint, setConfirmDeleteEndpoint] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The last connection test, kept so a bad answer can be read rather than guessed at. */
+  const [testDetail, setTestDetail] = useState<ConnectionTest | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -146,6 +148,26 @@ export function Setup() {
     });
   }
 
+  /**
+   * One GET: prove the address answers, and say what the answer means. Nothing is generated, so a test cannot cost
+   * money; when the answer is not a 200 the request and response are kept, because that is when a person needs them.
+   */
+  async function testTarget(label: string, input: { providerId?: string; endpointId?: string }) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setTestDetail(null);
+    try {
+      const result = await testConnection(input);
+      setNotice(`${label}: ${result.message} · ${result.ms} ms`);
+      if (result.status === null || result.status < 200 || result.status >= 300) setTestDetail(result);
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** Prove a provider's file API and key before a shot depends on them: uploads one tiny image. */
   async function testUpload(provider: ProviderView) {
     await run(async () => {
@@ -192,6 +214,43 @@ export function Setup() {
 
       {error ? <p className="error">{error}</p> : null}
       {notice ? <p className="muted">{notice}</p> : null}
+      {testDetail?.request && testDetail.response ? (
+        <details open className="card" style={{ marginTop: "0.5rem" }}>
+          <summary style={{ cursor: "pointer" }}>
+            <strong>What was sent, and what came back</strong>
+          </summary>
+          <div className="stack" style={{ gap: "0.5rem", marginTop: "0.5rem" }}>
+            <div>
+              <span className="muted" style={{ fontSize: 12 }}>
+                request
+              </span>
+              <pre className="mono" style={{ margin: 0, fontSize: 12, whiteSpace: "pre-wrap" }}>
+                {[
+                  `${testDetail.request.method} ${testDetail.request.url}`,
+                  ...Object.entries(testDetail.request.headers).map(
+                    ([header, value]) => `${header}: ${value}`,
+                  ),
+                  testDetail.request.body || "(no body: a test sends none)",
+                ].join("\n")}
+              </pre>
+            </div>
+            <div>
+              <span className="muted" style={{ fontSize: 12 }}>
+                response
+              </span>
+              <pre className="mono" style={{ margin: 0, fontSize: 12, whiteSpace: "pre-wrap" }}>
+                {[
+                  testDetail.response.status ?? "no answer",
+                  testDetail.response.error ?? "",
+                  testDetail.response.body,
+                ]
+                  .filter(Boolean)
+                  .join("\n")}
+              </pre>
+            </div>
+          </div>
+        </details>
+      ) : null}
 
       <div className="card">
         <div className="row">
@@ -242,6 +301,15 @@ export function Setup() {
                 {provider.baseUrl}
               </span>
               <div className="spacer" />
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={`Test the connection to ${provider.name}`}
+                onClick={() => void testTarget(provider.name, { providerId: provider.id })}
+                title="Send one GET and report what the host answers; nothing is generated"
+              >
+                Test
+              </button>
               {confirmDelete === provider.id ? (
                 <>
                   <span className="muted" style={{ fontSize: 12 }}>
@@ -359,6 +427,17 @@ export function Setup() {
                           </td>
                           <td className="mono" style={{ fontSize: 12 }}>
                             {endpoint.resultPath || "—"}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              aria-label={`Test endpoint ${endpoint.name}`}
+                              onClick={() => void testTarget(endpoint.name, { endpointId: endpoint.id })}
+                              title="Send one GET to this path and report what it answers; nothing is generated"
+                            >
+                              Test
+                            </button>
                           </td>
                           <td>
                             <div className="row" style={{ gap: "0.25rem", flexWrap: "nowrap" }}>
