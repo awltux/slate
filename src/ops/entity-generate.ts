@@ -62,7 +62,9 @@ export const entityGenerate = defineOp({
       });
     }
 
-    const style = entity.styleId ? before.entities[entity.styleId] : null;
+    // The entity's own style, else the film's default look: a style chosen at creation applies to every entry.
+    const styleId = entity.styleId ?? project.settings.defaultStyleId;
+    const style = styleId ? (before.entities[styleId] ?? null) : null;
     const cost = Math.round(input.count * IMAGE_PRICE_USD * 100) / 100;
     const paths = projectPaths(context.root);
     const remaining = remainingUsd(project.budget.ceilingUsd, await readLedger(paths));

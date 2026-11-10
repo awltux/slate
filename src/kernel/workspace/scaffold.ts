@@ -15,6 +15,8 @@ export interface InitProjectRequest {
   name: string;
   runtimeSeconds: number;
   aspectRatio: string;
+  frameRate: number;
+  resolutionPixels: number;
   budgetUsd: number;
   clock: Clock;
   actor?: string;
@@ -75,7 +77,13 @@ export async function initProject(request: InitProjectRequest): Promise<InitProj
     name: request.name,
     createdAt: at,
     updatedAt: at,
-    settings: { runtimeSeconds: request.runtimeSeconds, aspectRatio: request.aspectRatio },
+    settings: {
+      runtimeSeconds: request.runtimeSeconds,
+      aspectRatio: request.aspectRatio,
+      frameRate: request.frameRate,
+      resolutionPixels: request.resolutionPixels,
+      defaultStyleId: null,
+    },
     budget: { currency: "USD", ceilingUsd: request.budgetUsd },
     aiBindingSetId: null,
     chains: {},

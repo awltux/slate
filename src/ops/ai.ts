@@ -231,6 +231,7 @@ export const aiEndpointSave = defineOp({
 export const aiBindingSets = defineOp({
   name: "ai.bindingsets",
   policy: "read",
+  hostLevel: true,
   summary: "The binding sets available to projects.",
   input: z.object({}).strict(),
   output: z

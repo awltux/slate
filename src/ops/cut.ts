@@ -5,6 +5,7 @@ import { z } from "zod";
 import { SlateError } from "../domain/result.js";
 import { ingestAsset } from "../kernel/production/assets.js";
 import { sheetReference } from "../kernel/production/entities.js";
+import { frameSize } from "../kernel/production/format.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import {
   type ProductionDocument,
@@ -126,18 +127,22 @@ export const cutBuild = defineOp({
 export const cutRender = defineOp({
   name: "cut.render",
   policy: "write",
-  summary: "Render the cut to MP4 through the assembly chain (FFmpeg concat for now).",
+  summary: "Render the cut to MP4 at the project's shape and rate (FFmpeg concat for now).",
   input: z
     .object({
-      width: z.number().int().positive().max(7680).default(1280),
-      height: z.number().int().positive().max(4320).default(720),
+      // Absent means the project's shape: a per-call override is allowed, but a film has one size.
+      width: z.number().int().positive().max(7680).optional(),
+      height: z.number().int().positive().max(4320).optional(),
       expectedRevision: z.number().int().optional(),
     })
     .strict(),
   output: CutViewSchema.extend({ warning: z.string().nullable() }).strict(),
   touched: () => ["cut"],
   run: async (input, context) => {
-    const { production: before } = await loadDocuments(context);
+    const { project, production: before } = await loadDocuments(context);
+    const size = frameSize(project.settings);
+    const width = input.width ?? size.width;
+    const height = input.height ?? size.height;
     if (before.cut.items.length === 0) {
       throw new SlateError("readiness_failed", "the cut is empty; run cut.build first");
     }
@@ -163,7 +168,7 @@ export const cutRender = defineOp({
         args.push("-loop", "1", "-t", String(item.durationSec), "-i", join(context.root, asset.path));
       }
 
-      const normalise = `scale=${input.width}:${input.height}:force_original_aspect_ratio=decrease,pad=${input.width}:${input.height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p`;
+      const normalise = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p`;
       const segments = before.cut.items.map((_, index) => `[${index}:v]${normalise}[v${index}]`).join(";");
       const joined = before.cut.items.map((_, index) => `[v${index}]`).join("");
       const filter = `${segments};${joined}concat=n=${before.cut.items.length}:v=1:a=0[out]`;
@@ -174,7 +179,7 @@ export const cutRender = defineOp({
         "-map",
         "[out]",
         "-r",
-        "30",
+        String(project.settings.frameRate),
         "-c:v",
         "libx264",
         "-crf",
@@ -202,7 +207,7 @@ export const cutRender = defineOp({
       const committed = await commitDocuments({
         root: context.root,
         actor: context.actor,
-        intent: `cut: render ${before.cut.items.length} items at ${input.width}x${input.height}`,
+        intent: `cut: render ${before.cut.items.length} items at ${width}x${height} ${project.settings.frameRate}fps`,
         touched: ["cut", `asset:${asset.id}`],
         clock: context.clock,
         expectedRevision: input.expectedRevision,
@@ -212,8 +217,8 @@ export const cutRender = defineOp({
             assetId: asset.id,
             at: context.clock.now(),
             via: "ffmpeg",
-            width: input.width,
-            height: input.height,
+            width,
+            height,
           };
         },
       });

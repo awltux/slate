@@ -102,7 +102,7 @@ export const promptExpand = defineOp({
     .strict(),
   touched: (input) => [`entity:${input.entityId}`],
   run: async (input, context) => {
-    const { production } = await loadDocuments(context);
+    const { project, production } = await loadDocuments(context);
     const entity = production.entities[input.entityId];
     if (!entity) throw new SlateError("not_found", `no entity ${input.entityId}`);
 
@@ -118,7 +118,9 @@ export const promptExpand = defineOp({
       });
     }
 
-    const styleEntity: Entity | null = entity.styleId ? (production.entities[entity.styleId] ?? null) : null;
+    // An entity's own style wins; otherwise the film's default look applies, so a look is chosen once.
+    const styleId = entity.styleId ?? project.settings.defaultStyleId;
+    const styleEntity: Entity | null = styleId ? (production.entities[styleId] ?? null) : null;
     const style = styleEntity ? { name: styleEntity.name, description: styleEntity.description } : null;
 
     const config = await readConfig(context.home);

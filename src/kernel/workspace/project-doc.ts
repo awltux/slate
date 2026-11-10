@@ -3,10 +3,20 @@ import { z } from "zod";
 import { SlateError } from "../../domain/result.js";
 import { projectPaths } from "./paths.js";
 
+/**
+ * The shape of the film, fixed when the project is created because everything downstream depends on it: the stills, the
+ * cut render and the delivered master all take their size and rate from here rather than choosing per call.
+ */
 export const ProjectSettingsSchema = z
   .object({
     runtimeSeconds: z.number().positive(),
     aspectRatio: z.string().regex(/^\d+:\d+$/u, "aspect ratio must look like 16:9"),
+    /** Frames per second for the cut render and the master. */
+    frameRate: z.number().int().min(1).max(120).default(24),
+    /** The short edge in pixels — what "1080p" means in either orientation. */
+    resolutionPixels: z.number().int().min(240).max(4320).default(1080),
+    /** The style sheet every entity uses unless it names one: a project default, so a look is set once. */
+    defaultStyleId: z.string().startsWith("ent_").nullable().default(null),
   })
   .strict();
 

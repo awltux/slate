@@ -10,6 +10,8 @@ export interface AnyOp {
   summary: string;
   /** Host configuration only an owner may change (AI providers, keys). */
   ownerOnly?: boolean;
+  /** Reads host state and needs no project, so it is callable before one exists. */
+  hostLevel?: boolean;
   input: z.ZodTypeAny;
   output: z.ZodTypeAny;
   touched?: (input: unknown, context: OpContext) => string[];

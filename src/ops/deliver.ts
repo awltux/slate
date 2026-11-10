@@ -251,7 +251,8 @@ export const deliverExport = defineOp({
       schema: PROVENANCE_SCHEMA,
       generatedAt: context.clock.now(),
       actor: context.actor,
-      project: { id: project.id, name: projectName, revision: before.revision },
+      // The shape and rate the film was made at travel with the file, so a master can be judged against its intent.
+      project: { id: project.id, name: projectName, revision: before.revision, settings: project.settings },
       delivery: {
         assetId: masterAsset.id,
         preset: input.preset,

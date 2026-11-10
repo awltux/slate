@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { z } from "zod";
+import { SheetItemStatusSchema, SheetRoleSchema } from "../production/entities.js";
 
 /**
  * The global library is host-level, not project-level: it lives beside users and config, and survives any one project.
@@ -12,7 +13,13 @@ export const GlobalSheetSchema = z
   .object({
     version: z.number().int().positive(),
     images: z.array(
-      z.object({ role: z.string().nullable(), assetId: z.string(), status: z.string() }).strict(),
+      z
+        .object({
+          role: SheetRoleSchema.nullable().catch(null),
+          assetId: z.string(),
+          status: SheetItemStatusSchema.catch("active"),
+        })
+        .strict(),
     ),
     /** The composed reference image, copied into the library store under a library-owned id. */
     compositeAssetId: z.string().nullable().default(null),

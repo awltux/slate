@@ -20,7 +20,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `capabilities.get` | read | `capabilities_get` | Probe the host toolchain and report the chain that will run each stage, with the reason. |
 | `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
 | `cut.get` | read | `cut_get` | The current cut: its items, total duration and the last render. |
-| `cut.render` | write | `cut_render` | Render the cut to MP4 through the assembly chain (FFmpeg concat for now). |
+| `cut.render` | write | `cut_render` | Render the cut to MP4 at the project's shape and rate (FFmpeg concat for now). |
 | `deliver.export` | spend | `deliver_export` | Encode the cut into a master with optional audio, run QC, and write a provenance manifest. |
 | `deliver.qc` | read | `deliver_qc` | The QC report and manifest from the last delivery. |
 | `entity.angles` | read | `entity_angles` | The six headshot rotations a character sheet must cover. |
@@ -39,6 +39,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `library.list` | read | `library_list` | The global library, plus which local entities are behind their global version. |
 | `library.pull` | write | `library_pull` | Refresh a project entity from its global library item. |
 | `library.push` | write | `library_push` | Publish a project entity to the global library, or bump its global version. |
+| `library.styles` | read | `library_styles` | The style sheets available to a new project. |
 | `note.add` | write | `note_add` | Leave a note on a shot, a scene, or the cut. |
 | `note.list` | read | `note_list` | Notes, filtered by anchor or resolution. |
 | `note.resolve` | write | `note_resolve` | Mark a note as handled. |
@@ -555,14 +556,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "width": {
       "type": "integer",
       "exclusiveMinimum": 0,
-      "maximum": 7680,
-      "default": 1280
+      "maximum": 7680
     },
     "height": {
       "type": "integer",
       "exclusiveMinimum": 0,
-      "maximum": 4320,
-      "default": 720
+      "maximum": 4320
     },
     "expectedRevision": {
       "type": "integer"
@@ -998,6 +997,17 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `library.styles`
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `note.add`
 
 ```json
@@ -1140,10 +1150,36 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       },
       "default": "16:9"
     },
+    "frameRate": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120,
+      "default": 24
+    },
+    "resolutionPixels": {
+      "type": "integer",
+      "minimum": 240,
+      "maximum": 4320,
+      "default": 1080
+    },
     "budgetUsd": {
       "type": "number",
       "minimum": 0,
       "default": 0
+    },
+    "bindingSetId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "styleLibraryId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
     }
   },
   "required": [

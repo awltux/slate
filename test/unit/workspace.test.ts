@@ -24,6 +24,8 @@ function create() {
     name: "The Last Light",
     runtimeSeconds: 90,
     aspectRatio: "16:9",
+    frameRate: 24,
+    resolutionPixels: 1080,
     budgetUsd: 200,
     clock: fixedClock("2026-11-09T10:00:00.000Z"),
     actor: "director",

@@ -36,7 +36,23 @@ export const sessionBrief = defineOp({
   output: z
     .object({
       project: z
-        .object({ id: z.string(), name: z.string(), revision: z.number().int(), ceilingUsd: z.number() })
+        .object({
+          id: z.string(),
+          name: z.string(),
+          revision: z.number().int(),
+          ceilingUsd: z.number(),
+          /** The film's shape, rate and look: what a session needs before it can plan anything. */
+          settings: z
+            .object({
+              runtimeSeconds: z.number(),
+              aspectRatio: z.string(),
+              frameRate: z.number().int(),
+              resolutionPixels: z.number().int(),
+              defaultStyleId: z.string().nullable(),
+            })
+            .strict(),
+          bindingSetId: z.string().nullable(),
+        })
         .strict(),
       story: z.object({ complete: z.boolean(), missing: z.array(z.string()) }).strict(),
       plan: z.object({ scenes: z.number().int(), shots: z.number().int(), stale: z.number().int() }).strict(),
@@ -67,6 +83,14 @@ export const sessionBrief = defineOp({
           name: project.name,
           revision: project.revision,
           ceilingUsd: project.budget.ceilingUsd,
+          settings: {
+            runtimeSeconds: project.settings.runtimeSeconds,
+            aspectRatio: project.settings.aspectRatio,
+            frameRate: project.settings.frameRate,
+            resolutionPixels: project.settings.resolutionPixels,
+            defaultStyleId: project.settings.defaultStyleId,
+          },
+          bindingSetId: project.aiBindingSetId,
         },
         story: { complete: missing.length === 0, missing },
         plan: {

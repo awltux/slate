@@ -68,7 +68,11 @@ const CreateProjectSchema = z
     name: z.string().min(1),
     runtimeSeconds: z.number().positive().default(90),
     aspectRatio: z.string().default("16:9"),
+    frameRate: z.number().int().min(1).max(120).default(24),
+    resolutionPixels: z.number().int().min(240).max(4320).default(1080),
     budgetUsd: z.number().nonnegative().default(0),
+    bindingSetId: z.string().nullable().default(null),
+    styleLibraryId: z.string().nullable().default(null),
   })
   .strict();
 
@@ -174,6 +178,14 @@ export function createApp(options: AppOptions): Hono {
           name: document?.name ?? project.name,
           createdAt: project.createdAt,
           bindingSetId: document?.aiBindingSetId ?? null,
+          // The film's shape and rate, so a list can say what each project actually is.
+          settings: document?.settings ?? {
+            runtimeSeconds: 0,
+            aspectRatio: "16:9",
+            frameRate: 24,
+            resolutionPixels: 1080,
+            defaultStyleId: null,
+          },
         };
       }),
     );
@@ -241,9 +253,14 @@ export function createApp(options: AppOptions): Hono {
         error: { code: "not_found", message: `unknown operation: ${name}`, retryable: false },
       });
     }
-    if (!op.ownerOnly) throw new HTTPException(403, { message: `${name} is not a host-level operation` });
-    if (identity.role !== "owner")
+    // Host-level operations (AI providers, the library catalogue) belong to the app, not to a project. A read that needs
+    // no project may be called by anyone signed in; changing host configuration stays with the owner.
+    if (!op.ownerOnly && !op.hostLevel) {
+      throw new HTTPException(403, { message: `${name} is not a host-level operation` });
+    }
+    if (identity.role !== "owner" && !(op.hostLevel && op.policy === "read")) {
       throw new HTTPException(403, { message: `only the owner may run ${name}` });
+    }
 
     const body = await c.req.json().catch(() => ({}));
     const result = await registry.execute(name, body, {

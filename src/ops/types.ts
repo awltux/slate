@@ -51,6 +51,11 @@ export interface OpDefinition<InputSchema extends z.ZodTypeAny, OutputSchema ext
   output: OutputSchema;
   /** True when only an owner may run this: host configuration, not project content. */
   ownerOnly?: boolean;
+  /**
+   * True when the operation reads host state and needs no project folder - the app library, the model profiles.
+   * It may then be called before a project exists, which is exactly when a film is being created.
+   */
+  hostLevel?: boolean;
   /** Nodes the write touches; required for write/spend/destructive operations. */
   touched?: (input: z.infer<InputSchema>, context: OpContext) => string[];
   run: (input: z.infer<InputSchema>, context: OpContext) => Promise<OpOutcome<z.infer<OutputSchema>>>;

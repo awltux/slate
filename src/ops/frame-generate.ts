@@ -7,6 +7,7 @@ import { SlateError } from "../domain/result.js";
 import { renderStill } from "../kernel/catalog/fake-gateway.js";
 import { appendLedger, readLedger, remainingUsd } from "../kernel/ledger/ledger.js";
 import { ingestAsset } from "../kernel/production/assets.js";
+import { frameSize } from "../kernel/production/format.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { projectPaths } from "../kernel/workspace/paths.js";
 import { loadDocuments } from "./documents.js";
@@ -39,6 +40,9 @@ export const frameGenerate = defineOp({
       assetId: z.string(),
       entityIds: z.array(z.string()),
       blockoutAssetId: z.string().nullable(),
+      /** The size the frame was rendered at: the project's shape, not a choice made per shot. */
+      width: z.number().int(),
+      height: z.number().int(),
       spentUsd: z.number(),
       remainingUsd: z.number(),
     })
@@ -48,6 +52,8 @@ export const frameGenerate = defineOp({
     const { project, production } = await loadDocuments(context);
     const shot = production.shots[input.shotId];
     if (!shot) throw new SlateError("not_found", `no shot ${input.shotId}`);
+
+    const size = frameSize(project.settings);
 
     const scene = production.scenes[shot.sceneId];
     const attached = (scene?.entityIds ?? [])
@@ -102,8 +108,8 @@ export const frameGenerate = defineOp({
           binary: ffmpeg.binary,
           prompt,
           index: input.seed + (input.role === "last" ? 1 : 0),
-          width: 960,
-          height: 540,
+          width: size.width,
+          height: size.height,
           outputFile,
         },
         context.run,
@@ -152,6 +158,8 @@ export const frameGenerate = defineOp({
         assetId: asset.id,
         entityIds: source.entityIds,
         blockoutAssetId,
+        width: size.width,
+        height: size.height,
         spentUsd: cost,
         remainingUsd: remainingUsd(project.budget.ceilingUsd, await readLedger(paths)),
       },

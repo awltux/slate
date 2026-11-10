@@ -1,10 +1,18 @@
 import { z } from "zod";
 import { SlateError } from "../domain/result.js";
 import { readAiConfig } from "../kernel/ai/store.js";
+import { cloneLibraryItem } from "../kernel/library/clone.js";
+import { readGlobalLibrary } from "../kernel/library/store.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
+import { readProjectDocument } from "../kernel/workspace/project-doc.js";
 import { initProject } from "../kernel/workspace/scaffold.js";
 import { defineOp } from "./registry.js";
 
+/**
+ * A project is created with the decisions that shape everything after it: the shape and rate of the film, the models it
+ * runs on, the look it is judged against and what it may spend. Changing them later is a migration of finished work, so
+ * they are asked for once, up front, and every surface downstream reads them instead of choosing.
+ */
 export const projectCreate = defineOp({
   name: "project.create",
   policy: "write",
@@ -18,7 +26,14 @@ export const projectCreate = defineOp({
         .string()
         .regex(/^\d+:\d+$/u, "aspect ratio must look like 16:9")
         .default("16:9"),
+      frameRate: z.number().int().min(1).max(120).default(24),
+      /** The short edge in pixels: what "1080p" means in either orientation. */
+      resolutionPixels: z.number().int().min(240).max(4320).default(1080),
       budgetUsd: z.number().nonnegative().default(0),
+      /** The model profile this film runs on; null follows the host default. */
+      bindingSetId: z.string().nullable().default(null),
+      /** A style sheet to bring in from the app library and apply to every entry by default. */
+      styleLibraryId: z.string().nullable().default(null),
     })
     .strict(),
   output: z
@@ -27,29 +42,82 @@ export const projectCreate = defineOp({
       name: z.string(),
       revision: z.number().int(),
       commit: z.string(),
+      styleId: z.string().nullable(),
     })
     .strict(),
-  touched: () => ["project"],
+  touched: () => ["project", "entities"],
   run: async (input, context) => {
+    const config = await readAiConfig(context.home);
+    if (input.bindingSetId && !config.bindingSets.some((set) => set.id === input.bindingSetId)) {
+      throw new SlateError("not_found", `no binding set ${input.bindingSetId}`);
+    }
+
+    const library = input.styleLibraryId ? await readGlobalLibrary(context.home) : null;
+    const styleItem = input.styleLibraryId
+      ? library?.items.find((item) => item.id === input.styleLibraryId)
+      : undefined;
+    if (input.styleLibraryId && !styleItem) {
+      throw new SlateError("not_found", `no library item ${input.styleLibraryId}`);
+    }
+    if (styleItem && styleItem.kind !== "style") {
+      throw new SlateError("invalid_input", `${styleItem.name} is a ${styleItem.kind}, not a style sheet`);
+    }
+
     const created = await initProject({
       root: input.root,
       name: input.name,
       runtimeSeconds: input.runtimeSeconds,
       aspectRatio: input.aspectRatio,
+      frameRate: input.frameRate,
+      resolutionPixels: input.resolutionPixels,
       budgetUsd: input.budgetUsd,
       clock: context.clock,
       actor: context.actor,
     });
 
+    // The binding set names the models; the style sheet is a clone in this project, so the look travels with the film.
+    const chosen = input.bindingSetId;
+    const cloned = styleItem
+      ? await cloneLibraryItem({
+          home: context.home,
+          root: created.paths.root,
+          item: styleItem,
+          clock: context.clock,
+          actor: context.actor,
+        })
+      : null;
+
+    if (cloned || input.bindingSetId !== null) {
+      await commitDocuments({
+        root: created.paths.root,
+        actor: context.actor,
+        intent: cloned
+          ? `project: apply the "${cloned.entity.name}" style sheet`
+          : "project: choose a model profile",
+        touched: ["project", ...(cloned ? [`entity:${cloned.entity.id}`] : [])],
+        clock: context.clock,
+        mutate: ({ project, production }) => {
+          project.aiBindingSetId = chosen;
+          if (cloned) {
+            project.settings.defaultStyleId = cloned.entity.id;
+            production.entities[cloned.entity.id] = cloned.entity;
+            for (const asset of cloned.assets) production.assets[asset.id] = asset;
+          }
+        },
+      });
+    }
+
+    const final = await readProjectDocument(created.paths.root);
     return {
       data: {
-        projectId: created.project.id,
-        name: created.project.name,
-        revision: created.project.revision,
-        commit: created.project.commit,
+        projectId: final.id,
+        name: final.name,
+        revision: final.revision,
+        commit: final.commit,
+        styleId: final.settings.defaultStyleId,
       },
-      version: created.project.revision,
-      commit: created.commit.id,
+      version: final.revision,
+      commit: final.commit,
       next: ["capabilities.get"],
     };
   },

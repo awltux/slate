@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { newId } from "../domain/ids.js";
 import { SlateError } from "../domain/result.js";
+import { cloneLibraryItem } from "../kernel/library/clone.js";
 import {
   type GlobalItem,
   copyIntoLibrary,
@@ -9,7 +10,7 @@ import {
   writeGlobalLibrary,
 } from "../kernel/library/store.js";
 import { assetFile, ingestAsset } from "../kernel/production/assets.js";
-import type { SheetVersion } from "../kernel/production/entities.js";
+import type { SheetImage, SheetVersion } from "../kernel/production/entities.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { loadDocuments } from "./documents.js";
 import { defineOp } from "./registry.js";
@@ -77,7 +78,7 @@ export const libraryPush = defineOp({
     };
 
     const copySheet = async (sheet: SheetVersion) => {
-      const images: Array<{ role: string | null; assetId: string; status: string }> = [];
+      const images: SheetImage[] = [];
       for (const image of sheet.images) {
         const copied = await copyImage(image.assetId);
         if (copied) images.push({ role: image.role, assetId: copied, status: image.status });
@@ -184,7 +185,7 @@ export const libraryPull = defineOp({
     };
 
     const ingestSheet = async (sheet: NonNullable<GlobalItem["identity"]>) => {
-      const images: Array<{ role: string | null; assetId: string; status: string }> = [];
+      const images: SheetImage[] = [];
       for (const image of sheet.images) {
         images.push({ role: image.role, assetId: await ingestImage(image.assetId), status: image.status });
       }
@@ -193,13 +194,7 @@ export const libraryPull = defineOp({
     };
 
     const identity = item.identity ? await ingestSheet(item.identity) : null;
-    const variantSheets = new Map<
-      string,
-      {
-        images: Array<{ role: string | null; assetId: string; status: string }>;
-        compositeAssetId: string | null;
-      }
-    >();
+    const variantSheets = new Map<string, Awaited<ReturnType<typeof ingestSheet>>>();
     for (const variant of item.variants) {
       if (variant.sheet) variantSheets.set(variant.name, await ingestSheet(variant.sheet));
     }
@@ -296,112 +291,78 @@ export const libraryImport = defineOp({
     const item = items.find((entry) => entry.id === input.libraryId);
     if (!item) throw new SlateError("not_found", `no global item ${input.libraryId}`);
 
-    const paths = libraryPaths(context.home);
-    const entityId = newId("ent");
-    const ingestImage = async (assetId: string): Promise<string> => {
-      const asset = await ingestAsset(context.root, {
-        kind: "sheet",
-        sourcePath: `${paths.assetsDir}/${assetId}.png`,
-        clock: context.clock,
-      });
-      return asset.id;
-    };
-
-    const ingestSheet = async (sheet: NonNullable<GlobalItem["identity"]>) => {
-      const images: Array<{ role: string | null; assetId: string; status: string }> = [];
-      for (const image of sheet.images) {
-        images.push({ role: image.role, assetId: await ingestImage(image.assetId), status: image.status });
-      }
-      const compositeAssetId = sheet.compositeAssetId ? await ingestImage(sheet.compositeAssetId) : null;
-      return { images, compositeAssetId };
-    };
-
-    const identity = item.identity ? await ingestSheet(item.identity) : null;
-    const variantSheets = new Map<
-      string,
-      {
-        images: Array<{ role: string | null; assetId: string; status: string }>;
-        compositeAssetId: string | null;
-      }
-    >();
-    for (const variant of item.variants) {
-      if (variant.sheet) variantSheets.set(variant.name, await ingestSheet(variant.sheet));
-    }
+    const cloned = await cloneLibraryItem({
+      home: context.home,
+      root: context.root,
+      item,
+      clock: context.clock,
+      actor: context.actor,
+      ...(input.name ? { name: input.name } : {}),
+    });
 
     const result = await commitDocuments({
       root: context.root,
       actor: context.actor,
       intent: `library: import ${item.name} v${item.version}`,
-      touched: [`entity:${entityId}`, "library"],
+      touched: [`entity:${cloned.entity.id}`, "library"],
       clock: context.clock,
       expectedRevision: input.expectedRevision,
       mutate: ({ production }) => {
-        production.entities[entityId] = {
-          id: entityId,
-          kind: item.kind,
-          name: input.name ?? item.name,
-          description: item.description,
-          prompt: item.prompt,
-          aliases: [],
-          styleId: null,
-          libraryId: item.id,
-          libraryVersion: item.version,
-          identity:
-            item.identity && identity
-              ? {
-                  version: 1,
-                  kind: "identity",
-                  variantId: null,
-                  compositeAssetId: identity.compositeAssetId,
-                  images: identity.images as never,
-                  measurements: { heightM: item.identity.heightM },
-                  rights: {
-                    licence: item.identity.licence,
-                    likenessConsent: item.identity.likenessConsent as never,
-                  },
-                  note: `imported from the library v${item.version}`,
-                  actor: context.actor,
-                  createdAt: context.clock.now(),
-                }
-              : null,
-          sheetDraft: null,
-          variants: item.variants.map((variant) => ({
-            id: newId("var"),
-            name: variant.name,
-            description: variant.description,
-            prompt: variant.prompt,
-            sheet:
-              variant.sheet && variantSheets.get(variant.name)
-                ? {
-                    version: 1,
-                    kind: "variant" as const,
-                    variantId: null,
-                    compositeAssetId: variantSheets.get(variant.name)?.compositeAssetId ?? null,
-                    images: (variantSheets.get(variant.name)?.images ?? []) as never,
-                    measurements: { heightM: variant.sheet.heightM },
-                    rights: {
-                      licence: variant.sheet.licence,
-                      likenessConsent: variant.sheet.likenessConsent as never,
-                    },
-                    note: `imported from the library v${item.version}`,
-                    actor: context.actor,
-                    createdAt: context.clock.now(),
-                  }
-                : null,
-            sheetDraft: null,
-            createdAt: context.clock.now(),
-          })),
-          candidates: [],
-          createdAt: context.clock.now(),
-        };
+        production.entities[cloned.entity.id] = cloned.entity;
+        for (const asset of cloned.assets) production.assets[asset.id] = asset;
       },
     });
 
     return {
-      data: { entityId, libraryId: item.id, version: item.version },
+      data: { entityId: cloned.entity.id, libraryId: item.id, version: item.version },
       version: result.project.revision,
       commit: result.commit.id,
       next: ["entity.list"],
+    };
+  },
+});
+
+/**
+ * The style sheets in the app library, readable before a project exists. Choosing a look is part of creating a film, so
+ * the catalogue has to answer without a project folder to read it in.
+ */
+export const libraryStyles = defineOp({
+  name: "library.styles",
+  policy: "read",
+  hostLevel: true,
+  summary: "The style sheets available to a new project.",
+  input: z.object({}).strict(),
+  output: z
+    .object({
+      styles: z.array(
+        z
+          .object({
+            id: z.string(),
+            name: z.string(),
+            description: z.string(),
+            version: z.number().int(),
+            coverAssetId: z.string().nullable(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  run: async (_input, context) => {
+    const { items } = await readGlobalLibrary(context.home);
+    return {
+      data: {
+        styles: items
+          .filter((item) => item.kind === "style")
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            version: item.version,
+            coverAssetId: item.identity?.compositeAssetId ?? item.identity?.images[0]?.assetId ?? null,
+          })),
+      },
+      version: 0,
+      next: ["project.create"],
     };
   },
 });
