@@ -9,6 +9,7 @@ import type { Page } from "playwright";
 import { addUser, ensureOwner } from "../src/auth/users.js";
 import { systemClock } from "../src/domain/clock.js";
 import { runCommand } from "../src/kernel/adapters/command-runner.js";
+import { SERVICE_IDS } from "../src/kernel/catalog/services.js";
 import { createToolResolver } from "../src/kernel/catalog/tool-resolver.js";
 import { vendorDir } from "../src/kernel/home.js";
 import { slugify } from "../src/kernel/workspace/projects.js";
@@ -2218,6 +2219,43 @@ async function gate17(steps: string[]): Promise<void> {
   });
 }
 
+async function gate19(steps: string[]): Promise<void> {
+  await signIn();
+
+  // Health is host state: it must answer with no project open, because a fresh host has none.
+  const health = await fetch(`${base}/api/op/capabilities.get`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ refresh: true }),
+  }).then(
+    (response) =>
+      response.json() as Promise<{
+        ok: boolean;
+        data: { services: Array<{ id: string; status: string }>; chains: unknown[]; platform: string };
+      }>,
+  );
+  assert(health.ok, "the health probe must answer without a project");
+  assert(
+    health.data.services.length === SERVICE_IDS.length,
+    `every known tool must be reported, got ${health.data.services.length}`,
+  );
+  assert(health.data.chains.length > 0, "the chains must resolve without a project");
+  steps.push("api: the host toolchain answers with no project open");
+
+  // One snapshot serves every project, cached on the host rather than inside a film.
+  const cached = JSON.parse(
+    await readFile(join(gateHome, "capabilities.json"), "utf8").catch(() => "null"),
+  ) as {
+    services?: unknown[];
+  } | null;
+  assert(cached !== null, "the snapshot must be cached in the host home");
+  assert(
+    !existsSync(join(gateHome, "projects", ".slate", "capabilities.json")),
+    "the snapshot must not live in a project",
+  );
+  steps.push("cache: one snapshot in the host home, not one per project");
+}
+
 async function gate18(steps: string[]): Promise<void> {
   await signIn();
 
@@ -2423,6 +2461,34 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 19) {
+      // Host health, with no project selected - which is how a fresh host starts.
+      const tabs = await page.locator('header [role="tab"]').allTextContents();
+      assert(tabs.includes("Health"), `health must be a top-level tab, got: ${tabs.join(", ")}`);
+
+      await page.click('header [role="tab"]:has-text("Health")');
+      await page.waitForSelector("text=How this host will run", { timeout: 30_000 });
+      const services = await page.locator("table").last().locator("tbody tr").allTextContents();
+      assert(services.length === SERVICE_IDS.length, `every tool must be listed, got ${services.length}`);
+      assert(
+        services.some((row) => row.includes("7-Zip")),
+        "the archiver must be in the list",
+      );
+      await page.screenshot({ path: join(artifactDir, "host-health.png"), fullPage: true });
+      steps.push("ui: health is a top-level page and lists every tool with no project open");
+
+      // Probing again is the operator's fix when a tool was just installed.
+      const before = await page.locator("text=/^Checked /").first().textContent();
+      await page.click('button:has-text("Probe again")');
+      await page.waitForSelector("text=Probing…", { state: "detached", timeout: 60_000 });
+      const after = await page.locator("text=/^Checked /").first().textContent();
+      assert(Boolean(before) && Boolean(after), "the panel must say when it was checked");
+      steps.push("ui: probing again refreshes the host snapshot in place");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 18) {
       // A host with no project can still restore one, so the import panel lives on the projects page - and it takes a
@@ -2915,8 +2981,9 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.screenshot({ path: join(artifactDir, "plan.png"), fullPage: true });
       steps.push("ui: wrote the five lines and planned a shot in the browser");
     } else {
-      await page.click("text=Health");
-      await page.waitForSelector("text=How this will run", { timeout: 20_000 });
+      // Health is a host tab: it is reachable from anywhere, with or without a project.
+      await page.click('header [role="tab"]:has-text("Health")');
+      await page.waitForSelector("text=How this host will run", { timeout: 20_000 });
       await page.screenshot({ path: join(artifactDir, "health.png"), fullPage: true });
       steps.push("ui: health panel screenshotted");
     }
@@ -2998,6 +3065,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 16) await gate16(steps);
     else if (gateNumber === 17) await gate17(steps);
     else if (gateNumber === 18) await gate18(steps);
+    else if (gateNumber === 19) await gate19(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

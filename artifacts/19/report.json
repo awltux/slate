@@ -1,0 +1,11 @@
+{
+  "gate": 19,
+  "status": "passed",
+  "base": "http://127.0.0.1:56390",
+  "steps": [
+    "api: the host toolchain answers with no project open",
+    "cache: one snapshot in the host home, not one per project",
+    "ui: health is a top-level page and lists every tool with no project open",
+    "ui: probing again refreshes the host snapshot in place"
+  ]
+}
