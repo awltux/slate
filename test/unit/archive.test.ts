@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
 import { runCommand } from "../../src/kernel/adapters/command-runner.js";
 import { createToolResolver } from "../../src/kernel/catalog/tool-resolver.js";
+import { defaultExportFolder } from "../../src/kernel/desktop/pick-folder.js";
 import { vendorDir } from "../../src/kernel/home.js";
 import { readProjects } from "../../src/kernel/workspace/projects.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
@@ -43,6 +44,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), "slate-archive-home-"));
+  process.env.SLATE_DOWNLOADS_DIR = join(home, "downloads");
   root = join(home, "projects", "the-last-light-abcd");
   registry = createRegistry();
   context = testContext(root, {
@@ -87,7 +89,7 @@ describe("project archives", () => {
     expect(exported.bytes).toBeGreaterThan(0);
     expect(exported.sha256.startsWith("sha256:")).toBe(true);
 
-    const archive = join(home, "exports", exported.archiveName);
+    const archive = join(defaultExportFolder({ projectName: "The Last Light" }).path, exported.archiveName);
     expect((await stat(archive)).isFile()).toBe(true);
   });
 
@@ -106,7 +108,7 @@ describe("project archives", () => {
     const imported = expectOk(
       await registry.execute(
         "project.import",
-        { archive: join(home, "exports", exported.archiveName) },
+        { archive: join(defaultExportFolder({ projectName: "The Last Light" }).path, exported.archiveName) },
         context,
       ),
     ).data as { projectId: string; name: string; revision: number; files: number };
@@ -137,7 +139,7 @@ describe("project archives", () => {
 
     const result = await registry.execute(
       "project.import",
-      { archive: join(home, "exports", exported.archiveName) },
+      { archive: join(defaultExportFolder({ projectName: "The Last Light" }).path, exported.archiveName) },
       context,
     );
     expect(result.ok).toBe(false);

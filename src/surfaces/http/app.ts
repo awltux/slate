@@ -15,6 +15,8 @@ import type { Clock } from "../../domain/clock.js";
 import { SlateError } from "../../domain/result.js";
 import type { RunProbe } from "../../kernel/catalog/probe.js";
 import { createToolResolver } from "../../kernel/catalog/tool-resolver.js";
+import { readDestination } from "../../kernel/desktop/destinations.js";
+import { defaultExportFolder } from "../../kernel/desktop/pick-folder.js";
 import { libraryAssetPath, readGlobalLibrary } from "../../kernel/library/store.js";
 import { signReview, verifyReview } from "../../kernel/production/review.js";
 import { readProductionDocument } from "../../kernel/workspace/production-doc.js";
@@ -603,8 +605,9 @@ export function createApp(options: AppOptions): Hono {
     });
   });
 
-  // An archive is downloaded by name, never by path, and only to the owner: it contains the whole film.
-  app.get("/api/exports/:name", async (c) => {
+  // An archive is downloaded by name, never by path, and only to the owner: it contains the whole film. The folder is
+  // resolved the same way the export resolves it, so a copy still works after someone moved the destination.
+  app.get("/p/:projectId/api/archive/:name", async (c) => {
     const identity = await readIdentity(c, await secret());
     if (!identity) throw new HTTPException(401, { message: "sign in to read an archive" });
     if (identity.role !== "owner")

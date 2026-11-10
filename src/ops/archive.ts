@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import { SlateError } from "../domain/result.js";
+import { readDestination, setDestination } from "../kernel/desktop/destinations.js";
+import { defaultExportFolder } from "../kernel/desktop/pick-folder.js";
 import {
   EXPORT_VERSION,
   compressProject,
@@ -85,13 +87,17 @@ export const projectExport = defineOp({
       throw new SlateError("invalid_input", "give either a destination or a chosen folder, not both");
     }
 
+    // The order is: a folder given for this call, the project's remembered folder, then the convention every project
+    // shares - the OS downloads folder under a Slate tree named after the film.
+    const remembered = await readDestination(context.home, project.id);
+    const fallback = defaultExportFolder({ projectName: project.name });
     const destination = chosenPath
       ? chosenPath
       : input.destination
         ? isAbsolute(input.destination)
           ? input.destination
           : resolve(context.home, input.destination)
-        : join(context.home, "exports");
+        : (remembered?.path ?? fallback.path);
     await mkdir(destination, { recursive: true });
 
     const archiveName = `${slugify(project.name)}-${project.id.slice(4, 12)}-r${project.revision}.7z`;
@@ -230,5 +236,75 @@ export const projectImport = defineOp({
     } finally {
       await rm(work, { recursive: true, force: true });
     }
+  },
+});
+
+/**
+ * Where this project's archives go, as a person should see it: a label like "Downloads/slate/exports/the-last-light",
+ * never an absolute path. `chosen` says whether someone overrode the convention.
+ */
+export const projectExportFolder = defineOp({
+  name: "project.export-folder",
+  policy: "read",
+  summary: "The folder this project's archives are written to, as a label rather than a host path.",
+  input: z.object({}).strict(),
+  output: z
+    .object({
+      label: z.string(),
+      /** True when nothing was chosen and the downloads convention applies. */
+      isDefault: z.boolean(),
+    })
+    .strict(),
+  run: async (_input, context) => {
+    const project = await readProjectDocument(context.root);
+    const remembered = await readDestination(context.home, project.id);
+    if (remembered) {
+      return { data: { label: remembered.label, isDefault: false }, version: project.revision };
+    }
+    const fallback = defaultExportFolder({ projectName: project.name });
+    return { data: { label: fallback.label, isDefault: true }, version: project.revision };
+  },
+});
+
+/**
+ * Point this project's exports somewhere else, or back at the default. The folder is a host path, so it arrives as a
+ * token from the folder dialog and is stored on the host - a result still carries only the label.
+ */
+export const projectSetExportFolder = defineOp({
+  name: "project.set-export-folder",
+  policy: "write",
+  summary: "Choose, or reset, the folder this project's archives are written to.",
+  input: z
+    .object({
+      /** A folder chosen with dialog.pick-folder, or null to go back to the downloads default. */
+      destinationId: z.string().nullable(),
+    })
+    .strict(),
+  output: z.object({ label: z.string(), isDefault: z.boolean() }).strict(),
+  // Nothing in the project document changes: this is host state about where files land.
+  touched: () => [],
+  run: async (input, context) => {
+    const project = await readProjectDocument(context.root);
+    if (input.destinationId === null) {
+      await setDestination(context.home, project.id, null);
+      const fallback = defaultExportFolder({ projectName: project.name });
+      return {
+        data: { label: fallback.label, isDefault: true },
+        version: project.revision,
+        next: ["project.export"],
+      };
+    }
+
+    const chosen = await takeChoice(context.home, input.destinationId, context.clock.now());
+    await setDestination(context.home, project.id, {
+      path: chosen.path,
+      label: chosen.label,
+      chosenAt: context.clock.now(),
+    });
+    return {
+      data: { label: chosen.label, isDefault: false },
+      version: project.revision,
+      next: ["project.export"],
+    };
   },
 });

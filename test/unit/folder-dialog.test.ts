@@ -38,7 +38,7 @@ describe("the folder dialog", () => {
   it("treats closing the dialog as a decision, not a failure", async () => {
     const picked = await pickFolder({
       platform: "linux",
-      run: async () => ({ code: 2, stdout: "", stderr: "", failedToStart: false }),
+      run: async () => ({ code: 1, stdout: "", stderr: "", failedToStart: false }),
     });
     expect(picked).toBe("cancelled");
   });

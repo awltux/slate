@@ -53,8 +53,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `project.create` | write | project | `project_create` | Create a project folder with its documents and genesis commit. |
 | `project.delete` | destructive | project, owner | `project_delete` | Delete a project from this host, keeping its folder unless told otherwise. |
 | `project.export` | read | project, owner | `project_export` | Write the project to a 7z archive with a manifest describing it. |
+| `project.export-folder` | read | project | `project_export-folder` | The folder this project's archives are written to, as a label rather than a host path. |
 | `project.history` | read | project | `project_history` | Recent commits: what changed, who changed it and why. |
 | `project.import` | write | host, owner | `project_import` | Restore a project from a 7z archive written by project.export. |
+| `project.set-export-folder` | write | project | `project_set-export-folder` | Choose, or reset, the folder this project's archives are written to. |
 | `project.update` | write | project | `project_update` | Change the project's configuration: name, shape, rate, runtime, budget, model profile and look. |
 | `prompt.expand` | spend | project | `prompt_expand` | Turn a description into a generation prompt, using the style sheet when one is applied. |
 | `review.link` | write | project | `review_link` | Create a signed, expiring link that lets a reviewer watch the cut and leave notes. |
@@ -1380,6 +1382,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `project.export-folder`
+
+```json
+{}
+```
+
 ### `project.history`
 
 ```json
@@ -1415,6 +1423,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
+```
+
+### `project.set-export-folder`
+
+```json
+{}
 ```
 
 ### `project.update`

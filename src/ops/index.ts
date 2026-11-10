@@ -13,6 +13,7 @@ import {
   aiRemove,
 } from "./ai.js";
 import { projectExport, projectImport } from "./archive.js";
+import { projectExportFolder, projectSetExportFolder } from "./archive.js";
 import { capabilitiesGet } from "./capabilities.js";
 import { cutBuild, cutGet, cutRender } from "./cut.js";
 import { deliverExport, deliverQc } from "./deliver.js";
@@ -57,6 +58,8 @@ export function createRegistry(): OpRegistry {
     projectDelete,
     projectUpdate,
     projectExport,
+    projectExportFolder,
+    projectSetExportFolder,
     projectImport,
     projectHistory,
     historyRevert,
