@@ -277,6 +277,30 @@ export async function runGlobalOp<T>(name: string, input: unknown): Promise<{ da
   return { data: payload.data, version: payload.version ?? 0 };
 }
 
+export interface ProjectBudget {
+  currency: string;
+  ceilingUsd: number;
+  committedUsd: number;
+  remainingUsd: number;
+  entries: number;
+}
+
+export interface ProjectPatch {
+  name?: string;
+  runtimeSeconds?: number;
+  aspectRatio?: string;
+  frameRate?: number;
+  resolutionPixels?: number;
+  budgetUsd?: number;
+  bindingSetId?: string | null;
+  defaultStyleId?: string | null;
+}
+
+/** One operation writes the project's configuration, so a save is one commit rather than four. */
+export function updateProject(projectId: string, patch: ProjectPatch): Promise<{ revision: number }> {
+  return runOp<{ revision: number }>(projectId, "project.update", patch).then((result) => result.data);
+}
+
 export interface ExportedArchive {
   projectId: string;
   archiveName: string;
