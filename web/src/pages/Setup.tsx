@@ -11,17 +11,11 @@ interface ProviderView {
   hasKey: boolean;
   notes: string;
   endpointCount: number;
-  /** How a local reference reaches this provider: inline, or through its own upload. */
+  /** How a local reference reaches this provider, and which of its endpoints takes the bytes. */
   reference: {
     transport: string;
     maxInlineBytes: number;
-    upload: {
-      url: string;
-      method: string;
-      body: Record<string, unknown>;
-      uploadUrlPath: string;
-      fileUrlPath: string;
-    } | null;
+    uploadEndpointId: string | null;
   };
 }
 
@@ -35,6 +29,8 @@ interface EndpointView {
   params: unknown[];
   body: Record<string, unknown>;
   resultPath: string;
+  /** Named values the response carries, so an upload endpoint can promise a place to PUT and a url to use. */
+  response: Record<string, { path: string; type: string; description: string }>;
   timeoutMs: number;
 }
 
@@ -64,7 +60,7 @@ interface Preview {
   missing: string[];
 }
 
-const CAPABILITIES = ["text", "image", "video", "audio", "upscale"] as const;
+const CAPABILITIES = ["text", "image", "video", "audio", "upscale", "upload"] as const;
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
 function message(caught: unknown): string {
@@ -320,11 +316,11 @@ export function Setup() {
                 <div className="row" style={{ fontSize: 12, gap: "0.5rem" }}>
                   <span className="muted" aria-label={`References for ${provider.name}`}>
                     references: inline ≤ {provider.reference.maxInlineBytes / 1_000_000} MB
-                    {provider.reference.transport === "upload" && provider.reference.upload
-                      ? `, else upload to ${new URL(provider.reference.upload.url).host}`
-                      : " (no upload declared)"}
+                    {provider.reference.transport === "upload" && provider.reference.uploadEndpointId
+                      ? ", else through its upload endpoint"
+                      : " (no upload endpoint)"}
                   </span>
-                  {provider.reference.upload ? (
+                  {provider.reference.uploadEndpointId ? (
                     <button
                       type="button"
                       disabled={busy}
@@ -654,18 +650,6 @@ function ProviderForm({
   const [maxInlineMb, setMaxInlineMb] = useState(
     String((provider?.reference.maxInlineBytes ?? 1_500_000) / 1_000_000),
   );
-  const [uploadUrl, setUploadUrl] = useState(provider?.reference.upload?.url ?? "");
-  const [uploadBody, setUploadBody] = useState(
-    JSON.stringify(
-      provider?.reference.upload?.body ?? { content_type: "{{contentType}}", file_size: "{{bytes}}" },
-      null,
-      2,
-    ),
-  );
-  const [uploadUrlPath, setUploadUrlPath] = useState(
-    provider?.reference.upload?.uploadUrlPath ?? "upload_url",
-  );
-  const [fileUrlPath, setFileUrlPath] = useState(provider?.reference.upload?.fileUrlPath ?? "file_url");
   const [formError, setFormError] = useState<string | null>(null);
 
   const headerSent = authScheme.replace(/\{\{\s*key\s*\}\}/g, "••••");
@@ -687,16 +671,6 @@ function ProviderForm({
           values.reference = {
             transport,
             maxInlineBytes: Math.max(1, Math.round(Number(maxInlineMb) * 1_000_000)),
-            upload:
-              transport === "upload" && uploadUrl.trim() !== ""
-                ? {
-                    url: uploadUrl.trim(),
-                    method: "POST",
-                    body: JSON.parse(uploadBody) as Record<string, unknown>,
-                    uploadUrlPath: uploadUrlPath.trim() || "upload_url",
-                    fileUrlPath: fileUrlPath.trim() || "file_url",
-                  }
-                : null,
           };
         } catch {
           setFormError("the upload body must be valid JSON");
@@ -808,51 +782,7 @@ function ProviderForm({
             aria-label={label("inline limit in megabytes")}
           />
         </Field>
-        {transport === "upload" ? (
-          <Field id={`${prefix}-reference-upload-url`} label="Upload URL">
-            <input
-              id={`${prefix}-reference-upload-url`}
-              value={uploadUrl}
-              onChange={(event) => setUploadUrl(event.target.value)}
-              placeholder="https://rest.alpha.fal.ai/storage/upload/initiate"
-              aria-label={label("upload url")}
-            />
-          </Field>
-        ) : null}
       </div>
-
-      {transport === "upload" ? (
-        <div className="row" style={{ alignItems: "flex-start" }}>
-          <label className="stack" style={{ flex: 2, gap: "0.25rem" }}>
-            <span className="muted" style={{ fontSize: 12 }}>
-              Upload body
-            </span>
-            <textarea
-              value={uploadBody}
-              onChange={(event) => setUploadBody(event.target.value)}
-              rows={3}
-              aria-label={label("upload body")}
-              style={{ fontFamily: "monospace", fontSize: 12 }}
-            />
-          </label>
-          <Field id={`${prefix}-upload-url-path`} label="Upload url at">
-            <input
-              id={`${prefix}-upload-url-path`}
-              value={uploadUrlPath}
-              onChange={(event) => setUploadUrlPath(event.target.value)}
-              aria-label={label("upload url path")}
-            />
-          </Field>
-          <Field id={`${prefix}-file-url-path`} label="File url at">
-            <input
-              id={`${prefix}-file-url-path`}
-              value={fileUrlPath}
-              onChange={(event) => setFileUrlPath(event.target.value)}
-              aria-label={label("file url path")}
-            />
-          </Field>
-        </div>
-      ) : null}
 
       <div className="row">
         <span className="muted" style={{ fontSize: 12 }}>
@@ -900,6 +830,10 @@ function EndpointForm({
   );
   const [params, setParams] = useState(endpoint ? JSON.stringify(endpoint.params ?? [], null, 2) : "[]");
   const [resultPath, setResultPath] = useState(endpoint?.resultPath ?? "");
+  const [response, setResponse] = useState(
+    endpoint ? JSON.stringify(endpoint.response ?? {}, null, 2) : "{}",
+  );
+  const [drafting, setDrafting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   return (
@@ -911,6 +845,7 @@ function EndpointForm({
         try {
           const parsedBody = JSON.parse(body) as Record<string, unknown>;
           const parsedParams = JSON.parse(params) as unknown[];
+          const parsedResponse = JSON.parse(response) as Record<string, unknown>;
           setFormError(null);
           const values: Record<string, unknown> = {
             providerId,
@@ -921,12 +856,13 @@ function EndpointForm({
             params: parsedParams,
             body: parsedBody,
             resultPath,
+            response: parsedResponse,
           };
           if (endpoint) values.id = endpoint.id;
           void onSubmit(values);
           if (!editing) setName("");
         } catch {
-          setFormError("body and params must be valid JSON");
+          setFormError("body, params and response must be valid JSON");
         }
       }}
     >
@@ -983,14 +919,73 @@ function EndpointForm({
           style={{ flex: 1, fontFamily: "monospace", fontSize: 12 }}
         />
       </div>
-      <div className="row">
+      <div className="row" style={{ alignItems: "flex-start" }}>
+        <label className="stack" style={{ flex: 1, gap: "0.25rem" }}>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Response fields (JSON: name → path)
+          </span>
+          <textarea
+            value={response}
+            onChange={(event) => setResponse(event.target.value)}
+            aria-label="Response field declarations"
+            rows={3}
+            placeholder='{"file_url": {"path": "file_url", "type": "string"}}'
+            style={{ fontFamily: "monospace", fontSize: 12 }}
+          />
+        </label>
         <input
           value={resultPath}
           onChange={(event) => setResultPath(event.target.value)}
           placeholder="images[0].url"
           aria-label="Result path"
-          style={{ flex: 1 }}
+          style={{ flex: 1, marginTop: 18 }}
         />
+      </div>
+      <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+        An upload endpoint is an ordinary endpoint with the upload capability: its body template gets{" "}
+        <span className="mono">{"{{param:bytes}}"}</span>,{" "}
+        <span className="mono">{"{{param:contentType}}"}</span> and{" "}
+        <span className="mono">{"{{param:fileName}}"}</span>, and it must declare{" "}
+        <span className="mono">upload_url</span> and <span className="mono">file_url</span> in its response.
+      </p>
+      <div className="row">
+        <button
+          type="button"
+          disabled={busy || drafting || path.trim() === ""}
+          onClick={async () => {
+            setDrafting(true);
+            setFormError(null);
+            try {
+              const envelope = await runGlobalOp<{
+                proposal: {
+                  name: string;
+                  capability: string;
+                  method: string;
+                  path: string;
+                  body: Record<string, unknown>;
+                  resultPath: string;
+                  response: Record<string, unknown>;
+                  params: unknown[];
+                };
+              }>("ai.endpoint.draft", { providerId, path: path.trim() });
+              const proposal = envelope.data.proposal;
+              setName(proposal.name);
+              setCapability(proposal.capability);
+              setMethod(proposal.method);
+              setPath(proposal.path);
+              setBody(JSON.stringify(proposal.body, null, 2));
+              setParams(JSON.stringify(proposal.params, null, 2));
+              setResultPath(proposal.resultPath);
+              setResponse(JSON.stringify(proposal.response, null, 2));
+            } catch (caught) {
+              setFormError(message(caught));
+            } finally {
+              setDrafting(false);
+            }
+          }}
+        >
+          {drafting ? "Asking the text model…" : "Draft with AI"}
+        </button>
         {onCancel ? (
           <button type="button" disabled={busy} onClick={onCancel}>
             Cancel

@@ -54,6 +54,7 @@ const flux: Endpoint = {
     enable_safety: "{{param:sync_mode}}",
   },
   resultPath: "images[0].url",
+  response: {},
 };
 
 const values = {
