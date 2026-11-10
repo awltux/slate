@@ -6,7 +6,7 @@ import {
   probeAndCache,
   readCapabilities,
 } from "../kernel/catalog/capabilities.js";
-import { SERVICE_IDS } from "../kernel/catalog/services.js";
+import { SERVICE_IDS, serviceDefinitions } from "../kernel/catalog/services.js";
 import { readConfig } from "../kernel/config.js";
 import { defineOp } from "./registry.js";
 
@@ -25,6 +25,9 @@ export const PublicServiceSchema = z
     binaryName: z.string().nullable(),
     installPath: z.string().nullable(),
     detail: z.string(),
+    /** Where to install this tool from, and the version this application relies on. */
+    installUrl: z.string(),
+    installRequirement: z.string(),
   })
   .strict();
 
@@ -64,22 +67,28 @@ export const capabilitiesGet = defineOp({
       }));
 
     const degraded = snapshot.chains.filter((chain) => chain.degraded);
+    const definitions = new Map(serviceDefinitions().map((entry) => [entry.id, entry]));
 
     return {
       data: {
         checkedAt: snapshot.checkedAt,
         platform: snapshot.platform,
-        services: snapshot.services.map((service) => ({
-          id: service.id,
-          displayName: service.displayName,
-          required: service.required,
-          status: service.status,
-          source: service.source,
-          version: service.version,
-          binaryName: service.binary ? basename(service.binary) : null,
-          installPath: context.privileged ? service.binary : null,
-          detail: service.detail,
-        })),
+        services: snapshot.services.map((service) => {
+          const definition = definitions.get(service.id);
+          return {
+            id: service.id,
+            displayName: service.displayName,
+            required: service.required,
+            status: service.status,
+            source: service.source,
+            version: service.version,
+            binaryName: service.binary ? basename(service.binary) : null,
+            installPath: context.privileged ? service.binary : null,
+            detail: service.detail,
+            installUrl: definition?.install.url ?? "",
+            installRequirement: definition?.install.requirement ?? "",
+          };
+        }),
         chains: snapshot.chains,
       },
       version: 0,

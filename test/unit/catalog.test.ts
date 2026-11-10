@@ -6,8 +6,10 @@ import type { RunResult } from "../../src/kernel/adapters/command-runner.js";
 import { capabilitiesFile, probeAndCache, readCapabilities } from "../../src/kernel/catalog/capabilities.js";
 import { resolveChains } from "../../src/kernel/catalog/chains.js";
 import { type ServiceState, probeServices } from "../../src/kernel/catalog/probe.js";
-import { SERVICE_IDS } from "../../src/kernel/catalog/services.js";
+import { SERVICE_IDS, serviceDefinitions } from "../../src/kernel/catalog/services.js";
 import { projectPaths } from "../../src/kernel/workspace/paths.js";
+import { createRegistry } from "../../src/ops/index.js";
+import { testContext } from "../helpers/context.js";
 
 const ran = (stdout: string): RunResult => ({ code: 0, stdout, stderr: "", failedToStart: false });
 const missing: RunResult = { code: null, stdout: "", stderr: "ENOENT", failedToStart: true };
@@ -235,5 +237,30 @@ describe("capabilities cache", () => {
 
   it("returns null when nothing has been probed yet", async () => {
     expect(await readCapabilities(capabilitiesFile(root))).toBeNull();
+  });
+});
+
+describe("install guidance", () => {
+  it("tells a person where to get every tool and which version is needed", () => {
+    for (const definition of serviceDefinitions()) {
+      expect(definition.install.url, definition.id).toMatch(/^https:\/\//u);
+      expect(definition.install.requirement.length, definition.id).toBeGreaterThan(20);
+    }
+  });
+
+  it("is reported with the health probe, so a red row is never a dead end", async () => {
+    const result = await createRegistry().execute(
+      "capabilities.get",
+      {},
+      testContext(root, { run: runner({}), home: join(root, "home") }),
+    );
+    if (!result.ok) throw new Error(`expected success, got ${result.error.code}`);
+    const data = result.data as {
+      services: Array<{ id: string; status: string; installUrl: string; installRequirement: string }>;
+    };
+    for (const service of data.services) {
+      expect(service.installUrl, service.id).toMatch(/^https:\/\//u);
+      expect(service.installRequirement, service.id).not.toBe("");
+    }
   });
 });

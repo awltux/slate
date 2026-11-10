@@ -19,6 +19,11 @@ export interface ServiceDefinition {
   vendorPaths: (vendorDir: string) => string[];
   /** Conventional install directories for this platform. */
   knownPaths: () => string[];
+  /**
+   * What to do about it when the tool is missing. A health row that only says "red" is a dead end, so every service
+   * carries the page to install it from and the version this application actually relies on.
+   */
+  install: { url: string; requirement: string };
 }
 
 const exe = process.platform === "win32" ? ".exe" : "";
@@ -52,6 +57,11 @@ export function serviceDefinitions(): ServiceDefinition[] {
       versionPattern: /ffmpeg version (\S+)/u,
       vendorPaths: (vendor) => [join(vendor, "ffmpeg", "bin", `ffmpeg${exe}`)],
       knownPaths: () => wellKnownBinDirs().map((dir) => join(dir, `ffmpeg${exe}`)),
+      install: {
+        url: "https://ffmpeg.org/download.html",
+        requirement:
+          "FFmpeg 4.0 or newer (6.1 and 7.x are tested). Needs the scale, pad, concat and loudnorm filters.",
+      },
     },
     {
       id: "ffprobe",
@@ -62,6 +72,10 @@ export function serviceDefinitions(): ServiceDefinition[] {
       versionPattern: /ffprobe version (\S+)/u,
       vendorPaths: (vendor) => [join(vendor, "ffmpeg", "bin", `ffprobe${exe}`)],
       knownPaths: () => wellKnownBinDirs().map((dir) => join(dir, `ffprobe${exe}`)),
+      install: {
+        url: "https://ffmpeg.org/download.html",
+        requirement: "Ships with FFmpeg, so installing FFmpeg is enough. Same version as FFmpeg.",
+      },
     },
     {
       id: "mpv",
@@ -72,6 +86,11 @@ export function serviceDefinitions(): ServiceDefinition[] {
       versionPattern: /mpv (\S+)/u,
       vendorPaths: (vendor) => [join(vendor, "mpv", `mpv${exe}`)],
       knownPaths: () => wellKnownBinDirs().map((dir) => join(dir, `mpv${exe}`)),
+      install: {
+        url: "https://mpv.io/installation/",
+        requirement:
+          "mpv 0.37 or newer (0.42 is tested). Only needed for playback; a host without it still renders.",
+      },
     },
     {
       id: "openshot-cli",
@@ -87,6 +106,11 @@ export function serviceDefinitions(): ServiceDefinition[] {
       },
       vendorPaths: () => [],
       knownPaths: () => [],
+      install: {
+        url: "https://www.openshot.org/",
+        requirement:
+          "OpenShot 3.0 or newer (4.1 is tested). The CLI is openshot-qt-cmd; without it assembly falls back to FFmpeg.",
+      },
     },
     {
       id: "melt",
@@ -97,6 +121,11 @@ export function serviceDefinitions(): ServiceDefinition[] {
       versionPattern: /melt (\S+)/u,
       vendorPaths: () => [],
       knownPaths: () => wellKnownBinDirs().map((dir) => join(dir, "melt")),
+      install: {
+        url: "https://www.mltframework.org/",
+        requirement:
+          "MLT 7.0 or newer. Optional: FFmpeg is the fallback for assembly, so a host without melt still renders.",
+      },
     },
     {
       id: "blender",
@@ -107,6 +136,10 @@ export function serviceDefinitions(): ServiceDefinition[] {
       versionPattern: /Blender (\S+)/u,
       vendorPaths: (vendor) => [join(vendor, "blender", `blender${exe}`)],
       knownPaths: () => [],
+      install: {
+        url: "https://www.blender.org/download/",
+        requirement: "Blender 4.0 or newer (5.2 is tested). Only needed for previz renders.",
+      },
     },
     {
       id: "7z",
@@ -127,6 +160,11 @@ export function serviceDefinitions(): ServiceDefinition[] {
           default:
             return ["/usr/bin/7z", "/usr/local/bin/7z", "/usr/bin/7za", "/usr/bin/7zr", ...paths];
         }
+      },
+      install: {
+        url: "https://www.7-zip.org/download.html",
+        requirement:
+          "7-Zip 21.0 or newer (24.09 is tested). Only needed for project export and import; set SLATE_7Z_PATH if it lives somewhere unusual.",
       },
     },
   ];
