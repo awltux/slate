@@ -15,7 +15,7 @@ four surfaces exist.
 | 8 | Collaboration | `pnpm gate:8` | **done** | [collaboration](../artifacts/8/collaboration.png) · [report](../artifacts/8/report.json) |
 | 9 | Finish & deliver | `pnpm gate:9` | **done** | [finish](../artifacts/9/finish.png) · [report](../artifacts/9/report.json) |
 | 10 | Remote review | `pnpm gate:10` | **done** | [review-link](../artifacts/10/review-link.png) · [report](../artifacts/10/report.json) |
-| 11 | Setup: AI connections | `pnpm gate:11` | **done** | [setup](../artifacts/11/setup.png) · [report](../artifacts/11/report.json) |
+| 11 | Setup: AI connections | `pnpm gate:11` | **done** | [setup](../artifacts/11/setup.png) · [edit](../artifacts/11/setup-edit.png) · [delete](../artifacts/11/setup-deleted.png) · [report](../artifacts/11/report.json) |
 | 12 | Scenes, frames and the shoot | `pnpm gate:12` | **done** | [plan](../artifacts/12/plan-expanded.png) · [report](../artifacts/12/report.json) |
 | 13 | Model profiles per project | `pnpm gate:13` | **done** | [profiles](../artifacts/13/binding-sets.png) · [project](../artifacts/13/project-binding.png) · [report](../artifacts/13/report.json) |
 | 14 | Editable sheets, one reference image | `pnpm gate:14` | **done** | [editor](../artifacts/14/sheet-editor.png) · [published](../artifacts/14/sheet-published.png) · [report](../artifacts/14/report.json) |
@@ -70,6 +70,10 @@ four surfaces exist.
 - **Preview is the offline test**: the exact URL, headers and body, key masked, no network call and no cost.
 - **Credentials never come back out**; `ai.catalog` reports only that a key exists, and only an owner can reach any of
   these operations — an editor is refused with 403 before the registry runs.
+- **A connection is edited or deleted from the same card.** Editing is the same operation as creating, keyed by id: the
+  form opens on the stored host and auth shape, a blank key keeps the stored credential, and the endpoints follow the
+  provider they belong to. Deleting a provider takes its endpoints, the profile bindings that named them and the stored
+  key with it, and both the confirmation and the notice say how much that is.
 
 ## Slice 10 — what it proves
 

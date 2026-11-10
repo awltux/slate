@@ -47,6 +47,10 @@ User-visible changes per slice. Internal refactors are not listed.
 - **Preview proves a connection without spending anything**: it renders the exact request, with the key masked, and
   never calls the network.
 - **Keys are write-only.** Setup can replace a key but never display it, and only the owner can open the tab at all.
+- **A connection can be edited or deleted.** Edit opens on what is stored — host, kind, auth header and format — and a
+  blank key field keeps the credential already held, with a checkbox to forget it on purpose. Deleting a provider takes
+  its models, the profile bindings that named them and the stored key with it; the confirmation names them and the
+  notice reports what actually went.
 
 ## Remote review
 
