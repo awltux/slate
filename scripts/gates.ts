@@ -43,6 +43,11 @@ let gate10Url = "";
 let csrf = "";
 /** The host folder this gate is running against, so a gate can check what a delete left on disk. */
 let gateHome = "";
+/** What gate 17's loopback upload fake was sent, so the two-step file API can be asserted rather than assumed. */
+const uploads: { initiate: Array<{ contentType: unknown; fileSize: unknown }>; put: number[] } = {
+  initiate: [],
+  put: [],
+};
 
 async function op<T>(projectId: string, name: string, input: unknown = {}): Promise<Envelope<T>> {
   const response = await fetch(`${base}/p/${projectId}/api/op/${name}`, {
@@ -2045,6 +2050,171 @@ async function gate16(steps: string[]): Promise<void> {
   projectId = await newProject("Browser delete");
 }
 
+async function gate17(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("Reference transport");
+
+  // A provider whose file API is this gate's own loopback route: real HTTP, no internet, no key leaving the machine.
+  const provider = await fetch(`${base}/api/op/ai.provider.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      name: "fal",
+      kind: "fal",
+      baseUrl: "https://fal.run",
+      authScheme: "Key {{key}}",
+      apiKey: "gate-key",
+      reference: {
+        transport: "upload",
+        maxInlineBytes: 1,
+        upload: {
+          url: `${base}/gate-upload/initiate`,
+          method: "POST",
+          body: { content_type: "{{contentType}}", file_size: "{{bytes}}" },
+          uploadUrlPath: "upload_url",
+          fileUrlPath: "file_url",
+        },
+      },
+    }),
+  }).then(
+    (response) =>
+      response.json() as Promise<{
+        ok: boolean;
+        data: { id: string };
+      }>,
+  );
+  assert(provider.ok, "the provider must accept a declared reference transport");
+  steps.push("setup: a provider declares how references reach it, as data");
+
+  const uploaded = await op<{ via: string; bytes: number; fileUrl: string }>(projectId, "ai.reference.test", {
+    providerId: provider.data.id,
+  });
+  assert(uploaded.data.via === "upload", "the test must use the upload rung");
+  assert(uploaded.data.bytes > 0, "the upload must report how many bytes it sent");
+  assert(
+    uploaded.data.fileUrl === `${base}/gate-upload/file/reference.png`,
+    `the staged reference must be the url the provider returned, got ${uploaded.data.fileUrl}`,
+  );
+  assert(uploads.initiate.length === 1, "the initiate call must happen exactly once");
+  assert(
+    uploads.initiate[0]?.contentType === "image/png",
+    `the initiate body must carry the content type, got ${String(uploads.initiate[0]?.contentType)}`,
+  );
+  assert(
+    uploads.initiate[0]?.fileSize === uploaded.data.bytes,
+    "the byte count must go out as a number, not a string",
+  );
+  assert(
+    uploads.put[0] === uploaded.data.bytes,
+    "the presigned PUT must receive exactly the bytes that were measured",
+  );
+  steps.push("upload: initiate with a typed body, PUT the bytes, use the returned file url");
+
+  // A reference small enough to inline is not uploaded at all.
+  const inlineProvider = await fetch(`${base}/api/op/ai.provider.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      id: provider.data.id,
+      name: "fal",
+      kind: "fal",
+      baseUrl: "https://fal.run",
+      authScheme: "Key {{key}}",
+      reference: { transport: "inline", maxInlineBytes: 10_000_000, upload: null },
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean }>);
+  assert(inlineProvider.ok, "the provider must accept an inline-only policy");
+
+  const project = projectId;
+  const keeper = await op<{ entityId: string }>(project, "entity.create", {
+    kind: "character",
+    name: "The keeper",
+    description: "Salt in his beard.",
+  });
+  await op(project, "entity.update", { entityId: keeper.data.entityId, prompt: "the keeper, night" });
+  const generated = await op<{ candidates: Array<{ assetId: string }> }>(project, "entity.generate", {
+    entityId: keeper.data.entityId,
+    count: 1,
+  });
+  const assetId = generated.data.candidates[0]?.assetId ?? "";
+
+  const endpoint = await fetch(`${base}/api/op/ai.endpoint.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      providerId: provider.data.id,
+      name: "FLUX dev",
+      capability: "image",
+      path: "/fal-ai/flux/dev",
+      body: { prompt: "{{prompt}}", image_url: "{{image}}" },
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data: { id: string } }>);
+  assert(endpoint.ok, "the endpoint must be saved");
+
+  const preview = await op<{
+    body: Record<string, unknown>;
+    reference: { rung: string; bytes: number; reason: string } | null;
+  }>(project, "ai.preview", { endpointId: endpoint.data.id, reference: { assetId } });
+  assert(preview.data.reference?.rung === "inline", "a small reference must be planned as inline");
+  assert(preview.data.reference.bytes > 0, "the preview must report the reference size");
+  assert(
+    String(preview.data.body.image_url).includes(`<reference:${assetId}>`),
+    "the preview must show where the reference goes without pretending a local file is a URL",
+  );
+  steps.push("preview: says the reference would be inlined, and where it would land in the body");
+
+  // Too large, with no upload declared: refused and reported, never silently dropped.
+  await fetch(`${base}/api/op/ai.provider.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      id: provider.data.id,
+      name: "fal",
+      kind: "fal",
+      baseUrl: "https://fal.run",
+      authScheme: "Key {{key}}",
+      reference: { transport: "inline", maxInlineBytes: 1, upload: null },
+    }),
+  });
+  const refusedPreview = await op<{ reference: { rung: string } | null }>(project, "ai.preview", {
+    endpointId: endpoint.data.id,
+    reference: { assetId },
+  });
+  assert(
+    refusedPreview.data.reference?.rung === "none",
+    "a reference that cannot be sent must be planned as refused",
+  );
+  assert(
+    refusedPreview.warnings.some((warning) => warning.code === "reference_too_large"),
+    "the refusal must be a warning with a code, not a silently missing image",
+  );
+  steps.push("refusal: too large and no upload declared is reported, not dropped");
+
+  // Leave the upload policy in place for the browser, which offers to prove it from the card.
+  await fetch(`${base}/api/op/ai.provider.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      id: provider.data.id,
+      name: "fal",
+      kind: "fal",
+      baseUrl: "https://fal.run",
+      authScheme: "Key {{key}}",
+      reference: {
+        transport: "upload",
+        maxInlineBytes: 1_500_000,
+        upload: {
+          url: `${base}/gate-upload/initiate`,
+          method: "POST",
+          body: { content_type: "{{contentType}}", file_size: "{{bytes}}" },
+          uploadUrlPath: "upload_url",
+          fileUrlPath: "file_url",
+        },
+      },
+    }),
+  });
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -2125,6 +2295,33 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 17) {
+      await page.click('header [role="tab"]:has-text("Setup")');
+      await page.waitForSelector("text=AI setup", { timeout: 20_000 });
+      await page.click('button[aria-label="Show endpoints for fal"]');
+      await page.waitForSelector('span[aria-label="References for fal"]', { timeout: 20_000 });
+
+      // The card states how a reference travels, so the choice is visible where it is made.
+      const line = await page.locator('span[aria-label="References for fal"]').first().textContent();
+      assert(
+        Boolean(line?.includes("else upload to")),
+        `the card must say where references are uploaded, got: ${line}`,
+      );
+
+      await page.click('button[aria-label="Test upload for fal"]');
+      await page.waitForSelector("text=Uploaded", { timeout: 30_000 });
+      const notice = await page.locator("text=Uploaded").first().textContent();
+      assert(
+        Boolean(notice?.includes("/gate-upload/file/reference.png")),
+        `the notice must show the url the provider returned, got: ${notice}`,
+      );
+      await page.screenshot({ path: join(artifactDir, "reference-transport.png"), fullPage: true });
+      steps.push("ui: the provider states how references travel, and a test upload proves the file API");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 16) {
       await page.selectOption('select[aria-label="Project"]', projectId);
@@ -2571,6 +2768,24 @@ async function main(): Promise<number> {
     staticDir: join(repoRoot, "web", "dist"),
   });
 
+  // Gate 17 uploads a reference back to a loopback fake, so the two-step file API is proved over real HTTP without
+  // leaving the machine. The routes record what they were sent, so the gate can assert the typed body and the bytes.
+  if (gateNumber === 17) {
+    app.post("/gate-upload/initiate", async (c) => {
+      const body = (await c.req.json()) as { content_type?: unknown; file_size?: unknown };
+      uploads.initiate.push({ contentType: body.content_type, fileSize: body.file_size });
+      return c.json({
+        upload_url: `${base}/gate-upload/put`,
+        file_url: `${base}/gate-upload/file/reference.png`,
+      });
+    });
+    app.put("/gate-upload/put", async (c) => {
+      const bytes = await c.req.arrayBuffer();
+      uploads.put.push(bytes.byteLength);
+      return c.body(null, 200);
+    });
+  }
+
   const server = await new Promise<ReturnType<typeof serve>>((done) => {
     const started = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" }, () => done(started));
   });
@@ -2596,6 +2811,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 14) await gate14(steps);
     else if (gateNumber === 15) await gate15(steps);
     else if (gateNumber === 16) await gate16(steps);
+    else if (gateNumber === 17) await gate17(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);
