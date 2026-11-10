@@ -70,7 +70,10 @@ four surfaces exist.
 
 ## Slice 18 — what it proves
 
-- **Nothing is typed.** Import is the browser's file picker; export offers `Save a copy` through the save dialog, so a
+- **Nothing is typed.** Import is the browser's file picker; export offers `Save a copy` through the save dialog, and
+  **Choose folder…** opens the host's own dialog (a browser cannot name a folder to a server), so a large project is
+  written in one move instead of copied through the browser. The chosen folder is a one-use token: the path stays on
+  the host and never appears in a result. Export offers `Save a copy` through the save dialog, so a
   copy can go anywhere. The gate drives both: it picks the archive in a file input, opens the restored film, then
   clicks Save a copy and asserts the download is named after the archive. Advanced is proved too: the host writes
   straight into a folder, the notice says so, and no browser copy is offered for it.

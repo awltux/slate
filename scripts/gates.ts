@@ -2781,9 +2781,11 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.waitForSelector('h1:has-text("The Last Light")', { timeout: 120_000 });
       steps.push("ui: choosing an archive in the file dialog restores the film, with no path typed");
 
-      // The archive is written on the host, and a copy leaves through the browser's own save dialog.
-      await page.click('button[aria-label="Export this project"]');
-      await page.click('button.primary:has-text("Export")');
+      // The archive is written on the host, and a copy leaves through the browser's own save dialog. Export lives
+      // with the rest of the configuration, so the gate walks to it rather than expecting a button in the header.
+      await page.click('main [role="tab"]:has-text("Config")');
+      await page.waitForSelector("text=Archive", { timeout: 20_000 });
+      await page.click('button:has-text("Export")');
       await page.waitForSelector('a[aria-label="Save a copy of the archive"]', { timeout: 120_000 });
       const notice = await page.locator("text=.7z").first().textContent();
       assert(Boolean(notice?.includes("revision")), `the export must report the archive, got: ${notice}`);
@@ -2800,21 +2802,20 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.screenshot({ path: join(artifactDir, "project-export.png"), fullPage: true });
       steps.push("ui: the export offers a copy through the browser's save dialog, named after the archive");
 
-      // Advanced: the host writes straight into a folder, in one move, and no browser copy is offered for it.
-      await page.click("summary:has-text('Advanced')");
-      await page.fill('input[aria-label="Export destination folder"]', join(gateHome, "exports-advanced"));
-      await page.click('button:has-text("Export there")');
-      await page.waitForSelector("text=written to the folder you gave", { timeout: 120_000 });
+      // A chosen folder is a token, not a path: the UI opens the host's dialog, and an unknown token is refused.
+      await page.waitForSelector("text=Choose folder…", { timeout: 20_000 });
+      const unknownToken = await fetch(`${base}/p/${projectId}/api/op/project.export`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+        body: JSON.stringify({ destinationId: "chz_missing" }),
+      }).then((response) => response.json() as Promise<{ ok: boolean; error?: { code: string } }>);
+      assert(unknownToken.ok === false, "an unknown folder token must be refused");
       assert(
-        (await page.locator('a[aria-label="Save a copy of the archive"]').count()) === 0,
-        "an archive written to a folder must not offer a browser copy",
+        unknownToken.error?.code === "not_found",
+        `the refusal must be not_found, got ${unknownToken.error?.code}`,
       );
-      assert(
-        existsSync(join(gateHome, "exports-advanced")),
-        "the archive must be written into the folder that was given",
-      );
-      await page.screenshot({ path: join(artifactDir, "project-export-advanced.png"), fullPage: true });
-      steps.push("ui: advanced writes straight to a folder, and says why that suits a large project");
+      steps.push("ui: the archive card offers Choose folder…, and an unknown token is refused");
+      await page.screenshot({ path: join(artifactDir, "project-export.png"), fullPage: true });
 
       await instance.close();
       return;

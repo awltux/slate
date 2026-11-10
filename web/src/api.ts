@@ -309,11 +309,28 @@ export interface ExportedArchive {
   revision: number;
 }
 
+export interface FolderChoice {
+  id: string | null;
+  label: string | null;
+  cancelled: boolean;
+  expiresAt: string | null;
+}
+
+/** Opens the host's folder dialog. The result is a token: the path stays on the host. */
+export function pickFolder(): Promise<FolderChoice> {
+  return runGlobalOp<FolderChoice>("dialog.pick-folder", {}).then((result) => result.data);
+}
+
 /** Writes the project to a 7z archive in the host's exports folder, or wherever the caller names. */
 export function exportProject(projectId: string, destination?: string): Promise<ExportedArchive> {
   return runOp<ExportedArchive>(projectId, "project.export", { destination: destination || undefined }).then(
     (result) => result.data,
   );
+}
+
+/** Exports into a folder the host chose, named by token so no path is sent back. */
+export function exportProjectTo(projectId: string, destinationId: string): Promise<ExportedArchive> {
+  return runOp<ExportedArchive>(projectId, "project.export", { destinationId }).then((result) => result.data);
 }
 
 export interface ImportedProject {

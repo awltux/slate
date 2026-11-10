@@ -51,9 +51,10 @@ User-visible changes per slice. Internal refactors are not listed.
 - **No paths to type.** Import opens the browser's file picker for a `.7z`; Export offers "Save a copy…" through your
   computer's save dialog, so a copy can be put anywhere without mistyping a folder. The archive itself is written to
   the host's exports folder, which the notice names.
-- **Large projects can skip the browser copy.** Under Advanced, Export writes straight into a folder the host can
-  reach: one move by this machine instead of the browser reading the archive and writing it again — for a 40 GB film
-  that is 40 GB of extra traffic avoided.
+- **A folder can be chosen in the host's own dialog.** A browser cannot tell a server which folder it picked, so
+  Slate asks the desktop: Choose folder… opens the native picker, and Export writes the archive straight there in one
+  move — for a 40 GB film, 40 GB of browser copy avoided. The chosen folder arrives as a token, is used once, and its
+  path never leaves the host.
 - **Export writes the film to one 7z**: the whole project folder — documents, media, exports and its commit history —
   with a manifest inside that names the project, its revision, its shape and what it contains. A person can open the
   archive and read what it is without Slate.

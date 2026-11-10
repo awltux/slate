@@ -1,7 +1,7 @@
 {
   "gate": 18,
   "status": "passed",
-  "base": "http://127.0.0.1:52679",
+  "base": "http://127.0.0.1:58506",
   "steps": [
     "export: one archive on disk, hashed, with the film's contents counted",
     "manifest: the archive says which film it is, without opening the documents",
@@ -10,6 +10,6 @@
     "conflict: an archive cannot be imported over the project it would replace",
     "ui: choosing an archive in the file dialog restores the film, with no path typed",
     "ui: the export offers a copy through the browser's save dialog, named after the archive",
-    "ui: advanced writes straight to a folder, and says why that suits a large project"
+    "ui: the archive card offers Choose folder…, and an unknown token is refused"
   ]
 }
