@@ -355,11 +355,7 @@ describe("project settings after creation", () => {
       ),
     ).data as { entityId: string };
 
-    const refused = await registry.execute(
-      "project.update",
-      { defaultStyleId: character.entityId },
-      context,
-    );
+    const refused = await registry.execute("project.update", { defaultStyleId: character.entityId }, context);
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.error.code).toBe("invalid_input");
   });

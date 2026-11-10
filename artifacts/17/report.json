@@ -1,9 +1,9 @@
 {
   "gate": 17,
   "status": "passed",
-  "base": "http://127.0.0.1:56782",
+  "base": "http://127.0.0.1:50261",
   "steps": [
-    "setup: a provider declares how references reach it, as data",
+    "setup: a provider declares how references reach it, and an endpoint takes the bytes",
     "upload: initiate with a typed body, PUT the bytes, use the returned file url",
     "preview: says the reference would be inlined, and where it would land in the body",
     "refusal: too large and no upload declared is reported, not dropped",
