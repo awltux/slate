@@ -15,6 +15,7 @@ import { libraryAssetPath, readGlobalLibrary } from "../../kernel/library/store.
 import { signReview, verifyReview } from "../../kernel/production/review.js";
 import { readProductionDocument } from "../../kernel/workspace/production-doc.js";
 import { readProjectDocument } from "../../kernel/workspace/project-doc.js";
+import { newProjectPath, readProjects } from "../../kernel/workspace/projects.js";
 import { type OpRegistry, createRegistry } from "../../ops/index.js";
 import { EventHub } from "./events.js";
 import {
@@ -26,7 +27,6 @@ import {
   writeSessionCookie,
 } from "./identity.js";
 import { PresenceRegistry } from "./presence.js";
-import { newProjectPath, readProjects, registerProject } from "./projects.js";
 import { reviewPage } from "./review-page.js";
 
 export interface AppOptions {
@@ -227,13 +227,8 @@ export function createApp(options: AppOptions): Hono {
     );
 
     if (!result.ok) return c.json(result);
-    const data = result.data as { projectId: string; name: string };
-    await registerProject(options.home, {
-      id: data.projectId,
-      name: data.name,
-      path,
-      createdAt: options.clock.now(),
-    });
+    const data = result.data as { projectId: string };
+    // The operation registers itself on this host: creating a project anywhere (CLI, MCP, here) lists it the same way.
     hub.publish({ type: "version", data: { projectId: data.projectId } });
     return c.json(result);
   });

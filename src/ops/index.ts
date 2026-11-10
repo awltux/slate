@@ -32,7 +32,7 @@ import { graphStale, sessionBrief } from "./graph.js";
 import { historyRevert, projectHistory } from "./history.js";
 import { libraryImport, libraryList, libraryPull, libraryPush, libraryStyles } from "./library.js";
 import { blockoutAttach, previzGet, setAttach } from "./previz.js";
-import { projectCreate, projectRename, projectSetBindings } from "./project.js";
+import { projectCreate, projectDelete, projectRename, projectSetBindings } from "./project.js";
 import { promptExpand } from "./prompt.js";
 import { OpRegistry } from "./registry.js";
 import { noteAdd, noteList, noteResolve, reviewLink, reviewLinks, reviewRevoke } from "./review.js";
@@ -49,6 +49,7 @@ export function createRegistry(): OpRegistry {
   return new OpRegistry().register(
     projectCreate,
     projectRename,
+    projectDelete,
     projectSetBindings,
     projectHistory,
     historyRevert,

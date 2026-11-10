@@ -1,3 +1,5 @@
+import { rm } from "node:fs/promises";
+import { resolve, sep } from "node:path";
 import { z } from "zod";
 import { SlateError } from "../domain/result.js";
 import { readAiConfig } from "../kernel/ai/store.js";
@@ -5,6 +7,7 @@ import { cloneLibraryItem } from "../kernel/library/clone.js";
 import { readGlobalLibrary } from "../kernel/library/store.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { readProjectDocument } from "../kernel/workspace/project-doc.js";
+import { readProjects, registerProject, writeProjects } from "../kernel/workspace/projects.js";
 import { initProject } from "../kernel/workspace/scaffold.js";
 import { defineOp } from "./registry.js";
 
@@ -108,6 +111,13 @@ export const projectCreate = defineOp({
     }
 
     const final = await readProjectDocument(created.paths.root);
+    // The host's index is part of creating a project: a film made from the CLI is listed beside one made in the browser.
+    await registerProject(context.home, {
+      id: final.id,
+      name: final.name,
+      path: created.paths.root,
+      createdAt: final.createdAt,
+    });
     return {
       data: {
         projectId: final.id,
@@ -119,6 +129,61 @@ export const projectCreate = defineOp({
       version: final.revision,
       commit: final.commit,
       next: ["capabilities.get"],
+    };
+  },
+});
+
+/**
+ * Deleting a project is the one operation that cannot be undone by a commit, so it asks for the name to be typed.
+ * The folder is kept by default: unlisting a film is reversible, deleting its media is not. The check lives here rather
+ * than in a form, because a form is not a guard.
+ */
+export const projectDelete = defineOp({
+  name: "project.delete",
+  ownerOnly: true,
+  policy: "destructive",
+  summary: "Delete a project from this host, keeping its folder unless told otherwise.",
+  input: z
+    .object({
+      /** Typed by hand: the guard against deleting the wrong film. */
+      confirmName: z.string(),
+      keepAssets: z.boolean().default(true),
+    })
+    .strict(),
+  output: z
+    .object({
+      projectId: z.string(),
+      name: z.string(),
+      folderKept: z.boolean(),
+    })
+    .strict(),
+  touched: () => ["project"],
+  run: async (input, context) => {
+    const project = await readProjectDocument(context.root);
+    if (input.confirmName.trim() !== project.name) {
+      throw new SlateError("invalid_input", `type "${project.name}" exactly to delete it`, {
+        detail: { expected: project.name },
+      });
+    }
+
+    // A project folder is never the host and never contains it: refusing here makes a wrong root harmless.
+    const root = resolve(context.root);
+    const home = resolve(context.home);
+    if (root === home || home.startsWith(`${root}${sep}`)) {
+      throw new SlateError("invalid_input", "that folder is this host, not a project");
+    }
+
+    const projects = await readProjects(context.home);
+    await writeProjects(
+      context.home,
+      projects.filter((entry) => entry.id !== project.id),
+    );
+    if (!input.keepAssets) await rm(root, { recursive: true, force: true });
+
+    return {
+      data: { projectId: project.id, name: project.name, folderKept: input.keepAssets },
+      version: 0,
+      next: ["project.create"],
     };
   },
 });

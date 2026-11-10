@@ -46,6 +46,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `plan.vocabulary` | read | `plan_vocabulary` | Valid values for shot and scene fields. |
 | `previz.get` | read | `previz_get` | The sets and every shot's blockout state. |
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
+| `project.delete` | destructive | `project_delete` | Delete a project from this host, keeping its folder unless told otherwise. |
 | `project.history` | read | `project_history` | Recent commits: what changed, who changed it and why. |
 | `project.rename` | write | `project_rename` | Change the project name. |
 | `project.set-bindings` | write | `project_set-bindings` | Choose the binding set this project generates with (null uses the host default). |
@@ -1185,6 +1186,28 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "required": [
     "root",
     "name"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `project.delete`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "confirmName": {
+      "type": "string"
+    },
+    "keepAssets": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "confirmName"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
