@@ -12,6 +12,7 @@ const fal: Provider = {
   name: "fal",
   kind: "fal",
   baseUrl: "https://fal.run",
+  mode: "sync",
   auth: { header: "Authorization", scheme: "Key {{key}}" },
   reference: DEFAULT_REFERENCE_POLICY,
   testPath: "/",

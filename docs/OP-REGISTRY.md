@@ -485,6 +485,14 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "string",
       "default": "custom"
     },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "sync",
+        "queue"
+      ],
+      "default": "sync"
+    },
     "baseUrl": {
       "type": "string",
       "format": "uri"

@@ -2333,6 +2333,27 @@ async function gate23(steps: string[]): Promise<void> {
   assert(badTest.data.response.status === 200, "the root path answers on this gate's server");
   steps.push("test: a result carries the url, the request, the code and the response body");
 
+  // A queue host is declared, not assumed: it is recorded, it can be checked, and it will not render a call it cannot
+  // finish.
+  const queued = await hostOp<{ id: string }>("ai.provider.save", {
+    name: "fal queue",
+    baseUrl: base,
+    mode: "queue",
+    testPath: "/gate-ping",
+    apiKey: "gate-key",
+  });
+  const catalog = await hostOp<{ providers: Array<{ id: string; mode: string }> }>("ai.catalog", {});
+  assert(
+    catalog.data.providers.find((entry) => entry.id === queued.data.id)?.mode === "queue",
+    "the call style must be recorded",
+  );
+  const queueTest = await hostOp<{ mode: string; reachable: boolean; status: number | null }>("ai.test", {
+    providerId: queued.data.id,
+  });
+  assert(queueTest.data.mode === "queue", "a queue host's test must say which style it checked");
+  assert(queueTest.data.reachable, "a queue host can still be proven reachable");
+  steps.push("mode: a queue host is recorded, can be tested, and is not mistaken for a sync one");
+
   steps.push("test: an unreachable host is reported with a reason, not thrown");
 }
 

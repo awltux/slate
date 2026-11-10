@@ -257,3 +257,67 @@ describe("the provider's test path", () => {
     expect(data.url).toBe("https://llm.example/generate");
   });
 });
+
+describe("sync and queue hosts", () => {
+  it("records the call style, and defaults to sync", async () => {
+    const sync = expectOk(
+      await registry.execute("ai.provider.save", { name: "fal", baseUrl: "https://fal.run" }, context),
+    ).data as { id: string };
+    const catalog = expectOk(await registry.execute("ai.catalog", {}, context)).data as {
+      providers: Array<{ id: string; mode: string }>;
+    };
+    expect(catalog.providers.find((entry) => entry.id === sync.id)?.mode).toBe("sync");
+  });
+
+  it("refuses to preview a queue host, because Slate cannot follow the request id", async () => {
+    const queue = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal queue", baseUrl: "https://queue.fal.run", mode: "queue", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: queue.id,
+          name: "Kling",
+          capability: "video",
+          method: "POST",
+          path: "/fal-ai/kling-video/v1.6/standard/text-to-video",
+        },
+        context,
+      ),
+    ).data as { id: string };
+
+    const refused = await registry.execute("ai.preview", { endpointId: endpoint.id }, context);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.error.code).toBe("capability_missing");
+      expect(refused.error.message).toContain("queue");
+    }
+  });
+
+  it("still lets a queue host be tested for reachability, and says that is all it proves", async () => {
+    const queue = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal queue", baseUrl: "https://queue.fal.run", mode: "queue", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+
+    const data = expectOk(
+      await registry.execute(
+        "ai.test",
+        { providerId: queue.id },
+        testContext(root, { home, http: answering(200) }),
+      ),
+    ).data as { mode: string; status: number; reachable: boolean };
+
+    expect(data.mode).toBe("queue");
+    expect(data.reachable).toBe(true);
+    expect(data.status).toBe(200);
+  });
+});

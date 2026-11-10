@@ -73,6 +73,11 @@ export const ProviderSchema = z
     name: z.string().min(1),
     /** Free-form: "fal", "openai-compatible", "replicate", "local". Only used for display and defaults. */
     kind: z.string().default("custom"),
+    /**
+     * How this host is called. "sync" answers with the result; "queue" answers with a request to come back for, which
+     * Slate cannot yet follow - so declaring it is how a provider says "this is not the same shape".
+     */
+    mode: z.enum(["sync", "queue"]).default("sync"),
     baseUrl: z.string().url(),
     auth: z
       .object({

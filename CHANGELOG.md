@@ -2,6 +2,16 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## A provider says whether it is sync or queue
+
+- **Every provider carries a call style**: *sync* means the call returns the result, *queue* means it returns a request to
+  come back for. fal needs both — `https://fal.run` for images, `https://queue.fal.run` for video — so it can be two
+  providers instead of one that lies about half its models.
+- **A queue host is refused where it would mislead.** Preview says so with `capability_missing` rather than rendering a
+  body that looks ready and cannot be completed; the queue flow (submit, poll, collect) is not built yet, and pretending
+  otherwise is worse than saying no.
+- **A queue host can still be tested** for reachability, and the result says which style was checked.
+
 ## Test a provider, and each of its endpoints
 
 - **A provider declares the path its connection is tested on** (*Test path*, e.g. `/models` for an OpenAI-compatible host, `/` for most others). A generic GET on a base URL usually 404s while the host is perfectly healthy, so the address that proves it belongs in the declaration rather than in the code.

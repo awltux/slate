@@ -5,6 +5,8 @@ interface ProviderView {
   id: string;
   name: string;
   kind: string;
+  /** sync answers with the result; queue answers with a request to come back for. */
+  mode: string;
   baseUrl: string;
   authHeader: string;
   authScheme: string;
@@ -726,6 +728,7 @@ function ProviderForm({
   const [authHeader, setAuthHeader] = useState(provider?.authHeader ?? "Authorization");
   const [authScheme, setAuthScheme] = useState(provider?.authScheme ?? "Bearer {{key}}");
   const [testPath, setTestPath] = useState(provider?.testPath ?? "/");
+  const [mode, setMode] = useState(provider?.mode ?? "sync");
   const [apiKey, setApiKey] = useState("");
   const [forgetKey, setForgetKey] = useState(false);
   const [transport, setTransport] = useState(provider?.reference.transport ?? "inline");
@@ -743,7 +746,15 @@ function ProviderForm({
       style={{ marginTop: "0.75rem", gap: "0.5rem" }}
       onSubmit={(event) => {
         event.preventDefault();
-        const values: Record<string, unknown> = { name, kind, baseUrl, authHeader, authScheme, testPath };
+        const values: Record<string, unknown> = {
+          name,
+          kind,
+          mode,
+          baseUrl,
+          authHeader,
+          authScheme,
+          testPath,
+        };
         if (provider) values.id = provider.id;
         // On an edit, a blank key field means "keep the one that is stored"; forgetting it is an explicit checkbox.
         if (!editing) values.apiKey = apiKey;
@@ -784,6 +795,17 @@ function ProviderForm({
             placeholder="fal, openai-compatible, custom…"
             aria-label={label("provider kind")}
           />
+        </Field>
+        <Field id={`${prefix}-provider-mode`} label="Call style">
+          <select
+            id={`${prefix}-provider-mode`}
+            value={mode}
+            onChange={(event) => setMode(event.target.value)}
+            aria-label={label("call style")}
+          >
+            <option value="sync">sync — the call returns the result</option>
+            <option value="queue">queue — the call returns a request to poll</option>
+          </select>
         </Field>
         <Field id={`${prefix}-provider-base-url`} label="Base URL">
           <input

@@ -40,6 +40,8 @@ const ProviderViewSchema = z
     id: z.string(),
     name: z.string(),
     kind: z.string(),
+    /** How this host is called. */
+    mode: z.string(),
     baseUrl: z.string(),
     authHeader: z.string(),
     authScheme: z.string(),
@@ -90,6 +92,8 @@ export const aiTest = defineOp({
   output: z
     .object({
       target: z.enum(["provider", "endpoint"]),
+      /** The call style checked: a queue host can only be proven reachable by a GET. */
+      mode: z.enum(["sync", "queue"]),
       name: z.string(),
       url: z.string(),
       method: z.string(),
@@ -191,6 +195,7 @@ export const aiTest = defineOp({
       data: {
         target: endpoint ? ("endpoint" as const) : ("provider" as const),
         name: endpoint ? `${endpoint.name}` : provider.name,
+        mode: provider.mode,
         url,
         method: "GET",
         status,
@@ -245,6 +250,7 @@ export const aiCatalog = defineOp({
           id: provider.id,
           name: provider.name,
           kind: provider.kind,
+          mode: provider.mode,
           baseUrl: provider.baseUrl,
           testPath: provider.testPath,
           authHeader: provider.auth.header,
@@ -301,6 +307,8 @@ export const aiProviderSave = defineOp({
       id: z.string().optional(),
       name: z.string().trim().min(1),
       kind: z.string().default("custom"),
+      /** "sync" if a call returns the result; "queue" if it returns a request to come back for. */
+      mode: z.enum(["sync", "queue"]).default("sync"),
       baseUrl: z.string().url(),
       /** Appended to the base url for a connection test. "/models" for an OpenAI-compatible host, "/" for most others. */
       testPath: z.string().default("/"),
@@ -327,6 +335,7 @@ export const aiProviderSave = defineOp({
       id,
       name: input.name,
       kind: input.kind,
+      mode: input.mode,
       baseUrl: input.baseUrl,
       auth: { header: input.authHeader, scheme: input.authScheme },
       reference: input.reference ?? existing?.reference ?? DEFAULT_REFERENCE_POLICY,
@@ -675,6 +684,15 @@ export const aiPreview = defineOp({
 
     const provider = config.providers.find((entry) => entry.id === endpoint.providerId);
     if (!provider) throw new SlateError("not_found", `endpoint ${endpoint.id} has no provider`);
+    // A queue host answers with a request to come back for. Rendering a body would describe a call Slate cannot finish,
+    // so the answer is no - with the reason - rather than a preview that looks ready and then cannot be completed.
+    if (provider.mode === "queue") {
+      throw new SlateError(
+        "capability_missing",
+        `${provider.name} is a queue host: a call returns a request id to poll, which Slate cannot follow yet. Use a synchronous provider for this capability, or record the job by hand.`,
+        { detail: { providerId: provider.id, mode: provider.mode } },
+      );
+    }
 
     const keys = await readKeys(context.home);
     const missing = endpoint.params

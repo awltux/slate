@@ -17,6 +17,7 @@ const fal: Provider = {
   name: "fal",
   kind: "fal",
   baseUrl: "https://rest.alpha.fal.ai",
+  mode: "sync",
   auth: { header: "Authorization", scheme: "Key {{key}}" },
   reference: { transport: "upload", maxInlineBytes: 1_000 },
   testPath: "/",
