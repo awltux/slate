@@ -6,6 +6,7 @@ import type { RunResult } from "../../src/kernel/adapters/command-runner.js";
 import { probeAndCache, readCapabilities } from "../../src/kernel/catalog/capabilities.js";
 import { resolveChains } from "../../src/kernel/catalog/chains.js";
 import { type ServiceState, probeServices } from "../../src/kernel/catalog/probe.js";
+import { SERVICE_IDS } from "../../src/kernel/catalog/services.js";
 import { projectPaths } from "../../src/kernel/workspace/paths.js";
 
 const ran = (stdout: string): RunResult => ({ code: 0, stdout, stderr: "", failedToStart: false });
@@ -114,7 +115,8 @@ describe("probeServices", () => {
     expect(melt?.status).toBe("red");
     expect(melt?.detail).toContain("not found");
     expect(melt?.detail).not.toContain("C:");
-    expect(states.filter((state) => state.status === "red")).toHaveLength(6);
+    // One red per known service: the fake runner installs nothing, so the count is the catalogue's length.
+    expect(states.filter((state) => state.status === "red")).toHaveLength(SERVICE_IDS.length);
   });
 });
 

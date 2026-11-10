@@ -52,6 +52,11 @@ export type CapabilitiesSnapshot = {
   chains: ChainResolution[];
 };
 
+/**
+ * The cached snapshot is a claim about this host's toolchain. When the application starts looking for a different set
+ * of tools - a new one was added, an old one dropped - the claim is stale, so it is discarded and probed again rather
+ * than quietly reporting yesterday's list.
+ */
 export async function readCapabilities(paths: ProjectPaths): Promise<CapabilitiesSnapshot | null> {
   let raw: string;
   try {
@@ -61,7 +66,14 @@ export async function readCapabilities(paths: ProjectPaths): Promise<Capabilitie
     throw error;
   }
   const parsed = CapabilitiesSnapshotSchema.safeParse(JSON.parse(raw));
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return null;
+
+  const cached = parsed.data.services.map((service) => service.id).sort();
+  const expected = [...SERVICE_IDS].sort();
+  if (cached.length !== expected.length || cached.some((id, index) => id !== expected[index])) {
+    return null;
+  }
+  return parsed.data;
 }
 
 export async function writeCapabilities(paths: ProjectPaths, snapshot: CapabilitiesSnapshot): Promise<void> {

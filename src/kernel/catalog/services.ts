@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-export const SERVICE_IDS = ["ffmpeg", "ffprobe", "mpv", "openshot-cli", "melt", "blender"] as const;
+export const SERVICE_IDS = ["ffmpeg", "ffprobe", "mpv", "openshot-cli", "melt", "blender", "7z"] as const;
 export type ServiceId = (typeof SERVICE_IDS)[number];
 
 export interface ServiceDefinition {
@@ -107,6 +107,27 @@ export function serviceDefinitions(): ServiceDefinition[] {
       versionPattern: /Blender (\S+)/u,
       vendorPaths: (vendor) => [join(vendor, "blender", `blender${exe}`)],
       knownPaths: () => [],
+    },
+    {
+      id: "7z",
+      displayName: "7-Zip",
+      required: false,
+      executable: `7z${exe}`,
+      // 7-Zip prints its banner with no arguments and exits 0; `-version` prints the same and exits 7 (a warning).
+      versionArgs: [],
+      versionPattern: /7-Zip (\d+\.\d+)/u,
+      vendorPaths: (vendor) => [join(vendor, "7z", `7z${exe}`)],
+      knownPaths: () => {
+        const paths = wellKnownBinDirs().map((dir) => join(dir, `7z${exe}`));
+        switch (process.platform) {
+          case "win32":
+            return ["C:\\Program Files\\7-Zip\\7z.exe", "C:\\Program Files (x86)\\7-Zip\\7z.exe", ...paths];
+          case "darwin":
+            return ["/opt/homebrew/bin/7z", "/usr/local/bin/7z", ...paths];
+          default:
+            return ["/usr/bin/7z", "/usr/local/bin/7z", "/usr/bin/7za", "/usr/bin/7zr", ...paths];
+        }
+      },
     },
   ];
 }
