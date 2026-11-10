@@ -203,3 +203,83 @@ export const promptExpand = defineOp({
     };
   },
 });
+
+/**
+ * Expand a piece of text into a generation prompt without writing it anywhere. A frame prompt belongs to the shot and is
+ * held by the dialog, so expanding it must not touch a document - but it should use the same model, the same style and
+ * the same fallback the library uses, or the two would drift.
+ */
+export const promptExpandText = defineOp({
+  name: "prompt.expand-text",
+  policy: "spend",
+  summary: "Turn a director's sentence into a generation prompt, using the film's look.",
+  input: z
+    .object({
+      description: z.string().trim().min(1),
+      /** The look to apply; null means the film's default. */
+      styleId: z.string().nullable().default(null),
+    })
+    .strict(),
+  output: z.object({ prompt: z.string(), via: z.string(), styleId: z.string().nullable() }).strict(),
+  // Nothing is written: the caller keeps the result and decides what to do with it.
+  touched: () => [],
+  run: async (input, context) => {
+    const { project, production } = await loadDocuments(context);
+    const styleId = input.styleId ?? project.settings.defaultStyleId;
+    const styleEntity: Entity | null = styleId ? (production.entities[styleId] ?? null) : null;
+    const style = styleEntity ? { name: styleEntity.name, description: styleEntity.description } : null;
+
+    const config = await readConfig(context.home);
+    const model = config.llm
+      ? {
+          baseUrl: config.llm.baseUrl,
+          model: config.llm.model,
+          apiKey: process.env[config.llm.apiKeyEnv] ?? null,
+        }
+      : null;
+
+    const local = composePrompt({
+      kind: "location",
+      name: "Shot frame",
+      description: input.description,
+      style,
+      variant: null,
+    });
+
+    if (!model) {
+      return {
+        data: { prompt: local, via: "local", styleId: styleEntity?.id ?? null },
+        version: project.revision,
+        warnings: [
+          {
+            code: "no_model",
+            message: "no text model is configured, so the prompt was composed locally from your words",
+          },
+        ],
+      };
+    }
+
+    const system =
+      "You write image-generation prompts for a film production system. Given a director's sentence and an optional style sheet, reply with one prompt of at most 60 words: subject, wardrobe or material, setting, framing, lighting, and what to avoid. No preamble, no quotes.";
+    const user = [
+      `description: ${input.description}`,
+      style ? `style sheet: ${style.name} - ${style.description}` : "no style sheet",
+    ].join("\n");
+
+    const written = await askModel(model, system, user);
+    return {
+      data: written
+        ? { prompt: written, via: `model:${model.model}`, styleId: styleEntity?.id ?? null }
+        : { prompt: local, via: "local", styleId: styleEntity?.id ?? null },
+      version: project.revision,
+      warnings: written
+        ? []
+        : [
+            {
+              code: "model_failed",
+              message: "the text model did not answer, so the prompt was composed locally",
+            },
+          ],
+    };
+  },
+});

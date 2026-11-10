@@ -39,7 +39,7 @@ import { historyRevert, projectHistory } from "./history.js";
 import { libraryImport, libraryList, libraryPull, libraryPush, libraryStyles } from "./library.js";
 import { blockoutAttach, previzGet, setAttach } from "./previz.js";
 import { projectBudget, projectCreate, projectDelete, projectUpdate } from "./project.js";
-import { promptExpand } from "./prompt.js";
+import { promptExpand, promptExpandText } from "./prompt.js";
 import { OpRegistry } from "./registry.js";
 import { noteAdd, noteList, noteResolve, reviewLink, reviewLinks, reviewRevoke } from "./review.js";
 import { sceneCreate, sceneList, sceneSetEntities, sceneUpdate } from "./scene.js";
@@ -106,6 +106,7 @@ export function createRegistry(): OpRegistry {
     frameGenerate,
     frameSelect,
     promptExpand,
+    promptExpandText,
     libraryPush,
     libraryPull,
     libraryImport,

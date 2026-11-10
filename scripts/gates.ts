@@ -3287,6 +3287,14 @@ async function browserFlow(steps: string[]): Promise<void> {
         "Elias trims the wick, amber light, salt on his hands",
       );
       steps.push("ui: typing @ offers the scene's resources"); // Three images, then keep the one that is right: a frame is chosen from what was made, not accepted blind.
+      // Expand asks the text model for a prompt; with none configured it composes one locally and says so.
+      await page.click('button[aria-label="Expand the frame prompt with the text model"]');
+      await page.waitForSelector('textarea[aria-label="Expanded frame prompt"]', { timeout: 30_000 });
+      const expandedText = await page.locator('textarea[aria-label="Expanded frame prompt"]').inputValue();
+      assert(expandedText.trim().length > 20, `Expand must produce a prompt, got: ${expandedText}`);
+      await page.click('button[aria-label="Discard the expanded prompt"]');
+      steps.push("ui: Expand turns the sentence into a prompt that can be edited or discarded");
+
       await page.selectOption('select[aria-label="How many images to generate"]', "3");
       await page.click('button:has-text("Generate start frame")');
       await page.waitForSelector('section[aria-label^="Frames for shot"] img[alt*="option 3"]', {

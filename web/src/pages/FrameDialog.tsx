@@ -45,7 +45,10 @@ export function FrameDialog({
   // An end frame is made from where the shot began: on by default, and only meaningful once a start frame exists.
   const [useStartFrame, setUseStartFrame] = useState(true);
   const [count, setCount] = useState(3);
+  const [notice, setNotice] = useState<string | null>(null);
   const [made, setMade] = useState<{ assetIds: string[]; role: string } | null>(null);
+  const [expanded, setExpanded] = useState("");
+  const [expanding, setExpanding] = useState(false);
   const [mention, setMention] = useState<Mention | null>(null);
   const [active, setActive] = useState(0);
   const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -76,6 +79,25 @@ export function FrameDialog({
 
   const current = role === "first" ? frames.first : frames.last;
 
+  /** Ask the text model to turn the sentence into a prompt. The result is editable, not final. */
+  async function expand() {
+    setExpanding(true);
+    setError(null);
+    try {
+      const result = await runOp<{ prompt: string; via: string }>(projectId, "prompt.expand-text", {
+        description: prompt.trim(),
+      });
+      setExpanded(result.data.prompt);
+      if (result.data.via === "local") {
+        setNotice("no text model is configured, so the prompt was composed locally from your words");
+      }
+    } catch (caught) {
+      setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+    } finally {
+      setExpanding(false);
+    }
+  }
+
   async function generate() {
     setBusy(true);
     setError(null);
@@ -86,9 +108,10 @@ export function FrameDialog({
         {
           shotId,
           role,
-          prompt,
-          entityIds: picked,
+          // The expanded prompt is what the model reads when it exists: that is what "Expand" is for.
+          prompt: expanded.trim() === "" ? prompt : expanded,
           useStartFrame,
+          entityIds: picked,
           count,
           expectedRevision: revision,
         },
@@ -210,6 +233,45 @@ export function FrameDialog({
           </ul>
         ) : null}
       </label>
+      <div className="row">
+        <button
+          type="button"
+          onClick={() => void expand()}
+          disabled={expanding || prompt.trim() === ""}
+          title="Write a generation prompt from these words, using the film's look"
+          aria-label="Expand the frame prompt with the text model"
+        >
+          {expanding ? "Expanding…" : "Expand"}
+        </button>
+        <span className="muted" style={{ fontSize: 12 }}>
+          turns your sentence into a prompt for the image model
+        </span>
+      </div>
+
+      {expanded ? (
+        <label className="stack" style={{ gap: "0.25rem" }}>
+          <span className="muted">AI expanded prompt</span>
+          <textarea
+            value={expanded}
+            onChange={(event) => setExpanded(event.target.value)}
+            rows={4}
+            aria-label="Expanded frame prompt"
+            placeholder="The expanded prompt appears here and can be edited before generating"
+          />
+          <span className="muted" style={{ fontSize: 12 }}>
+            This is what the image model reads. Edit it, or clear it to go back to your sentence.
+            <button
+              type="button"
+              className="link-button"
+              style={{ marginLeft: 6 }}
+              onClick={() => setExpanded("")}
+              aria-label="Discard the expanded prompt"
+            >
+              Discard
+            </button>
+          </span>
+        </label>
+      ) : null}
 
       {role === "last" ? (
         <label className="row" style={{ gap: "0.4rem", alignItems: "center", fontSize: 13 }}>
@@ -310,6 +372,7 @@ export function FrameDialog({
         </div>
       ) : null}
 
+      {notice ? <p className="muted">{notice}</p> : null}
       {error ? <p className="error">{error}</p> : null}
       <div className="row">
         <label className="row" style={{ gap: "0.35rem", alignItems: "center", fontSize: 13 }}>

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
+import { readProjectDocument } from "../../src/kernel/workspace/project-doc.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
 import { testContext } from "../helpers/context.js";
 
@@ -108,5 +109,26 @@ describe("prompt.expand", () => {
     const result = await registry.execute("prompt.expand", { entityId: entity.entityId }, context);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("readiness_failed");
+  });
+});
+
+describe("expanding text that is not an entity", () => {
+  it("composes a prompt from the words without writing anything", async () => {
+    const before = (await readProjectDocument(root)).revision;
+
+    const result = expectOk(
+      await registry.execute("prompt.expand-text", { description: "a keeper trimming the wick" }, context),
+    ).data as { prompt: string; via: string };
+
+    expect(result.prompt.toLowerCase()).toContain("keeper");
+    // No model is configured on a test host, and the fallback says so rather than pretending.
+    expect(result.via).toBe("local");
+    // It is a suggestion, not a document change.
+    expect((await readProjectDocument(root)).revision).toBe(before);
+  });
+
+  it("refuses empty words rather than inventing a prompt", async () => {
+    const refused = await registry.execute("prompt.expand-text", { description: "   " }, context);
+    expect(refused.ok).toBe(false);
   });
 });

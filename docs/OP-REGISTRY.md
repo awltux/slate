@@ -60,6 +60,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `project.set-export-folder` | write | project | `project_set-export-folder` | Choose, or reset, the folder this project's archives are written to. |
 | `project.update` | write | project | `project_update` | Change the project's configuration: name, shape, rate, runtime, budget, model profile and look. |
 | `prompt.expand` | spend | project | `prompt_expand` | Turn a description into a generation prompt, using the style sheet when one is applied. |
+| `prompt.expand-text` | spend | project | `prompt_expand-text` | Turn a director's sentence into a generation prompt, using the film's look. |
 | `review.link` | write | project | `review_link` | Create a signed, expiring link that lets a reviewer watch the cut and leave notes. |
 | `review.links` | read | project | `review_links` | Review links with their expiry and revocation state. |
 | `review.revoke` | destructive | project | `review_revoke` | Revoke a review link so it stops working immediately. |
@@ -1570,6 +1571,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
+```
+
+### `prompt.expand-text`
+
+```json
+{}
 ```
 
 ### `review.link`

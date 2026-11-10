@@ -2,6 +2,13 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Expand a frame prompt with the text model
+
+- **The frame editor has Expand**, beside the director's sentence, exactly as a library item does: it asks the text model
+  for a prompt built from those words and the film's look.
+- **The result lands in an "AI expanded prompt" box you can edit**, and that is what the image model reads when it is
+  there. Discard puts you back on your own sentence.
+- **With no text model configured it composes locally and says so** rather than pretending a model wrote it.
 ## The scene lists resources; the shot shows the pictures
 
 - **No thumbnails on the scene's items.** The scene is a list of what is in it; showing a picture for one kind of item and
