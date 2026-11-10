@@ -1402,6 +1402,50 @@ async function gate11(steps: string[]): Promise<void> {
   );
   steps.push("edit: the host moved, the endpoint followed, the key stayed");
 
+  // A second model, so deleting one endpoint can be told apart from emptying the provider.
+  const tts = await fetch(`${base}/api/op/ai.endpoint.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      providerId: provider.data.id,
+      name: "TTS base",
+      capability: "text",
+      path: "/tts",
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data: { id: string } }>);
+  assert(tts.ok && tts.data.id, "a second model must be saved");
+  const speech = await fetch(`${base}/api/op/ai.bindingset.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ name: "Speech", bindings: { text: [tts.data.id] } }),
+  }).then((response) => response.json() as Promise<{ ok: boolean }>);
+  assert(speech.ok, "the second model must be bound in a profile");
+
+  // Editing a model is the same operation as adding one, keyed by id: no second endpoint appears.
+  const editedEndpoint = await fetch(`${base}/api/op/ai.endpoint.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      id: endpoint.data.id,
+      providerId: provider.data.id,
+      name: "FLUX dev",
+      capability: "image",
+      path: "/fal-ai/flux/dev-2",
+      resultPath: "images[0].url",
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data: { id: string } }>);
+  assert(editedEndpoint.ok && editedEndpoint.data.id === endpoint.data.id, "editing must keep the endpoint");
+  const editedPreview = await fetch(`${base}/api/op/ai.preview`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ capability: "image" }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data: { url: string } }>);
+  assert(
+    editedPreview.data.url === "https://fal-prod.run/fal-ai/flux/dev-2",
+    `the edited path must be the one preview renders, got ${editedPreview.data.url}`,
+  );
+  steps.push("endpoint edit: the path moved, and preview renders the new call");
+
   // An editor may not read or change host setup.
   const editor = await loginAs("editor", "gate-editor-123");
   const refused = await fetch(`${base}/api/op/ai.catalog`, {
@@ -1915,13 +1959,42 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.waitForSelector("text=AI setup", { timeout: 20_000 });
 
       // Endpoints are hidden under their provider until it is opened.
-      const hidden = await page.locator("text=POST /fal-ai/flux/dev").count();
+      const hidden = await page.locator("text=POST /fal-ai/flux/dev-2").count();
       assert(hidden === 0, "endpoints must be hidden while the provider is collapsed");
       await page.click('button[aria-label="Show endpoints for fal"]');
       await page.waitForSelector("text=FLUX dev", { timeout: 20_000 });
-      await page.waitForSelector("text=POST /fal-ai/flux/dev", { timeout: 20_000 });
+      await page.waitForSelector("text=POST /fal-ai/flux/dev-2", { timeout: 20_000 });
       await page.screenshot({ path: join(artifactDir, "setup.png"), fullPage: true });
       steps.push("ui: providers hide their endpoints, and opening one shows the call");
+
+      // Edit a model from its row: the form opens on what is stored, and saving keeps the same endpoint.
+      await page.click('button[aria-label="Edit TTS base"]');
+      await page.waitForSelector('input[aria-label="Endpoint name"]', { timeout: 20_000 });
+      const storedEndpointName = await page.inputValue('input[aria-label="Endpoint name"]');
+      assert(
+        storedEndpointName === "TTS base",
+        `the endpoint form must open on the stored name, got ${storedEndpointName}`,
+      );
+      await page.fill('input[aria-label="Endpoint name"]', "TTS base 2");
+      await page.screenshot({ path: join(artifactDir, "endpoint-edit.png"), fullPage: true });
+      await page.click('button:has-text("Save endpoint")');
+      await page.waitForSelector('button[aria-label="Delete TTS base 2"]', { timeout: 20_000 });
+      steps.push("ui: a model is edited from a form that opens on what is stored");
+
+      // Deleting a model is not deleting its host: the provider stays, the binding that named it goes.
+      await page.click('button[aria-label="Delete TTS base 2"]');
+      await page.waitForSelector('button[aria-label="Confirm deleting TTS base 2"]', { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "endpoint-delete.png"), fullPage: true });
+      await page.click('button[aria-label="Confirm deleting TTS base 2"]');
+      await page.waitForSelector("text=TTS base 2 deleted", { timeout: 30_000 });
+      const endpointRows = await page.locator("table tbody tr", { hasText: "TTS base 2" }).count();
+      assert(endpointRows === 0, "the deleted model must leave the table");
+      const endpointNotice = await page.locator("text=TTS base 2 deleted").first().textContent();
+      assert(
+        Boolean(endpointNotice?.includes("1 profile binding cleared")),
+        `the notice must report the binding that went with it, got: ${endpointNotice}`,
+      );
+      steps.push("ui: deleting a model clears its profile binding and leaves the host standing");
 
       // Edit opens on the stored values, so the base URL the API changed is what the form shows.
       await page.click('button[aria-label="Edit fal"]');
