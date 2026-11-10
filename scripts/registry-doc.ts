@@ -24,13 +24,19 @@ function render(): string {
     "Every operation is reachable from the CLI (`slate op <name>`), from MCP (as the tool name below, which DSH",
     "shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op/<name>`).",
     "",
-    "| Operation | Policy | MCP tool | Summary |",
-    "|---|---|---|---|",
+    "| Operation | Policy | Scope | MCP tool | Summary |",
+    "|---|---|---|---|---|",
   ];
+
+  // Scope matters to a caller: a host operation answers with no project open, and an owner-only one needs the owner.
+  const scope = (op: { hostLevel?: boolean; ownerOnly?: boolean }): string => {
+    const where = op.hostLevel ? "host" : "project";
+    return op.ownerOnly ? `${where}, owner` : where;
+  };
 
   for (const op of registry.list()) {
     lines.push(
-      `| \`${op.name}\` | ${op.policy} | \`${op.name.replaceAll(".", "_")}\` | ${op.summary.replaceAll("|", "\\|")} |`,
+      `| \`${op.name}\` | ${op.policy} | ${scope(op)} | \`${op.name.replaceAll(".", "_")}\` | ${op.summary.replaceAll("|", "\\|")} |`,
     );
   }
 

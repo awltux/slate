@@ -5,83 +5,83 @@ Generated from `src/ops` by `pnpm docs:registry`. Do not edit by hand.
 Every operation is reachable from the CLI (`slate op <name>`), from MCP (as the tool name below, which DSH
 shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op/<name>`).
 
-| Operation | Policy | MCP tool | Summary |
-|---|---|---|---|
-| `ai.bindingset.remove` | destructive | `ai_bindingset_remove` | Remove a binding set. |
-| `ai.bindingset.save` | write | `ai_bindingset_save` | Create or update a binding set: which endpoint serves each capability. |
-| `ai.bindingset.use` | write | `ai_bindingset_use` | Choose the binding set a project uses when it has not picked one itself. |
-| `ai.bindingsets` | read | `ai_bindingsets` | The binding sets available to projects. |
-| `ai.catalog` | read | `ai_catalog` | AI providers, endpoints and capability bindings, with keys masked. |
-| `ai.endpoint.save` | write | `ai_endpoint_save` | Create or update an endpoint: one capability, one path, its parameters and request template. |
-| `ai.preview` | read | `ai_preview` | Render the request an endpoint would send, without calling it. |
-| `ai.provider.save` | write | `ai_provider_save` | Create or update an AI provider: one host, one auth scheme, one credential. |
-| `ai.reference.test` | read | `ai_reference_test` | Upload a tiny test image through a provider's reference transport. |
-| `ai.remove` | destructive | `ai_remove` | Remove a provider or endpoint, its stored key, and any binding that pointed at it. |
-| `blockout.attach` | write | `blockout_attach` | Attach a blockout for a shot: first and last stills, an optional animatic, and the camera. |
-| `capabilities.get` | read | `capabilities_get` | Probe the host toolchain and report the chain that will run each stage, with the reason. |
-| `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
-| `cut.get` | read | `cut_get` | The current cut: its items, total duration and the last render. |
-| `cut.render` | write | `cut_render` | Render the cut to MP4 at the project's shape and rate (FFmpeg concat for now). |
-| `deliver.export` | spend | `deliver_export` | Encode the cut into a master with optional audio, run QC, and write a provenance manifest. |
-| `deliver.qc` | read | `deliver_qc` | The QC report and manifest from the last delivery. |
-| `entity.angles` | read | `entity_angles` | The six headshot rotations a character sheet must cover. |
-| `entity.create` | write | `entity_create` | Define a character, location, prop or style in the library. |
-| `entity.delete` | destructive | `entity_delete` | Delete an entity that nothing references. |
-| `entity.generate` | spend | `entity_generate` | Generate candidate images from an entity's prompt (or a variant's), priced per image. |
-| `entity.list` | read | `entity_list` | The library: entities with their sheets, variants and candidates. |
-| `entity.update` | write | `entity_update` | Set an entity's description, its generation prompt, or the style sheet it uses. |
-| `estimate.create` | read | `estimate_create` | Price a batch of takes for the given tier before anything is submitted. |
-| `frame.attach` | write | `frame_attach` | Attach an image to a shot slot (board, first or last), copied into the project by content hash. |
-| `frame.generate` | spend | `frame_generate` | Generate a shot's start or end frame from its scene's library items and the previz blockout. |
-| `graph.stale` | read | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
-| `history.revert` | destructive | `history_revert` | Undo the most recent commit by restoring the state before it. |
-| `job.get` | read | `job_get` | The state of a job. |
-| `library.import` | write | `library_import` | Copy a global library item into this project as a new entity. |
-| `library.list` | read | `library_list` | The global library, plus which local entities are behind their global version. |
-| `library.pull` | write | `library_pull` | Refresh a project entity from its global library item. |
-| `library.push` | write | `library_push` | Publish a project entity to the global library, or bump its global version. |
-| `library.styles` | read | `library_styles` | The style sheets available to a new project. |
-| `note.add` | write | `note_add` | Leave a note on a shot, a scene, or the cut. |
-| `note.list` | read | `note_list` | Notes, filtered by anchor or resolution. |
-| `note.resolve` | write | `note_resolve` | Mark a note as handled. |
-| `plan.vocabulary` | read | `plan_vocabulary` | Valid values for shot and scene fields. |
-| `previz.get` | read | `previz_get` | The sets and every shot's blockout state. |
-| `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
-| `project.delete` | destructive | `project_delete` | Delete a project from this host, keeping its folder unless told otherwise. |
-| `project.export` | read | `project_export` | Write the project to a 7z archive with a manifest describing it. |
-| `project.history` | read | `project_history` | Recent commits: what changed, who changed it and why. |
-| `project.import` | write | `project_import` | Restore a project from a 7z archive written by project.export. |
-| `project.rename` | write | `project_rename` | Change the project name. |
-| `project.set-bindings` | write | `project_set-bindings` | Choose the binding set this project generates with (null uses the host default). |
-| `prompt.expand` | spend | `prompt_expand` | Turn a description into a generation prompt, using the style sheet when one is applied. |
-| `review.link` | write | `review_link` | Create a signed, expiring link that lets a reviewer watch the cut and leave notes. |
-| `review.links` | read | `review_links` | Review links with their expiry and revocation state. |
-| `review.revoke` | destructive | `review_revoke` | Revoke a review link so it stops working immediately. |
-| `scene.create` | write | `scene_create` | Add a scene. Numbers are assigned in order and are never reused. |
-| `scene.list` | read | `scene_list` | Scenes with their shots, readiness and staleness. |
-| `scene.set-entities` | write | `scene_set-entities` | Attach library items to a scene, or clear them. |
-| `scene.update` | write | `scene_update` | Change a scene. Its shots become stale because they were reviewed against the old text. |
-| `service.clear-path` | write | `service_clear-path` | Forget an explicit executable path and go back to discovery. |
-| `service.set-path` | write | `service_set-path` | Point a service at a specific executable, after checking that it runs. |
-| `session.brief` | read | `session_brief` | A bounded read of where the film stands: the cheapest way for a new session to start. |
-| `set.attach` | write | `set_attach` | Attach a digital set: a validated manifest, plus the .blend it came from when available. |
-| `sheet.edit` | write | `sheet_edit` | Open a sheet for editing, or replace the items in the sheet being edited. |
-| `sheet.publish` | write | `sheet_publish` | Publish the sheet being edited and compose its active items into one reference image. |
-| `shot.create` | write | `shot_create` | Add a shot to a scene; it is built from that scene's current text. |
-| `shot.get` | read | `shot_get` | One shot with its readiness checks and staleness. |
-| `shot.rebase` | write | `shot_rebase` | Record that a shot has been re-checked against its scene's current text. |
-| `shot.set-entities` | write | `shot_set-entities` | Set the entities in a shot and pin their current identity sheets. |
-| `shot.update` | write | `shot_update` | Change a shot. Pass acceptScene to record that it was re-checked against the current scene. |
-| `spend.approve` | spend | `spend_approve` | Approve an estimate and receive a single-use token that a generation job must present. |
-| `spend.summary` | read | `spend_summary` | The budget, what is committed, and the most recent money movements. |
-| `story.get` | read | `story_get` | The five-line story and its revisions. |
-| `story.set` | write | `story_set` | Set the five lines and keep a revision of the previous version. |
-| `take.generate` | spend | `take_generate` | Generate takes for an approved estimate. Requires the approval token from spend.approve. |
-| `take.list` | read | `take_list` | Takes, optionally for one shot, with which one is selected. |
-| `take.select` | write | `take_select` | Choose the take that represents a shot. |
-| `variant.create` | write | `variant_create` | Add a wardrobe item or state variant, with its own description and prompt. |
-| `variant.delete` | destructive | `variant_delete` | Delete a wardrobe item or state variant from an entity. |
-| `variant.update` | write | `variant_update` | Change a wardrobe item's name, description or prompt. |
+| Operation | Policy | Scope | MCP tool | Summary |
+|---|---|---|---|---|
+| `ai.bindingset.remove` | destructive | project, owner | `ai_bindingset_remove` | Remove a binding set. |
+| `ai.bindingset.save` | write | project, owner | `ai_bindingset_save` | Create or update a binding set: which endpoint serves each capability. |
+| `ai.bindingset.use` | write | project, owner | `ai_bindingset_use` | Choose the binding set a project uses when it has not picked one itself. |
+| `ai.bindingsets` | read | host | `ai_bindingsets` | The binding sets available to projects. |
+| `ai.catalog` | read | project, owner | `ai_catalog` | AI providers, endpoints and capability bindings, with keys masked. |
+| `ai.endpoint.save` | write | project, owner | `ai_endpoint_save` | Create or update an endpoint: one capability, one path, its parameters and request template. |
+| `ai.preview` | read | project, owner | `ai_preview` | Render the request an endpoint would send, without calling it. |
+| `ai.provider.save` | write | project, owner | `ai_provider_save` | Create or update an AI provider: one host, one auth scheme, one credential. |
+| `ai.reference.test` | read | project, owner | `ai_reference_test` | Upload a tiny test image through a provider's reference transport. |
+| `ai.remove` | destructive | project, owner | `ai_remove` | Remove a provider or endpoint, its stored key, and any binding that pointed at it. |
+| `blockout.attach` | write | project | `blockout_attach` | Attach a blockout for a shot: first and last stills, an optional animatic, and the camera. |
+| `capabilities.get` | read | host | `capabilities_get` | Probe the host toolchain and report the chain that will run each stage, with the reason. |
+| `cut.build` | write | project | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |
+| `cut.get` | read | project | `cut_get` | The current cut: its items, total duration and the last render. |
+| `cut.render` | write | project | `cut_render` | Render the cut to MP4 at the project's shape and rate (FFmpeg concat for now). |
+| `deliver.export` | spend | project | `deliver_export` | Encode the cut into a master with optional audio, run QC, and write a provenance manifest. |
+| `deliver.qc` | read | project | `deliver_qc` | The QC report and manifest from the last delivery. |
+| `entity.angles` | read | project | `entity_angles` | The six headshot rotations a character sheet must cover. |
+| `entity.create` | write | project | `entity_create` | Define a character, location, prop or style in the library. |
+| `entity.delete` | destructive | project | `entity_delete` | Delete an entity that nothing references. |
+| `entity.generate` | spend | project | `entity_generate` | Generate candidate images from an entity's prompt (or a variant's), priced per image. |
+| `entity.list` | read | project | `entity_list` | The library: entities with their sheets, variants and candidates. |
+| `entity.update` | write | project | `entity_update` | Set an entity's description, its generation prompt, or the style sheet it uses. |
+| `estimate.create` | read | project | `estimate_create` | Price a batch of takes for the given tier before anything is submitted. |
+| `frame.attach` | write | project | `frame_attach` | Attach an image to a shot slot (board, first or last), copied into the project by content hash. |
+| `frame.generate` | spend | project | `frame_generate` | Generate a shot's start or end frame from its scene's library items and the previz blockout. |
+| `graph.stale` | read | project | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
+| `history.revert` | destructive | project | `history_revert` | Undo the most recent commit by restoring the state before it. |
+| `job.get` | read | project | `job_get` | The state of a job. |
+| `library.import` | write | project | `library_import` | Copy a global library item into this project as a new entity. |
+| `library.list` | read | project | `library_list` | The global library, plus which local entities are behind their global version. |
+| `library.pull` | write | project | `library_pull` | Refresh a project entity from its global library item. |
+| `library.push` | write | project | `library_push` | Publish a project entity to the global library, or bump its global version. |
+| `library.styles` | read | host | `library_styles` | The style sheets available to a new project. |
+| `note.add` | write | project | `note_add` | Leave a note on a shot, a scene, or the cut. |
+| `note.list` | read | project | `note_list` | Notes, filtered by anchor or resolution. |
+| `note.resolve` | write | project | `note_resolve` | Mark a note as handled. |
+| `plan.vocabulary` | read | project | `plan_vocabulary` | Valid values for shot and scene fields. |
+| `previz.get` | read | project | `previz_get` | The sets and every shot's blockout state. |
+| `project.create` | write | project | `project_create` | Create a project folder with its documents and genesis commit. |
+| `project.delete` | destructive | project, owner | `project_delete` | Delete a project from this host, keeping its folder unless told otherwise. |
+| `project.export` | read | project, owner | `project_export` | Write the project to a 7z archive with a manifest describing it. |
+| `project.history` | read | project | `project_history` | Recent commits: what changed, who changed it and why. |
+| `project.import` | write | host, owner | `project_import` | Restore a project from a 7z archive written by project.export. |
+| `project.rename` | write | project | `project_rename` | Change the project name. |
+| `project.set-bindings` | write | project | `project_set-bindings` | Choose the binding set this project generates with (null uses the host default). |
+| `prompt.expand` | spend | project | `prompt_expand` | Turn a description into a generation prompt, using the style sheet when one is applied. |
+| `review.link` | write | project | `review_link` | Create a signed, expiring link that lets a reviewer watch the cut and leave notes. |
+| `review.links` | read | project | `review_links` | Review links with their expiry and revocation state. |
+| `review.revoke` | destructive | project | `review_revoke` | Revoke a review link so it stops working immediately. |
+| `scene.create` | write | project | `scene_create` | Add a scene. Numbers are assigned in order and are never reused. |
+| `scene.list` | read | project | `scene_list` | Scenes with their shots, readiness and staleness. |
+| `scene.set-entities` | write | project | `scene_set-entities` | Attach library items to a scene, or clear them. |
+| `scene.update` | write | project | `scene_update` | Change a scene. Its shots become stale because they were reviewed against the old text. |
+| `service.clear-path` | write | project | `service_clear-path` | Forget an explicit executable path and go back to discovery. |
+| `service.set-path` | write | project | `service_set-path` | Point a service at a specific executable, after checking that it runs. |
+| `session.brief` | read | project | `session_brief` | A bounded read of where the film stands: the cheapest way for a new session to start. |
+| `set.attach` | write | project | `set_attach` | Attach a digital set: a validated manifest, plus the .blend it came from when available. |
+| `sheet.edit` | write | project | `sheet_edit` | Open a sheet for editing, or replace the items in the sheet being edited. |
+| `sheet.publish` | write | project | `sheet_publish` | Publish the sheet being edited and compose its active items into one reference image. |
+| `shot.create` | write | project | `shot_create` | Add a shot to a scene; it is built from that scene's current text. |
+| `shot.get` | read | project | `shot_get` | One shot with its readiness checks and staleness. |
+| `shot.rebase` | write | project | `shot_rebase` | Record that a shot has been re-checked against its scene's current text. |
+| `shot.set-entities` | write | project | `shot_set-entities` | Set the entities in a shot and pin their current identity sheets. |
+| `shot.update` | write | project | `shot_update` | Change a shot. Pass acceptScene to record that it was re-checked against the current scene. |
+| `spend.approve` | spend | project | `spend_approve` | Approve an estimate and receive a single-use token that a generation job must present. |
+| `spend.summary` | read | project | `spend_summary` | The budget, what is committed, and the most recent money movements. |
+| `story.get` | read | project | `story_get` | The five-line story and its revisions. |
+| `story.set` | write | project | `story_set` | Set the five lines and keep a revision of the previous version. |
+| `take.generate` | spend | project | `take_generate` | Generate takes for an approved estimate. Requires the approval token from spend.approve. |
+| `take.list` | read | project | `take_list` | Takes, optionally for one shot, with which one is selected. |
+| `take.select` | write | project | `take_select` | Choose the take that represents a shot. |
+| `variant.create` | write | project | `variant_create` | Add a wardrobe item or state variant, with its own description and prompt. |
+| `variant.delete` | destructive | project | `variant_delete` | Delete a wardrobe item or state variant from an entity. |
+| `variant.update` | write | project | `variant_update` | Change a wardrobe item's name, description or prompt. |
 
 ## Input schemas
 
