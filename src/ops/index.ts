@@ -34,7 +34,7 @@ import { graphStale, sessionBrief } from "./graph.js";
 import { historyRevert, projectHistory } from "./history.js";
 import { libraryImport, libraryList, libraryPull, libraryPush, libraryStyles } from "./library.js";
 import { blockoutAttach, previzGet, setAttach } from "./previz.js";
-import { projectCreate, projectDelete, projectRename, projectSetBindings } from "./project.js";
+import { projectBudget, projectCreate, projectDelete, projectUpdate } from "./project.js";
 import { promptExpand } from "./prompt.js";
 import { OpRegistry } from "./registry.js";
 import { noteAdd, noteList, noteResolve, reviewLink, reviewLinks, reviewRevoke } from "./review.js";
@@ -50,11 +50,11 @@ import { planVocabulary } from "./vocabulary.js";
 export function createRegistry(): OpRegistry {
   return new OpRegistry().register(
     projectCreate,
-    projectRename,
+    projectBudget,
     projectDelete,
+    projectUpdate,
     projectExport,
     projectImport,
-    projectSetBindings,
     projectHistory,
     historyRevert,
     capabilitiesGet,

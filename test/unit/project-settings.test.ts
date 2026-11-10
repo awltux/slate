@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
+import { appendLedger } from "../../src/kernel/ledger/ledger.js";
 import { frameSize } from "../../src/kernel/production/format.js";
+import { projectPaths } from "../../src/kernel/workspace/paths.js";
 import { readProjectDocument } from "../../src/kernel/workspace/project-doc.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
 import { testContext } from "../helpers/context.js";
@@ -285,5 +287,80 @@ describe("the settings reach the pixels", () => {
     const rateIndex = render?.indexOf("-r") ?? -1;
     expect(rateIndex).toBeGreaterThan(-1);
     expect(render?.[rateIndex + 1]).toBe("25");
+  });
+});
+
+describe("project settings after creation", () => {
+  it("rewrites the configuration in one commit that says what changed", async () => {
+    await createProject();
+
+    const updated = expectOk(
+      await registry.execute(
+        "project.update",
+        { frameRate: 30, resolutionPixels: 720, runtimeSeconds: 45 },
+        context,
+      ),
+    );
+    expect(updated.version).toBe(1);
+
+    const document = await readProjectDocument(root);
+    expect(document.settings.frameRate).toBe(30);
+    expect(document.settings.resolutionPixels).toBe(720);
+    expect(document.settings.runtimeSeconds).toBe(45);
+
+    const history = expectOk(await registry.execute("project.history", { limit: 5 }, context)).data as {
+      commits: Array<{ intent: string }>;
+    };
+    expect(history.commits[0]?.intent).toContain("rate 24 -> 30fps");
+    expect(history.commits[0]?.intent).toContain("resolution 1080p -> 720p");
+  });
+
+  it("writes nothing when nothing changed, so the history stays a record of decisions", async () => {
+    await createProject();
+    const unchanged = expectOk(await registry.execute("project.update", { frameRate: 24 }, context));
+    expect(unchanged.version).toBe(0);
+  });
+
+  it("refuses a ceiling below what is already committed", async () => {
+    await createProject({ budgetUsd: 10 });
+    await appendLedger(projectPaths(root), {
+      kind: "settlement",
+      estimateId: null,
+      jobId: null,
+      actor: "director",
+      note: "a shot",
+      usd: 4.5,
+      at: "2026-11-09T10:00:00.000Z",
+    });
+
+    const budget = expectOk(await registry.execute("project.budget", {}, context)).data as {
+      committedUsd: number;
+      remainingUsd: number;
+    };
+    expect(budget.committedUsd).toBe(4.5);
+    expect(budget.remainingUsd).toBe(5.5);
+
+    const refused = await registry.execute("project.update", { budgetUsd: 2 }, context);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.code).toBe("invalid_input");
+  });
+
+  it("refuses a default look that is not a style", async () => {
+    await createProject();
+    const character = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "Keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const refused = await registry.execute(
+      "project.update",
+      { defaultStyleId: character.entityId },
+      context,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.code).toBe("invalid_input");
   });
 });

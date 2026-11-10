@@ -187,7 +187,7 @@ describe("operations", () => {
   it("lets the owner rename a project and shows the new name in the list", async () => {
     const owner = await projectWithSession();
     const renamed = await app.request(
-      `/p/${owner.projectId}/api/op/project.rename`,
+      `/p/${owner.projectId}/api/op/project.update`,
       authed(owner.cookie, owner.csrf, { name: "The Last Light (final)" }),
     );
     const body = (await renamed.json()) as { ok: boolean; data: { name: string } };
@@ -203,7 +203,7 @@ describe("operations", () => {
     const owner = await projectWithSession();
     const viewer = await login("watcher", "another password");
     const response = await app.request(
-      `/p/${owner.projectId}/api/op/project.rename`,
+      `/p/${owner.projectId}/api/op/project.update`,
       authed(viewer.cookie, viewer.csrf, { name: "Hijacked" }),
     );
     expect(response.status).toBe(403);

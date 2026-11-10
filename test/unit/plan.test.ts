@@ -238,13 +238,13 @@ describe("session.brief", () => {
   });
 });
 
-describe("project.rename", () => {
+describe("project.update", () => {
   it("changes the name and records a commit", async () => {
     const before = expectOk(await registry.execute("session.brief", {}, context)).data as {
       project: { revision: number };
     };
     const renamed = expectOk(
-      await registry.execute("project.rename", { name: "The Last Light (final)" }, context),
+      await registry.execute("project.update", { name: "The Last Light (final)" }, context),
     ).data as { name: string; revision: number };
 
     expect(renamed.name).toBe("The Last Light (final)");
@@ -253,11 +253,11 @@ describe("project.rename", () => {
     const history = expectOk(await registry.execute("project.history", { limit: 1 }, context)).data as {
       commits: Array<{ intent: string }>;
     };
-    expect(history.commits[0]?.intent).toContain("rename project");
+    expect(history.commits[0]?.intent).toContain("config: name");
   });
 
   it("rejects a blank name", async () => {
-    const result = await registry.execute("project.rename", { name: "   " }, context);
+    const result = await registry.execute("project.update", { name: "   " }, context);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("invalid_input");
   });

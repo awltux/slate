@@ -40,9 +40,9 @@ async function head() {
 
 describe("history.revert", () => {
   it("restores the state before the most recent commit", async () => {
-    await registry.execute("project.rename", { name: "Renamed" }, context);
+    await registry.execute("project.update", { name: "Renamed" }, context);
     const before = await head();
-    expect(before.intent).toContain("rename project");
+    expect(before.intent).toContain("config: name");
 
     const reverted = expectOk(await registry.execute("history.revert", { commitId: before.id }, context))
       .data as {
@@ -59,9 +59,9 @@ describe("history.revert", () => {
   });
 
   it("refuses to undo a commit that is not the head", async () => {
-    await registry.execute("project.rename", { name: "First" }, context);
+    await registry.execute("project.update", { name: "First" }, context);
     const first = await head();
-    await registry.execute("project.rename", { name: "Second" }, context);
+    await registry.execute("project.update", { name: "Second" }, context);
 
     const result = await registry.execute("history.revert", { commitId: first.id }, context);
     expect(result.ok).toBe(false);
@@ -69,7 +69,7 @@ describe("history.revert", () => {
   });
 
   it("refuses to undo someone else's commit without privilege", async () => {
-    await registry.execute("project.rename", { name: "By the owner" }, context);
+    await registry.execute("project.update", { name: "By the owner" }, context);
     const commit = await head();
 
     const reviewer = testContext(root, { home, actor: "reviewer", privileged: false });
@@ -79,7 +79,7 @@ describe("history.revert", () => {
   });
 
   it("records the undo as its own commit, so it can itself be undone", async () => {
-    await registry.execute("project.rename", { name: "Renamed" }, context);
+    await registry.execute("project.update", { name: "Renamed" }, context);
     const target = await head();
     await registry.execute("history.revert", { commitId: target.id }, context);
 

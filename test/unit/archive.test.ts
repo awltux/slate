@@ -30,6 +30,7 @@ let root: string;
 let registry: ReturnType<typeof createRegistry>;
 let context: OpContext;
 
+// The resolver probes the whole host, which can take seconds on a busy machine; the default hook budget is too tight.
 beforeAll(async () => {
   const resolver = createToolResolver({
     run: (argv) => runCommand(argv),
@@ -38,7 +39,7 @@ beforeAll(async () => {
   });
   sevenzip = await resolver("7z");
   has7z = Boolean(sevenzip.binary);
-});
+}, 90_000);
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), "slate-archive-home-"));

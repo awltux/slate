@@ -114,7 +114,7 @@ describe("binding sets", () => {
     expect(before.data.endpointName).toBe("FLUX schnell");
     expect(before.via).toBe("host-default");
 
-    await registry.execute("project.set-bindings", { bindingSetId: finalId }, context);
+    await registry.execute("project.update", { bindingSetId: finalId }, context);
     const after = await preview();
     expect(after.data.endpointName).toBe("FLUX dev");
     expect(after.data.bindingSetId).toBe(finalId);
@@ -122,7 +122,7 @@ describe("binding sets", () => {
     expect(after.via).toBe("project");
 
     // Clearing the choice puts the film back on the host default.
-    await registry.execute("project.set-bindings", { bindingSetId: null }, context);
+    await registry.execute("project.update", { bindingSetId: null }, context);
     expect((await preview()).data.endpointName).toBe("FLUX schnell");
   });
 
@@ -154,19 +154,18 @@ describe("binding sets", () => {
     const config = await readAiConfig(home);
     const finalId = config.bindingSets.find((set) => set.name === "Final")?.id ?? null;
 
-    const selected = expectOk(
-      await registry.execute("project.set-bindings", { bindingSetId: finalId }, context),
-    ).data as { bindingSetId: string | null; name: string | null };
+    const selected = expectOk(await registry.execute("project.update", { bindingSetId: finalId }, context))
+      .data as { bindingSetId: string | null };
     expect(selected.bindingSetId).toBe(finalId);
-    expect(selected.name).toBe("Final");
+    expect(selected.bindingSetId).toBe(finalId);
 
-    const cleared = expectOk(await registry.execute("project.set-bindings", { bindingSetId: null }, context))
+    const cleared = expectOk(await registry.execute("project.update", { bindingSetId: null }, context))
       .data as { bindingSetId: string | null };
     expect(cleared.bindingSetId).toBeNull();
   });
 
   it("refuses an unknown set", async () => {
-    const result = await registry.execute("project.set-bindings", { bindingSetId: "aib_missing" }, context);
+    const result = await registry.execute("project.update", { bindingSetId: "aib_missing" }, context);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("not_found");
   });

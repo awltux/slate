@@ -46,13 +46,13 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `note.resolve` | write | project | `note_resolve` | Mark a note as handled. |
 | `plan.vocabulary` | read | project | `plan_vocabulary` | Valid values for shot and scene fields. |
 | `previz.get` | read | project | `previz_get` | The sets and every shot's blockout state. |
+| `project.budget` | read | project | `project_budget` | The project's budget: its ceiling, what is committed, and what remains. |
 | `project.create` | write | project | `project_create` | Create a project folder with its documents and genesis commit. |
 | `project.delete` | destructive | project, owner | `project_delete` | Delete a project from this host, keeping its folder unless told otherwise. |
 | `project.export` | read | project, owner | `project_export` | Write the project to a 7z archive with a manifest describing it. |
 | `project.history` | read | project | `project_history` | Recent commits: what changed, who changed it and why. |
 | `project.import` | write | host, owner | `project_import` | Restore a project from a 7z archive written by project.export. |
-| `project.rename` | write | project | `project_rename` | Change the project name. |
-| `project.set-bindings` | write | project | `project_set-bindings` | Choose the binding set this project generates with (null uses the host default). |
+| `project.update` | write | project | `project_update` | Change the project's configuration: name, shape, rate, runtime, budget, model profile and look. |
 | `prompt.expand` | spend | project | `prompt_expand` | Turn a description into a generation prompt, using the style sheet when one is applied. |
 | `review.link` | write | project | `review_link` | Create a signed, expiring link that lets a reviewer watch the cut and leave notes. |
 | `review.links` | read | project | `review_links` | Review links with their expiry and revocation state. |
@@ -1221,6 +1221,17 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `project.budget`
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `project.create`
 
 ```json
@@ -1364,7 +1375,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
-### `project.rename`
+### `project.update`
 
 ```json
 {
@@ -1375,22 +1386,51 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "minLength": 1,
       "maxLength": 200
     },
+    "runtimeSeconds": {
+      "type": "number",
+      "minimum": 5,
+      "maximum": 3600
+    },
+    "aspectRatio": {
+      "type": "string",
+      "pattern": "^\\d+:\\d+$",
+      "errorMessage": {
+        "pattern": "aspect ratio must look like 16:9"
+      }
+    },
+    "frameRate": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120
+    },
+    "resolutionPixels": {
+      "type": "integer",
+      "minimum": 240,
+      "maximum": 4320
+    },
+    "budgetUsd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "bindingSetId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "defaultStyleId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "expectedRevision": {
       "type": "integer"
     }
   },
-  "required": [
-    "name"
-  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
-```
-
-### `project.set-bindings`
-
-```json
-{}
 ```
 
 ### `prompt.expand`
