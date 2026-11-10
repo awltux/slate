@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { z } from "zod";
 import { writeFileAtomic } from "../workspace/atomic.js";
-import type { ProjectPaths } from "../workspace/paths.js";
 import { CHAIN_STAGES, type ChainResolution, resolveChains } from "./chains.js";
 import { type ProbeDeps, type ServiceState, probeServices } from "./probe.js";
 import { discoverInstalls } from "./registry-scan.js";
@@ -57,10 +57,15 @@ export type CapabilitiesSnapshot = {
  * of tools - a new one was added, an old one dropped - the claim is stale, so it is discarded and probed again rather
  * than quietly reporting yesterday's list.
  */
-export async function readCapabilities(paths: ProjectPaths): Promise<CapabilitiesSnapshot | null> {
+/** The toolchain is a property of the host, so its snapshot lives in the home, not in a project. */
+export function capabilitiesFile(home: string): string {
+  return join(home, "capabilities.json");
+}
+
+export async function readCapabilities(file: string): Promise<CapabilitiesSnapshot | null> {
   let raw: string;
   try {
-    raw = await readFile(paths.capabilitiesFile, "utf8");
+    raw = await readFile(file, "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
@@ -76,13 +81,13 @@ export async function readCapabilities(paths: ProjectPaths): Promise<Capabilitie
   return parsed.data;
 }
 
-export async function writeCapabilities(paths: ProjectPaths, snapshot: CapabilitiesSnapshot): Promise<void> {
-  await writeFileAtomic(paths.capabilitiesFile, `${JSON.stringify(snapshot, null, 2)}\n`);
+export async function writeCapabilities(file: string, snapshot: CapabilitiesSnapshot): Promise<void> {
+  await writeFileAtomic(file, `${JSON.stringify(snapshot, null, 2)}\n`);
 }
 
-/** Probe the host, resolve the chains and cache the result on the project. */
+/** Probe the host, resolve the chains and cache the result. */
 export async function probeAndCache(
-  paths: ProjectPaths,
+  file: string,
   deps: ProbeDeps & { discover?: boolean },
 ): Promise<CapabilitiesSnapshot> {
   // Discovery is what finds applications installed somewhere other than PATH (a different drive, a versioned
@@ -97,6 +102,6 @@ export async function probeAndCache(
     services,
     chains: resolveChains(services),
   };
-  await writeCapabilities(paths, snapshot);
+  await writeCapabilities(file, snapshot);
   return snapshot;
 }

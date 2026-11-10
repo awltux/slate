@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -6,6 +6,7 @@ import { z } from "zod";
 import { fixedClock } from "../../src/domain/clock.js";
 import type { FailureEnvelope } from "../../src/domain/result.js";
 import type { Envelope } from "../../src/domain/result.js";
+import { capabilitiesFile } from "../../src/kernel/catalog/capabilities.js";
 import type { RunProbe } from "../../src/kernel/catalog/probe.js";
 import { createRegistry } from "../../src/ops/index.js";
 import { OpRegistry, defineOp } from "../../src/ops/registry.js";
@@ -176,8 +177,14 @@ describe("capabilities.get", () => {
     expect(data.services.find((service) => service.id === "ffmpeg")?.installPath).toBeTruthy();
   });
 
-  it("fails with not_found outside a project", async () => {
-    const result = await createRegistry().execute("capabilities.get", {}, makeContext(root, runner));
-    expect(expectFail(result).error.code).toBe("not_found");
+  it("answers outside a project, because health belongs to the host", async () => {
+    const context = makeContext(root, runner);
+    const result = expectOk(await createRegistry().execute("capabilities.get", {}, context));
+    const data = result.data as { services: unknown[]; chains: unknown[] };
+    expect(data.services.length).toBeGreaterThan(0);
+    expect(data.chains.length).toBeGreaterThan(0);
+
+    // One snapshot on the host, shared by every project - not a copy inside a film.
+    expect(await readFile(capabilitiesFile(context.home), "utf8")).toBeTruthy();
   });
 });

@@ -1,10 +1,13 @@
 import { basename } from "node:path";
 import { z } from "zod";
-import { ChainResolutionSchema, probeAndCache, readCapabilities } from "../kernel/catalog/capabilities.js";
+import {
+  ChainResolutionSchema,
+  capabilitiesFile,
+  probeAndCache,
+  readCapabilities,
+} from "../kernel/catalog/capabilities.js";
 import { SERVICE_IDS } from "../kernel/catalog/services.js";
 import { readConfig } from "../kernel/config.js";
-import { projectPaths } from "../kernel/workspace/paths.js";
-import { readProjectDocument } from "../kernel/workspace/project-doc.js";
 import { defineOp } from "./registry.js";
 
 /**
@@ -28,6 +31,8 @@ export const PublicServiceSchema = z
 export const capabilitiesGet = defineOp({
   name: "capabilities.get",
   policy: "read",
+  // Health applies to every project, so it answers with none open.
+  hostLevel: true,
   summary: "Probe the host toolchain and report the chain that will run each stage, with the reason.",
   input: z
     .object({
@@ -43,14 +48,15 @@ export const capabilitiesGet = defineOp({
     })
     .strict(),
   run: async (input, context) => {
-    const paths = projectPaths(context.root);
-    const project = await readProjectDocument(context.root);
+    // The toolchain belongs to the host, not to a film: one snapshot answers for every project, and it is readable
+    // before the first project exists.
+    const cache = capabilitiesFile(context.home);
     const config = await readConfig(context.home);
 
-    const cached = input.refresh ? null : await readCapabilities(paths);
+    const cached = input.refresh ? null : await readCapabilities(cache);
     const snapshot =
       cached ??
-      (await probeAndCache(paths, {
+      (await probeAndCache(cache, {
         run: context.run,
         vendorDir: context.vendorDir,
         now: context.clock.now(),
@@ -76,12 +82,12 @@ export const capabilitiesGet = defineOp({
         })),
         chains: snapshot.chains,
       },
-      version: project.revision,
+      version: 0,
       warnings: degraded.map((chain) => ({
         code: "degraded_chain",
         message: `${chain.stage}: ${chain.reason}`,
       })),
-      next: ["project.create"],
+      next: [],
     };
   },
 });

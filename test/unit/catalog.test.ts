@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RunResult } from "../../src/kernel/adapters/command-runner.js";
-import { probeAndCache, readCapabilities } from "../../src/kernel/catalog/capabilities.js";
+import { capabilitiesFile, probeAndCache, readCapabilities } from "../../src/kernel/catalog/capabilities.js";
 import { resolveChains } from "../../src/kernel/catalog/chains.js";
 import { type ServiceState, probeServices } from "../../src/kernel/catalog/probe.js";
 import { SERVICE_IDS } from "../../src/kernel/catalog/services.js";
@@ -221,19 +221,19 @@ describe("resolveChains", () => {
 });
 
 describe("capabilities cache", () => {
-  it("round-trips the probe to the project", async () => {
-    const paths = projectPaths(root);
-    const snapshot = await probeAndCache(paths, {
+  it("round-trips the probe to the host's cache file", async () => {
+    const cache = capabilitiesFile(root);
+    const snapshot = await probeAndCache(cache, {
       vendorDir,
       now: "2026-11-09T10:00:00.000Z",
       run: runner({ ffmpeg: ran("ffmpeg version 6.1.1") }),
     });
-    const reread = await readCapabilities(paths);
+    const reread = await readCapabilities(cache);
     expect(reread).toEqual(snapshot);
     expect(reread?.chains).toHaveLength(4);
   });
 
   it("returns null when nothing has been probed yet", async () => {
-    expect(await readCapabilities(projectPaths(root))).toBeNull();
+    expect(await readCapabilities(capabilitiesFile(root))).toBeNull();
   });
 });
