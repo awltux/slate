@@ -24,6 +24,20 @@ four surfaces exist.
 | 17 | References reach a remote model | `pnpm gate:17` | **done** | [transport](../artifacts/17/reference-transport.png) · [report](../artifacts/17/report.json) |
 | 18 | Project backup and restore | `pnpm gate:18` | **done** | [export](../artifacts/18/project-export.png) · [import](../artifacts/18/project-import.png) · [report](../artifacts/18/report.json) |
 | 19 | Health belongs to the host | `pnpm gate:19` | **done** | [host health](../artifacts/19/host-health.png) · [report](../artifacts/19/report.json) |
+| 20 | One place for the project's configuration | `pnpm gate:20` | **done** | [config](../artifacts/20/project-config.png) · [report](../artifacts/20/report.json) |
+
+## Slice 20 — what it proves
+
+- **The configuration is one document with one writer.** `project.update` changes the name, shape, rate, runtime,
+  budget, model profile and default look, and writes a single commit whose intent says what changed (`rate 24 -> 30fps`,
+  `resolution 1080p -> 720p`), so the history stays a record of decisions rather than "updated settings".
+- **Every decision is reachable from one tab**, first in the row: the values the film was created with are now editable,
+  which was the gap — they used to be write-once.
+- **A ceiling cannot fall below what is committed.** The operation refuses it and says by how much, and the page shows
+  committed versus remaining so the number is actionable.
+- **A default look must be a style**: a character id is refused with `invalid_input`, and an unknown model profile with
+  `not_found`.
+- **Saving changes nothing when nothing changed** — no commit, no revision, no noise in the history.
 
 ## Slice 19 — what it proves
 

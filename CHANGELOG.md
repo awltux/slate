@@ -2,6 +2,14 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Configuration lives in one place
+
+- **A Config tab, first in the row**, holds every decision the film was made with: name, runtime, aspect ratio, frame
+  rate, resolution, model profile, default look, budget, the archive and the delete guard.
+- **Those settings are now editable.** They used to be write-once at creation; each save is a single commit that says
+  what changed, so a change of frame rate has a name and a time on it.
+- **The budget shows what is committed** against the ceiling, and a ceiling cannot be lowered below money already spent.
+- **The header states the film's shape and look** without offering to change it there — one place to read, one to edit.
 ## Health is the host's, not a project's
 
 - **Health moved to the top level.** The toolchain is a property of the machine, so the same panel now answers for every
