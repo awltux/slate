@@ -38,6 +38,10 @@ percent and costs minutes on a real project.
 - **The cache is excluded** (`-xr!cache`, by name so it is portable). Everything derived is rebuilt; everything else
   travels.
 - **Compression is `-mx=1`.** Media is already compressed; a backup you take often should be fast.
+- **The copy path is the browser's.** Export writes to the host's exports folder; taking the file anywhere else is the
+  browser's save dialog, and importing is the browser's file picker. Slate never asks a person to type a host path, and
+  the routes that serve those bytes are names-only (`/api/exports/:name`, `/api/imports`), owner-only, and never
+  echo a path back.
 
 ## Consequences
 

@@ -4,6 +4,9 @@ User-visible changes per slice. Internal refactors are not listed.
 
 ## A project can be backed up and restored
 
+- **No paths to type.** Import opens the browser's file picker for a `.7z`; Export offers "Save a copy…" through your
+  computer's save dialog, so a copy can be put anywhere without mistyping a folder. The archive itself is written to
+  the host's exports folder, which the notice names.
 - **Export writes the film to one 7z**: the whole project folder — documents, media, exports and its commit history —
   with a manifest inside that names the project, its revision, its shape and what it contains. A person can open the
   archive and read what it is without Slate.
