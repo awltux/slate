@@ -1,0 +1,15 @@
+{
+  "gate": 14,
+  "status": "passed",
+  "base": "http://127.0.0.1:59312",
+  "steps": [
+    "edit: generating opens the sheet, and its three images join the set",
+    "publish: three views tiled into one reference sheet",
+    "media: the reference sheet is what a shot can be conditioned on",
+    "regenerate: the sheet returns to edit mode with five images, not two",
+    "types: disabled is kept out of the sheet, delete is removed on publish",
+    "library: the composed sheet is the cover other projects see",
+    "ui: the sheet is edited by type, and the dropdown offers delete",
+    "ui: publishing leaves one composed reference sheet and closes the editor"
+  ]
+}

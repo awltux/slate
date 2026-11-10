@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
+import type { Page } from "playwright";
 import { addUser, ensureOwner } from "../src/auth/users.js";
 import { systemClock } from "../src/domain/clock.js";
 import { runCommand } from "../src/kernel/adapters/command-runner.js";
@@ -770,11 +771,11 @@ async function gate7(steps: string[]): Promise<void> {
   assert(expanded.data.styleId === style.data.entityId, "Expand must report the style it used");
   steps.push(`prompt: expanded from the description via ${expanded.data.via}, with the style applied`);
 
-  const generated = await op<{ candidates: Array<{ id: string }>; spentUsd: number; styleId: string | null }>(
-    projectId,
-    "entity.generate",
-    { entityId: keeper.data.entityId, count: 6 },
-  );
+  const generated = await op<{
+    candidates: Array<{ id: string; assetId: string }>;
+    spentUsd: number;
+    styleId: string | null;
+  }>(projectId, "entity.generate", { entityId: keeper.data.entityId, count: 6 });
   assert(generated.data.candidates.length === 6, "six candidates must be generated");
   assert(generated.data.styleId === style.data.entityId, "generation must record the style it used");
   steps.push(`candidates: 6 options for $${generated.data.spentUsd.toFixed(2)}, style recorded`);
@@ -787,19 +788,27 @@ async function gate7(steps: string[]): Promise<void> {
     "profile-right",
     "three-quarter-right",
   ];
-  const identity = await op<{ version: number; missingAngles: string[]; images: Array<{ assetId: string }> }>(
-    projectId,
-    "sheet.select",
-    {
-      entityId: keeper.data.entityId,
-      images: angles.map((role, index) => ({ role, candidateId: generated.data.candidates[index]?.id })),
-      heightM: 1.78,
-      rights: { licence: "original", likenessConsent: "granted" },
-    },
-  );
+  await op(projectId, "sheet.edit", {
+    entityId: keeper.data.entityId,
+    items: angles.map((role, index) => ({
+      assetId: generated.data.candidates[index]?.assetId,
+      role,
+    })),
+  });
+  const identity = await op<{
+    version: number;
+    missingAngles: string[];
+    images: Array<{ assetId: string }>;
+    compositeAssetId: string | null;
+  }>(projectId, "sheet.publish", {
+    entityId: keeper.data.entityId,
+    heightM: 1.78,
+    rights: { licence: "original", likenessConsent: "granted" },
+  });
   assert(identity.data.version === 1, "the first sheet must be v1");
   assert(identity.data.images.length === 6, "the headshot sheet must hold six rotations");
   assert(identity.data.missingAngles.length === 0, "all six angles must be covered");
+  assert(identity.data.compositeAssetId, "publishing must compose one reference sheet");
   steps.push("sheet: six head rotations published as identity v1, 1.78m, consent granted");
 
   // A sheet whose images cannot be fetched is not a sheet: the browser must be able to show it.
@@ -813,21 +822,35 @@ async function gate7(steps: string[]): Promise<void> {
   );
   steps.push("media: the published sheet image is served to the browser");
 
+  const reference = await fetch(`${base}/p/${projectId}/media/${identity.data.compositeAssetId}`, {
+    headers: { cookie },
+  });
+  assert(reference.status === 200, `the reference sheet must be served, got ${reference.status}`);
+  steps.push("media: the composed reference sheet is served too");
+
   const outfit = await op<{ variantId: string }>(projectId, "variant.create", {
     entityId: keeper.data.entityId,
     name: "Storm coat",
     description: "Oilskin, soaked through",
     prompt: "same keeper, heavy oilskin storm coat, soaked, hood down",
   });
-  const outfitCandidates = await op<{ candidates: Array<{ id: string }> }>(projectId, "entity.generate", {
+  const outfitCandidates = await op<{ candidates: Array<{ id: string; assetId: string }> }>(
+    projectId,
+    "entity.generate",
+    {
+      entityId: keeper.data.entityId,
+      variantId: outfit.data.variantId,
+      count: 2,
+    },
+  );
+  await op(projectId, "sheet.edit", {
     entityId: keeper.data.entityId,
     variantId: outfit.data.variantId,
-    count: 2,
+    items: [{ assetId: outfitCandidates.data.candidates[0]?.assetId, role: "front" }],
   });
-  const outfitSheet = await op<{ version: number }>(projectId, "sheet.select", {
+  const outfitSheet = await op<{ version: number }>(projectId, "sheet.publish", {
     entityId: keeper.data.entityId,
     variantId: outfit.data.variantId,
-    images: [{ role: "front", candidateId: outfitCandidates.data.candidates[0]?.id }],
   });
   assert(outfitSheet.data.version === 1, "the outfit gets its own sheet version");
   steps.push("wardrobe: an outfit with its own prompt generated and published as v1");
@@ -850,14 +873,20 @@ async function gate7(steps: string[]): Promise<void> {
     entityId: lighthouse.data.entityId,
     prompt: "lighthouse lantern room, night, amber practical, wet iron",
   });
-  const locationCandidates = await op<{ candidates: Array<{ id: string }> }>(projectId, "entity.generate", {
+  const locationCandidates = await op<{ candidates: Array<{ id: string; assetId: string }> }>(
+    projectId,
+    "entity.generate",
+    { entityId: lighthouse.data.entityId, count: 1 },
+  );
+  await op(projectId, "sheet.edit", {
     entityId: lighthouse.data.entityId,
-    count: 1,
+    items: [{ assetId: locationCandidates.data.candidates[0]?.assetId, role: "lighting" }],
   });
-  const locationSheet = await op<{ images: Array<{ assetId: string }> }>(projectId, "sheet.select", {
-    entityId: lighthouse.data.entityId,
-    images: [{ role: "lighting", candidateId: locationCandidates.data.candidates[0]?.id }],
-  });
+  const locationSheet = await op<{ images: Array<{ assetId: string }>; compositeAssetId: string | null }>(
+    projectId,
+    "sheet.publish",
+    { entityId: lighthouse.data.entityId },
+  );
   steps.push("location: a lantern room with a lighting sheet");
 
   // A character in a shot cannot be deleted; a style applied to one cannot either.
@@ -884,8 +913,8 @@ async function gate7(steps: string[]): Promise<void> {
   );
   assert(linked.data.location?.entityId === lighthouse.data.entityId, "the scene must link the location");
   assert(
-    linked.data.location?.coverAssetId === locationSheet.data.images[0]?.assetId,
-    "the scene must expose the location's cover image",
+    linked.data.location?.coverAssetId === locationSheet.data.compositeAssetId,
+    "the scene must expose the location's composed reference sheet as its cover",
   );
 
   const cover = await fetch(`${base}/p/${projectId}/media/${linked.data.location?.coverAssetId}`, {
@@ -1379,16 +1408,21 @@ async function gate12(steps: string[]): Promise<void> {
       entityId: entity.data.entityId,
       prompt: `${name}, night, amber light`,
     });
-    const generated = await op<{ candidates: Array<{ id: string }> }>(projectId, "entity.generate", {
+    const generated = await op<{ candidates: Array<{ id: string; assetId: string }> }>(
+      projectId,
+      "entity.generate",
+      { entityId: entity.data.entityId, count: 1 },
+    );
+    await op(projectId, "sheet.edit", {
       entityId: entity.data.entityId,
-      count: 1,
-    });
-    await op(projectId, "sheet.select", {
-      entityId: entity.data.entityId,
-      images: [
-        { role: kind === "character" ? "front" : "lighting", candidateId: generated.data.candidates[0]?.id },
+      items: [
+        {
+          assetId: generated.data.candidates[0]?.assetId,
+          role: kind === "character" ? "front" : "lighting",
+        },
       ],
     });
+    await op(projectId, "sheet.publish", { entityId: entity.data.entityId });
     return entity.data.entityId;
   };
 
@@ -1588,6 +1622,116 @@ async function gate13(steps: string[]): Promise<void> {
   steps.push("prune: deleting an endpoint empties it out of the profile that used it");
 }
 
+async function gate14(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light");
+
+  const keeper = await op<{ entityId: string }>(projectId, "entity.create", {
+    kind: "character",
+    name: "The keeper",
+    description: "A weathered lighthouse keeper in his sixties, salt in his beard.",
+  });
+  await op(projectId, "entity.update", {
+    entityId: keeper.data.entityId,
+    prompt: "the keeper, oilskin coat, night, amber lamplight, weathered face",
+  });
+
+  const first = await op<{ candidates: Array<{ id: string; assetId: string }> }>(
+    projectId,
+    "entity.generate",
+    { entityId: keeper.data.entityId, count: 3 },
+  );
+  const opened = await op<{
+    entities: Array<{
+      version: number;
+      compositeAssetId: string | null;
+      draft: { version: number; items: Array<{ assetId: string; status: string }> } | null;
+    }>;
+  }>(projectId, "entity.list");
+  const opening = opened.data.entities[0];
+  assert(opening?.draft?.items.length === 3, "generating must open the sheet with the new images in it");
+  assert(opening?.version === 0, "nothing is published just by generating");
+  steps.push("edit: generating opens the sheet, and its three images join the set");
+
+  const roles = ["front", "profile-left", "back"];
+  await op(projectId, "sheet.edit", {
+    entityId: keeper.data.entityId,
+    items: first.data.candidates.map((candidate, index) => ({
+      assetId: candidate.assetId,
+      role: roles[index],
+    })),
+  });
+  const published = await op<{
+    version: number;
+    compositeAssetId: string | null;
+    images: Array<{ assetId: string }>;
+  }>(projectId, "sheet.publish", { entityId: keeper.data.entityId });
+  assert(published.data.version === 1, "the first publish is v1");
+  assert(published.data.compositeAssetId, "publishing must compose a reference sheet");
+  steps.push("publish: three views tiled into one reference sheet");
+
+  const reference = await fetch(`${base}/p/${projectId}/media/${published.data.compositeAssetId}`, {
+    headers: { cookie },
+  });
+  assert(reference.status === 200, `the reference sheet must be served, got ${reference.status}`);
+  steps.push("media: the reference sheet is what a shot can be conditioned on");
+
+  // Generating again must extend the set, not replace it.
+  const more = await op<{ candidates: Array<{ id: string; assetId: string }> }>(
+    projectId,
+    "entity.generate",
+    { entityId: keeper.data.entityId, count: 2 },
+  );
+  const reopened = await op<{
+    entities: Array<{
+      version: number;
+      draft: { version: number; items: Array<{ assetId: string; status: string }> } | null;
+    }>;
+  }>(projectId, "entity.list");
+  const growing = reopened.data.entities[0];
+  assert(growing?.version === 1, "the published sheet is untouched by generating");
+  assert(growing?.draft?.version === 2, "the draft is the version publishing would produce");
+  assert(growing?.draft?.items.length === 5, "the new images join the three already in the sheet");
+  steps.push("regenerate: the sheet returns to edit mode with five images, not two");
+
+  // One view is kept out of the composition, one is deleted outright, then publish.
+  const draft = growing?.draft?.items ?? [];
+  const items = draft.map((item, index) => {
+    if (index === 0) return { ...item, status: "disabled" };
+    if (index === 4) return { ...item, status: "deleted" };
+    return { ...item, status: "active" };
+  });
+  await op(projectId, "sheet.edit", { entityId: keeper.data.entityId, items });
+  const second = await op<{
+    version: number;
+    dropped: number;
+    compositeAssetId: string | null;
+    images: Array<{ status: string }>;
+  }>(projectId, "sheet.publish", { entityId: keeper.data.entityId });
+  assert(second.data.version === 2, "publishing again advances the version");
+  assert(second.data.dropped === 1, "the item marked delete must be removed on publish");
+  assert(second.data.images.length === 4, "four items remain after the delete");
+  assert(
+    second.data.images.some((image) => image.status === "disabled"),
+    "a disabled view stays in the sheet",
+  );
+  assert(second.data.compositeAssetId, "the reference sheet is recomposed from what is left");
+  steps.push("types: disabled is kept out of the sheet, delete is removed on publish");
+
+  // The reference sheet is the picture the app library shows for this entry.
+  await op(projectId, "library.push", { entityId: keeper.data.entityId });
+  const library = await op<{ items: Array<{ name: string; coverAssetId: string | null }> }>(
+    projectId,
+    "library.list",
+  );
+  const pushed = library.data.items.find((item) => item.name === "The keeper");
+  assert(pushed?.coverAssetId, "the global library item must carry the reference sheet as its cover");
+  steps.push("library: the composed sheet is the cover other projects see");
+
+  // Leave the sheet open so the browser sees the editor, not the published view.
+  await op(projectId, "entity.generate", { entityId: keeper.data.entityId, count: 1 });
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -1657,16 +1801,42 @@ async function gate8(steps: string[]): Promise<void> {
 }
 
 async function browserFlow(steps: string[]): Promise<void> {
+  let page: Page | null = null;
   try {
     const { chromium } = await import("playwright");
     const instance = await chromium.launch();
-    const page = await instance.newPage({ viewport: { width: 1280, height: 1100 } });
+    page = await instance.newPage({ viewport: { width: 1280, height: 1100 } });
     await page.goto(`${base}/`);
     await page.fill('input[autocomplete="username"]', "owner");
     await page.fill('input[autocomplete="current-password"]', "gate-password-123");
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 14) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      // The header also has a Library tab, which is the host library; the sheet editor lives in the project's own tab.
+      await page.click('main [role="tab"]:has-text("Library")');
+      await page.waitForSelector("text=Editing the sheet", { timeout: 20_000 });
+      await page.waitForSelector('select[aria-label="Type for item 1"]', { timeout: 20_000 });
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: join(artifactDir, "sheet-editor.png"), fullPage: true });
+      steps.push("ui: the sheet is edited by type, and the dropdown offers delete");
+
+      // Mark an item delete through the dropdown, then publish from the same card.
+      await page.selectOption('select[aria-label="Type for item 2"]', "delete");
+      await page.waitForTimeout(800);
+      await page.click('button:has-text("Publish sheet")');
+      // The editor closes only when the publish has landed, and the caption carries the version it produced.
+      await page.waitForSelector("text=Editing the sheet", { state: "detached", timeout: 30_000 });
+      await page.waitForSelector("text=reference sheet v3", { timeout: 20_000 });
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: join(artifactDir, "sheet-published.png"), fullPage: true });
+      steps.push("ui: publishing leaves one composed reference sheet and closes the editor");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 13) {
       await page.click('header [role="tab"]:has-text("Setup")');
@@ -1893,9 +2063,16 @@ async function browserFlow(steps: string[]): Promise<void> {
 
     await instance.close();
   } catch (error) {
+    // A gate whose browser step cannot run has not proved the slice: keep the page for diagnosis and fail the gate.
+    if (page) {
+      await page
+        .screenshot({ path: join(artifactDir, "ui-failure.png"), fullPage: true })
+        .catch(() => undefined);
+    }
     steps.push(
-      `ui: browser step skipped (${error instanceof Error ? error.message.split("\n")[0] : "unknown"})`,
+      `ui: browser step failed (${error instanceof Error ? error.message.split("\n")[0] : "unknown"})`,
     );
+    throw error;
   }
 }
 
@@ -1937,6 +2114,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 11) await gate11(steps);
     else if (gateNumber === 12) await gate12(steps);
     else if (gateNumber === 13) await gate13(steps);
+    else if (gateNumber === 14) await gate14(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

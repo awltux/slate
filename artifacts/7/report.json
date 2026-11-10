@@ -1,14 +1,15 @@
 {
   "gate": 7,
   "status": "passed",
-  "base": "http://127.0.0.1:57710",
+  "base": "http://127.0.0.1:63181",
   "steps": [
-    "project: prj_64f4d1a6d7754770bd48c30679623417",
+    "project: prj_85afc8055aa04b8c854d77c5c7eca4fc",
     "library: a character and a style sheet",
     "prompt: expanded from the description via local, with the style applied",
     "candidates: 6 options for $0.12, style recorded",
     "sheet: six head rotations published as identity v1, 1.78m, consent granted",
     "media: the published sheet image is served to the browser",
+    "media: the composed reference sheet is served too",
     "wardrobe: an outfit with its own prompt generated and published as v1",
     "library: identity and outfit readable with their versions",
     "location: a lantern room with a lighting sheet",
