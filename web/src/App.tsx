@@ -69,7 +69,12 @@ export function App() {
         <select
           aria-label="Project"
           value={activeId ?? ""}
-          onChange={(event) => setActiveId(event.target.value === "" ? null : event.target.value)}
+          onChange={(event) => {
+            setActiveId(event.target.value === "" ? null : event.target.value);
+            // Choosing a film means looking at it: a host page (Health, Setup, Library) must not keep the selection
+            // hostage. Clearing the selection leaves the current page alone.
+            if (event.target.value !== "") setView("project");
+          }}
         >
           <option value="">— select a project —</option>
           {projects.map((project) => (
