@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -10,6 +11,7 @@ import { systemClock } from "../src/domain/clock.js";
 import { runCommand } from "../src/kernel/adapters/command-runner.js";
 import { createToolResolver } from "../src/kernel/catalog/tool-resolver.js";
 import { vendorDir } from "../src/kernel/home.js";
+import { slugify } from "../src/kernel/workspace/projects.js";
 import { createApp } from "../src/surfaces/http/app.js";
 import { mcpSmoke } from "./mcp-smoke.js";
 
@@ -39,6 +41,8 @@ let cookie = "";
 let projectId = "";
 let gate10Url = "";
 let csrf = "";
+/** The host folder this gate is running against, so a gate can check what a delete left on disk. */
+let gateHome = "";
 
 async function op<T>(projectId: string, name: string, input: unknown = {}): Promise<Envelope<T>> {
   const response = await fetch(`${base}/p/${projectId}/api/op/${name}`, {
@@ -1972,6 +1976,75 @@ async function gate15(steps: string[]): Promise<void> {
   steps.push("cut: rendered at the same 720x1280, from settings rather than a flag");
 }
 
+async function gate16(steps: string[]): Promise<void> {
+  await signIn();
+
+  // The server names the folder; the gate finds it by the id inside project.json rather than guessing the slug.
+  const projectFolder = (id: string): string | null => {
+    const root = join(gateHome, "projects");
+    for (const entry of readdirSync(root)) {
+      const file = join(root, entry, "project.json");
+      if (!existsSync(file)) continue;
+      if ((JSON.parse(readFileSync(file, "utf8")) as { id: string }).id === id) return join(root, entry);
+    }
+    return null;
+  };
+  const listed = async () =>
+    fetch(`${base}/api/projects`, { headers: { cookie } })
+      .then((response) => response.json() as Promise<{ data: { projects: Array<{ id: string }> } }>)
+      .then((payload) => payload.data.projects.map((project) => project.id));
+
+  const kept = await newProject("Keep the folder");
+  const keptFolder = projectFolder(kept);
+  assert(keptFolder, "the project folder must be findable on disk");
+  assert(existsSync(join(keptFolder ?? "", "project.json")), "the project folder must exist after creation");
+  assert((await listed()).includes(kept), "a new project must be listed on this host");
+  steps.push("create: a project is listed on the host and has a folder");
+
+  // The guard is the typed name, and it is enforced by the operation, not only by the form.
+  const refused = await opAs({ cookie, csrf }, kept, "project.delete", { confirmName: "keep the folder" });
+  assert(refused.ok === false, "a name that does not match must be refused");
+  assert(refused.error?.code === "invalid_input", `the refusal must be a code, got ${refused.error?.code}`);
+  assert((await listed()).includes(kept), "a refused delete must leave the project listed");
+  assert(existsSync(keptFolder ?? ""), "a refused delete must leave the folder alone");
+  steps.push("guard: the wrong name is refused by the operation itself, and nothing moves");
+
+  // Keeping the folder is the default: unlisting is reversible, deleting media is not.
+  const removed = await op<{ folderKept: boolean; projectId: string }>(kept, "project.delete", {
+    confirmName: "Keep the folder",
+  });
+  assert(removed.data.folderKept === true, "the folder must be kept by default");
+  assert(!(await listed()).includes(kept), "a deleted project must leave the host list");
+  assert(existsSync(join(keptFolder ?? "", "project.json")), "the kept folder must still hold the documents");
+  steps.push("delete: the project is unlisted and its folder stays on disk");
+
+  const gone = await newProject("Delete the folder");
+  const goneFolder = projectFolder(gone);
+  assert(goneFolder, "the second project folder must be findable on disk");
+  const hard = await op<{ folderKept: boolean }>(gone, "project.delete", {
+    confirmName: "Delete the folder",
+    keepAssets: false,
+  });
+  assert(hard.data.folderKept === false, "the folder must be reported as removed");
+  assert(!existsSync(goneFolder), "the folder must be gone from disk when it is not kept");
+  steps.push("delete: with keep off, the folder itself is removed");
+
+  // Only the owner may retire a film.
+  const guard = await newProject("Owner only");
+  const editor = await loginAs("editor", "gate-editor-123");
+  const forbidden = await fetch(`${base}/p/${guard}/api/op/project.delete`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: editor.cookie, "x-slate-csrf": editor.csrf },
+    body: JSON.stringify({ confirmName: "Owner only" }),
+  });
+  assert(forbidden.status === 403, `an editor must be refused, got ${forbidden.status}`);
+  assert((await listed()).includes(guard), "a refused delete must leave the project alone");
+  steps.push("permission: an editor cannot delete a project at all");
+
+  // A project for the browser to delete through the form.
+  projectId = await newProject("Browser delete");
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -2052,6 +2125,43 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 16) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.waitForSelector('button[aria-label="Delete this project"]', { timeout: 20_000 });
+      await page.click('button[aria-label="Delete this project"]');
+      await page.waitForSelector('input[aria-label="Type the project name to confirm"]', {
+        timeout: 20_000,
+      });
+
+      const keep = page.locator('input[aria-label="Keep the project folder on disk"]');
+      assert(await keep.isChecked(), "keeping the folder must be the default");
+      const confirmButton = page.locator('button:has-text("Delete and keep the folder")');
+      assert(await confirmButton.isDisabled(), "delete must stay disabled until the name is typed");
+
+      await page.fill('input[aria-label="Type the project name to confirm"]', "Browser");
+      await page.waitForTimeout(200);
+      assert(await confirmButton.isDisabled(), "a partial name must not enable delete");
+      await page.fill('input[aria-label="Type the project name to confirm"]', "Browser delete");
+      await page.waitForTimeout(200);
+      assert(!(await confirmButton.isDisabled()), "the exact name must enable delete");
+      await page.screenshot({ path: join(artifactDir, "delete-project.png"), fullPage: true });
+      steps.push("ui: the panel keeps the folder by default and waits for the exact name");
+
+      await confirmButton.click();
+      await page.waitForSelector("text=New project", { timeout: 20_000 });
+      await page.waitForTimeout(500);
+      const options = await page.locator('select[aria-label="Project"] option').allTextContents();
+      assert(
+        !options.some((text) => text.includes("Browser delete")),
+        "the deleted project must leave the picker",
+      );
+      await page.screenshot({ path: join(artifactDir, "projects-after-delete.png"), fullPage: true });
+      steps.push("ui: deleting returns to the project list without the film");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 15) {
       await page.waitForSelector("text=New project", { timeout: 20_000 });
@@ -2413,6 +2523,7 @@ async function browserFlow(steps: string[]): Promise<void> {
 async function main(): Promise<number> {
   await mkdir(artifactDir, { recursive: true });
   const home = await mkdtemp(join(tmpdir(), `slate-gate${gateNumber}-`));
+  gateHome = home;
   await ensureOwner(home, systemClock, "gate-password-123");
   // A reviewer and an editor exist on every gate host: the privilege boundary and collaboration are exercised end to end.
   await addUser(home, { username: "reviewer", password: "gate-viewer-123", role: "viewer" }, systemClock);
@@ -2450,13 +2561,15 @@ async function main(): Promise<number> {
     else if (gateNumber === 13) await gate13(steps);
     else if (gateNumber === 14) await gate14(steps);
     else if (gateNumber === 15) await gate15(steps);
+    else if (gateNumber === 16) await gate16(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);
     exitCode = 1;
   }
 
-  await browserFlow(steps);
+  // A failed API step is already a failed gate; running the browser would only mask it as a timeout.
+  if (exitCode === 0) await browserFlow(steps);
   server.close();
 
   const report = { gate: gateNumber, status: exitCode === 0 ? "passed" : "failed", base, steps };

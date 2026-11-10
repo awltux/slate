@@ -1,0 +1,14 @@
+{
+  "gate": 16,
+  "status": "passed",
+  "base": "http://127.0.0.1:62350",
+  "steps": [
+    "create: a project is listed on the host and has a folder",
+    "guard: the wrong name is refused by the operation itself, and nothing moves",
+    "delete: the project is unlisted and its folder stays on disk",
+    "delete: with keep off, the folder itself is removed",
+    "permission: an editor cannot delete a project at all",
+    "ui: the panel keeps the folder by default and waits for the exact name",
+    "ui: deleting returns to the project list without the film"
+  ]
+}
