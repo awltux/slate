@@ -1303,12 +1303,12 @@ async function gate11(steps: string[]): Promise<void> {
   assert(endpoint.ok && endpoint.data?.id, "the endpoint must be saved");
   steps.push("endpoint: FLUX dev, its own parameters, its own body shape");
 
-  const bound = await fetch(`${base}/api/op/ai.bind`, {
+  const bound = await fetch(`${base}/api/op/ai.bindingset.save`, {
     method: "POST",
     headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
-    body: JSON.stringify({ capability: "image", endpointIds: [endpoint.data.id] }),
+    body: JSON.stringify({ name: "Default", bindings: { image: [endpoint.data.id] } }),
   }).then((response) => response.json() as Promise<{ ok: boolean }>);
-  assert(bound.ok, "the endpoint must bind to the image capability");
+  assert(bound.ok, "the endpoint must be bound to the image capability in a profile");
 
   const preview = await fetch(`${base}/api/op/ai.preview`, {
     method: "POST",
@@ -1470,6 +1470,124 @@ async function gate12(steps: string[]): Promise<void> {
   void binary;
 }
 
+async function gate13(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light", 10);
+
+  const provider = await fetch(`${base}/api/op/ai.provider.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      name: "fal",
+      baseUrl: "https://fal.run",
+      authScheme: "Key {{key}}",
+      apiKey: "gate-key",
+    }),
+  }).then((response) => response.json() as Promise<{ data: { id: string } }>);
+
+  const saveEndpoint = async (name: string, capability: string, path: string) =>
+    fetch(`${base}/api/op/ai.endpoint.save`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+      body: JSON.stringify({ providerId: provider.data.id, name, capability, path }),
+    }).then((response) => response.json() as Promise<{ data: { id: string } }>);
+
+  const cheap = await saveEndpoint("FLUX schnell", "image", "/fal-ai/flux/schnell");
+  const good = await saveEndpoint("FLUX dev", "image", "/fal-ai/flux/dev");
+  const voice = await saveEndpoint("TTS base", "text", "/tts");
+  steps.push("endpoints: two image models and one text model");
+
+  const saveSet = async (name: string, description: string, bindings: Record<string, string[]>) =>
+    fetch(`${base}/api/op/ai.bindingset.save`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+      body: JSON.stringify({ name, description, bindings }),
+    }).then((response) => response.json() as Promise<{ data: { id: string; name: string } }>);
+
+  const draft = await saveSet("Draft, cheap", "cents per shot", {
+    image: [cheap.data.id],
+    text: [voice.data.id],
+  });
+  const finals = await saveSet("Final, FLUX", "quality pass", { image: [good.data.id] });
+  steps.push("profiles: Draft (cheap) and Final (FLUX dev)");
+
+  const sets = await fetch(`${base}/p/${projectId}/api/op/ai.bindingsets`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: "{}",
+  }).then(
+    (response) =>
+      response.json() as Promise<{ data: { sets: Array<{ id: string; name: string; isDefault: boolean }> } }>,
+  );
+  assert(sets.data.sets.length === 2, `two profiles must be listed, got ${sets.data.sets.length}`);
+  assert(
+    sets.data.sets.filter((set) => set.isDefault).length === 1,
+    "exactly one profile is the host default",
+  );
+
+  const selected = await op<{ bindingSetId: string | null; name: string | null }>(
+    projectId,
+    "project.set-bindings",
+    {
+      bindingSetId: finals.data.id,
+    },
+  );
+  assert(selected.data.name === "Final, FLUX", "the project must record the profile it chose");
+  steps.push("project: runs on the Final profile");
+
+  // The selection has to change which model answers, not just what the document says.
+  const previewOn = async () =>
+    op<{ endpointName: string; bindingSetId: string | null }>(projectId, "ai.preview", {
+      capability: "image",
+    });
+  const onFinal = await previewOn();
+  assert(
+    onFinal.data.endpointName === "FLUX dev" && onFinal.data.bindingSetId === finals.data.id,
+    `the chosen profile must decide the model, got ${onFinal.data.endpointName}`,
+  );
+  steps.push("resolve: the project's profile decides which image model answers");
+
+  const projects = await fetch(`${base}/api/projects`, { headers: { cookie } }).then(
+    (response) =>
+      response.json() as Promise<{ data: { projects: Array<{ id: string; bindingSetId: string | null }> } }>,
+  );
+  const mine = projects.data.projects.find((project) => project.id === projectId);
+  assert(mine?.bindingSetId === finals.data.id, "the project list must expose the chosen profile");
+
+  await op(projectId, "project.set-bindings", { bindingSetId: null });
+  const onDefault = await previewOn();
+  assert(
+    onDefault.data.endpointName === "FLUX schnell" && onDefault.data.bindingSetId === draft.data.id,
+    `clearing the choice must fall back to the host default, got ${onDefault.data.endpointName}`,
+  );
+  steps.push("project: falls back to the host default, and resolution follows it");
+
+  // Removing an endpoint must prune it from every profile, not leave a dangling id.
+  await fetch(`${base}/api/op/ai.remove`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ kind: "endpoint", id: good.data.id }),
+  });
+  const after = await fetch(`${base}/api/op/ai.catalog`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: "{}",
+  }).then(
+    (response) =>
+      response.json() as Promise<{
+        data: { bindingSets: Array<{ name: string; bindings: Record<string, string[]> }> };
+      }>,
+  );
+  const finalSet = after.data.bindingSets.find((set) => set.name === "Final, FLUX");
+  assert(
+    !Object.values(finalSet?.bindings ?? {})
+      .flat()
+      .includes(good.data.id),
+    "a deleted endpoint must be pruned from every profile",
+  );
+  steps.push("prune: deleting an endpoint empties it out of the profile that used it");
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -1549,6 +1667,24 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 13) {
+      await page.click('header [role="tab"]:has-text("Setup")');
+      await page.waitForSelector("text=Binding sets", { timeout: 20_000 });
+      await page.waitForSelector("text=Draft, cheap", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "binding-sets.png"), fullPage: true });
+      steps.push("ui: several profiles, each with a per-capability endpoint");
+
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.click('header [role="tab"]:has-text("Project")');
+      await page.waitForSelector('select[aria-label="Model profile"]', { timeout: 20_000 });
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: join(artifactDir, "project-binding.png"), fullPage: false });
+      steps.push("ui: the project shows which profile it runs on");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 12) {
       await page.selectOption('select[aria-label="Project"]', projectId);
@@ -1800,6 +1936,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 10) await gate10(steps);
     else if (gateNumber === 11) await gate11(steps);
     else if (gateNumber === 12) await gate12(steps);
+    else if (gateNumber === 13) await gate13(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

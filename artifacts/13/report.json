@@ -1,0 +1,15 @@
+{
+  "gate": 13,
+  "status": "passed",
+  "base": "http://127.0.0.1:58740",
+  "steps": [
+    "endpoints: two image models and one text model",
+    "profiles: Draft (cheap) and Final (FLUX dev)",
+    "project: runs on the Final profile",
+    "resolve: the project's profile decides which image model answers",
+    "project: falls back to the host default, and resolution follows it",
+    "prune: deleting an endpoint empties it out of the profile that used it",
+    "ui: several profiles, each with a per-capability endpoint",
+    "ui: the project shows which profile it runs on"
+  ]
+}
