@@ -277,6 +277,20 @@ export async function runGlobalOp<T>(name: string, input: unknown): Promise<{ da
   return { data: payload.data, version: payload.version ?? 0 };
 }
 
+export interface ReferenceUploadResult {
+  provider: string;
+  via: string;
+  bytes: number;
+  fileUrl: string;
+}
+
+/** Uploads a tiny image through a provider's declared file API, to prove it before a shot depends on it. */
+export function testReferenceUpload(providerId: string): Promise<ReferenceUploadResult> {
+  return runGlobalOp<ReferenceUploadResult>("ai.reference.test", { providerId }).then(
+    (result) => result.data,
+  );
+}
+
 export interface BindingSetOption {
   id: string;
   name: string;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, runGlobalOp } from "../api.js";
+import { ApiError, runGlobalOp, testReferenceUpload } from "../api.js";
 
 interface ProviderView {
   id: string;
@@ -11,6 +11,18 @@ interface ProviderView {
   hasKey: boolean;
   notes: string;
   endpointCount: number;
+  /** How a local reference reaches this provider: inline, or through its own upload. */
+  reference: {
+    transport: string;
+    maxInlineBytes: number;
+    upload: {
+      url: string;
+      method: string;
+      body: Record<string, unknown>;
+      uploadUrlPath: string;
+      fileUrlPath: string;
+    } | null;
+  };
 }
 
 interface EndpointView {
@@ -135,6 +147,14 @@ export function Setup() {
       if (endpoints > 0) parts.push(`${endpoints} endpoint${endpoints === 1 ? "" : "s"} went with it`);
       if (bindings > 0) parts.push(`${bindings} profile binding${bindings === 1 ? "" : "s"} cleared`);
       setNotice(`${parts.join(" — ")}.`);
+    });
+  }
+
+  /** Prove a provider's file API and key before a shot depends on them: uploads one tiny image. */
+  async function testUpload(provider: ProviderView) {
+    await run(async () => {
+      const result = await testReferenceUpload(provider.id);
+      setNotice(`Uploaded ${result.bytes} bytes for ${result.provider}: ${result.fileUrl}`);
     });
   }
 
@@ -296,6 +316,24 @@ export function Setup() {
               <>
                 <div className="muted" style={{ fontSize: 12 }}>
                   auth: {provider.authHeader}: {provider.authScheme}
+                </div>
+                <div className="row" style={{ fontSize: 12, gap: "0.5rem" }}>
+                  <span className="muted" aria-label={`References for ${provider.name}`}>
+                    references: inline ≤ {provider.reference.maxInlineBytes / 1_000_000} MB
+                    {provider.reference.transport === "upload" && provider.reference.upload
+                      ? `, else upload to ${new URL(provider.reference.upload.url).host}`
+                      : " (no upload declared)"}
+                  </span>
+                  {provider.reference.upload ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-label={`Test upload for ${provider.name}`}
+                      onClick={() => void testUpload(provider)}
+                    >
+                      Test upload
+                    </button>
+                  ) : null}
                 </div>
 
                 {endpoints.length === 0 ? (
@@ -612,6 +650,23 @@ function ProviderForm({
   const [authScheme, setAuthScheme] = useState(provider?.authScheme ?? "Bearer {{key}}");
   const [apiKey, setApiKey] = useState("");
   const [forgetKey, setForgetKey] = useState(false);
+  const [transport, setTransport] = useState(provider?.reference.transport ?? "inline");
+  const [maxInlineMb, setMaxInlineMb] = useState(
+    String((provider?.reference.maxInlineBytes ?? 1_500_000) / 1_000_000),
+  );
+  const [uploadUrl, setUploadUrl] = useState(provider?.reference.upload?.url ?? "");
+  const [uploadBody, setUploadBody] = useState(
+    JSON.stringify(
+      provider?.reference.upload?.body ?? { content_type: "{{contentType}}", file_size: "{{bytes}}" },
+      null,
+      2,
+    ),
+  );
+  const [uploadUrlPath, setUploadUrlPath] = useState(
+    provider?.reference.upload?.uploadUrlPath ?? "upload_url",
+  );
+  const [fileUrlPath, setFileUrlPath] = useState(provider?.reference.upload?.fileUrlPath ?? "file_url");
+  const [formError, setFormError] = useState<string | null>(null);
 
   const headerSent = authScheme.replace(/\{\{\s*key\s*\}\}/g, "••••");
   const hasKey = provider?.hasKey ?? false;
@@ -628,6 +683,25 @@ function ProviderForm({
         if (!editing) values.apiKey = apiKey;
         else if (apiKey !== "") values.apiKey = apiKey;
         else if (forgetKey) values.apiKey = "";
+        try {
+          values.reference = {
+            transport,
+            maxInlineBytes: Math.max(1, Math.round(Number(maxInlineMb) * 1_000_000)),
+            upload:
+              transport === "upload" && uploadUrl.trim() !== ""
+                ? {
+                    url: uploadUrl.trim(),
+                    method: "POST",
+                    body: JSON.parse(uploadBody) as Record<string, unknown>,
+                    uploadUrlPath: uploadUrlPath.trim() || "upload_url",
+                    fileUrlPath: fileUrlPath.trim() || "file_url",
+                  }
+                : null,
+          };
+        } catch {
+          setFormError("the upload body must be valid JSON");
+          return;
+        }
         void onSubmit(values);
         if (!editing) {
           setName("");
@@ -713,6 +787,73 @@ function ProviderForm({
         </label>
       ) : null}
 
+      <div className="row" style={{ alignItems: "flex-start" }}>
+        <Field id={`${prefix}-reference-transport`} label="References">
+          <select
+            id={`${prefix}-reference-transport`}
+            value={transport}
+            onChange={(event) => setTransport(event.target.value)}
+            aria-label={label("reference transport")}
+          >
+            <option value="inline">inline only</option>
+            <option value="upload">inline, else upload</option>
+          </select>
+        </Field>
+        <Field id={`${prefix}-reference-limit`} label="Inline limit (MB)">
+          <input
+            id={`${prefix}-reference-limit`}
+            value={maxInlineMb}
+            onChange={(event) => setMaxInlineMb(event.target.value)}
+            inputMode="decimal"
+            aria-label={label("inline limit in megabytes")}
+          />
+        </Field>
+        {transport === "upload" ? (
+          <Field id={`${prefix}-reference-upload-url`} label="Upload URL">
+            <input
+              id={`${prefix}-reference-upload-url`}
+              value={uploadUrl}
+              onChange={(event) => setUploadUrl(event.target.value)}
+              placeholder="https://rest.alpha.fal.ai/storage/upload/initiate"
+              aria-label={label("upload url")}
+            />
+          </Field>
+        ) : null}
+      </div>
+
+      {transport === "upload" ? (
+        <div className="row" style={{ alignItems: "flex-start" }}>
+          <label className="stack" style={{ flex: 2, gap: "0.25rem" }}>
+            <span className="muted" style={{ fontSize: 12 }}>
+              Upload body
+            </span>
+            <textarea
+              value={uploadBody}
+              onChange={(event) => setUploadBody(event.target.value)}
+              rows={3}
+              aria-label={label("upload body")}
+              style={{ fontFamily: "monospace", fontSize: 12 }}
+            />
+          </label>
+          <Field id={`${prefix}-upload-url-path`} label="Upload url at">
+            <input
+              id={`${prefix}-upload-url-path`}
+              value={uploadUrlPath}
+              onChange={(event) => setUploadUrlPath(event.target.value)}
+              aria-label={label("upload url path")}
+            />
+          </Field>
+          <Field id={`${prefix}-file-url-path`} label="File url at">
+            <input
+              id={`${prefix}-file-url-path`}
+              value={fileUrlPath}
+              onChange={(event) => setFileUrlPath(event.target.value)}
+              aria-label={label("file url path")}
+            />
+          </Field>
+        </div>
+      ) : null}
+
       <div className="row">
         <span className="muted" style={{ fontSize: 12 }}>
           Sends:{" "}
@@ -730,6 +871,7 @@ function ProviderForm({
           {editing ? "Save provider" : "Add provider"}
         </button>
       </div>
+      {formError ? <p className="error">{formError}</p> : null}
     </form>
   );
 }
