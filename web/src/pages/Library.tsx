@@ -53,6 +53,15 @@ interface VariantView {
   missingAngles: string[];
 }
 
+interface TypePrompt {
+  kind: string;
+  project: string;
+  global: string;
+  effective: string;
+  source: "project" | "global" | "default";
+  builtIn: string;
+}
+
 interface EntityView {
   id: string;
   kind: string;
@@ -94,16 +103,22 @@ export function Library({ projectId }: { projectId: string }) {
   const characters = (entities ?? []).filter((item) => item.kind === "character");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Each type's instructions, and which layer set the one in force. */
+  const [typePrompts, setTypePrompts] = useState<TypePrompt[]>([]);
+  const [editingKind, setEditingKind] = useState<string | null>(null);
+  const [draftPrompt, setDraftPrompt] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const [result, library] = await Promise.all([
+      const [result, library, prompts] = await Promise.all([
         runOp<{ entities: EntityView[] }>(projectId, "entity.list", {}),
         runOp<{ items: GlobalItem[]; links: LibraryLink[] }>(projectId, "library.list", {}),
+        runOp<{ prompts: TypePrompt[] }>(projectId, "type.prompts", {}),
       ]);
       setEntities(result.data.entities);
       setItems(library.data.items);
       setLinks(library.data.links);
+      setTypePrompts(prompts.data.prompts);
     } catch (caught) {
       setError(message(caught));
     }
@@ -112,6 +127,21 @@ export function Library({ projectId }: { projectId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Save this film's copy of one type's instructions; an empty box goes back to inheriting. */
+  async function saveTypePrompt(kindToSave: string, prompt: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await runOp(projectId, "type.prompt.save", { kind: kindToSave, prompt });
+      setEditingKind(null);
+      await load();
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function importItem(libraryId: string) {
     setBusy(true);
@@ -170,6 +200,84 @@ export function Library({ projectId }: { projectId: string }) {
           pick the images that become the sheet. A character sheet is six head rotations; outfits and states
           are variants with their own prompt and sheet.
         </p>
+      </div>
+
+      <div className="card stack">
+        <div className="row">
+          <h2 style={{ margin: 0 }}>How each type is written</h2>
+          <div className="spacer" />
+          <span className="muted" style={{ fontSize: 12 }}>
+            the instructions a text model is given when it turns your words into a prompt
+          </span>
+        </div>
+        {typePrompts.map((entry) => (
+          <details key={entry.kind} style={{ borderTop: "1px solid var(--line)", paddingTop: "0.4rem" }}>
+            <summary
+              className="row"
+              style={{ cursor: "pointer", gap: "0.5rem" }}
+              aria-label={`Prompt for ${entry.kind}`}
+            >
+              <span className="chip">{entry.kind}</span>
+              <span className="muted" style={{ fontSize: 12 }}>
+                {entry.source === "project"
+                  ? "this film's own"
+                  : entry.source === "global"
+                    ? "the host's"
+                    : "built-in"}
+                {entry.project ? " · edited here" : ""}
+              </span>
+            </summary>
+            {editingKind === entry.kind ? (
+              <div className="stack" style={{ gap: "0.4rem", marginTop: "0.4rem" }}>
+                <textarea
+                  value={draftPrompt}
+                  onChange={(event) => setDraftPrompt(event.target.value)}
+                  rows={4}
+                  aria-label={`Instructions for ${entry.kind}`}
+                  placeholder={entry.effective}
+                />
+                <div className="row">
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy}
+                    onClick={() => void saveTypePrompt(entry.kind, draftPrompt)}
+                  >
+                    {busy ? "Saving…" : "Save for this film"}
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => void saveTypePrompt(entry.kind, "")}>
+                    Use the global prompt
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => setEditingKind(null)}>
+                    Cancel
+                  </button>
+                </div>
+                <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                  {entry.global
+                    ? `The host's wording: ${entry.global}`
+                    : "The host uses the built-in wording."}
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="muted" style={{ margin: "0.4rem 0", fontSize: 13, whiteSpace: "pre-wrap" }}>
+                  {entry.effective}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingKind(entry.kind);
+                    // Start from the text actually in force: an empty box with a hint cannot be edited, and the
+                    // usual edit is a small change to the wording that is already there.
+                    setDraftPrompt(entry.effective);
+                  }}
+                >
+                  Edit for this film
+                </button>
+              </>
+            )}
+          </details>
+        ))}
       </div>
 
       <form className="card stack" onSubmit={create}>
