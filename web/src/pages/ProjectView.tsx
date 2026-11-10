@@ -94,6 +94,8 @@ export function ProjectView({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportTo, setExportTo] = useState("");
+  const [exportHosted, setExportHosted] = useState(true);
   const [exportArchiveName, setExportArchiveName] = useState("");
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -157,15 +159,22 @@ export function ProjectView({
     if (editing) nameInput.current?.focus();
   }, [editing]);
 
-  /** Export writes the whole folder to the host's exports folder; taking a copy anywhere is the save dialog's job. */
-  async function exportArchive() {
+  /**
+   * Export writes the whole folder to one archive. With no destination it lands in the host's exports folder and can be
+   * copied out through the save dialog; with one, the host writes it there herself, in a single move.
+   */
+  async function exportArchive(destination?: string) {
     setExportBusy(true);
     setExportError(null);
     try {
-      const archived = await exportProject(project.id);
+      const archived = await exportProject(project.id, destination || undefined);
+      const hosted = !destination;
+      setExportHosted(hosted);
       setExportArchiveName(archived.archiveName);
       setExportNotice(
-        `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB at revision ${archived.revision}`,
+        hosted
+          ? `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB at revision ${archived.revision}`
+          : `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB, written to the folder you gave at revision ${archived.revision}`,
       );
     } catch (caught) {
       setExportError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
@@ -299,7 +308,7 @@ export function ProjectView({
               >
                 {exportBusy ? "Archiving…" : "Export"}
               </button>
-              {exportNotice ? (
+              {exportHosted && exportArchiveName ? (
                 <a
                   className="primary"
                   href={archiveUrl(exportArchiveName)}
@@ -313,6 +322,34 @@ export function ProjectView({
                 Close
               </button>
             </div>
+            <details style={{ marginTop: "0.2rem" }}>
+              <summary className="muted" style={{ cursor: "pointer", fontSize: 12 }}>
+                Advanced: write straight to a folder (better for large projects)
+              </summary>
+              <div className="row" style={{ marginTop: "0.4rem" }}>
+                <input
+                  value={exportTo}
+                  onChange={(event) => setExportTo(event.target.value)}
+                  placeholder="D:\backups\films"
+                  aria-label="Export destination folder"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => void exportArchive(exportTo.trim())}
+                  disabled={exportBusy || exportTo.trim() === ""}
+                >
+                  Export there
+                </button>
+              </div>
+              <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                “Save a copy” hands the file to the browser, so the whole archive is read from disk and
+                written again — a 40 GB project moves 40 GB an extra time, through the browser. Writing
+                straight to a folder is a single move made by this machine, so it is the faster and safer
+                choice once a project gets large. The folder must be reachable by the host that runs Slate; no
+                save-copy is offered, because the archive is already where you asked for it.
+              </p>
+            </details>
             {exportError ? <p className="error">{exportError}</p> : null}
           </div>
         ) : null}
