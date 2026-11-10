@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, type ProjectSummary, type SessionData, getSession, listProjects, logout } from "./api.js";
 import { GlobalLibrary } from "./pages/GlobalLibrary.js";
+import { Health } from "./pages/Health.js";
 import { Login } from "./pages/Login.js";
 import { ProjectView } from "./pages/ProjectView.js";
 import { Projects } from "./pages/Projects.js";
@@ -9,7 +10,7 @@ import { Setup } from "./pages/Setup.js";
 export function App() {
   const [session, setSession] = useState<SessionData | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [view, setView] = useState<"project" | "library" | "setup">("project");
+  const [view, setView] = useState<"project" | "library" | "health" | "setup">("project");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,6 +95,15 @@ export function App() {
           >
             Library
           </button>
+          {/* Health is the host's, not a film's: the same tools run every project on this machine. */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "health"}
+            onClick={() => setView("health")}
+          >
+            Health
+          </button>
           {session.user.role === "owner" ? (
             <button
               type="button"
@@ -123,7 +133,9 @@ export function App() {
       </header>
 
       <main className="main">
-        {view === "setup" ? (
+        {view === "health" ? (
+          <Health />
+        ) : view === "setup" ? (
           <Setup />
         ) : view === "library" ? (
           <GlobalLibrary

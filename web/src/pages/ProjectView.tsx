@@ -58,17 +58,7 @@ interface Commit {
   touched: string[];
 }
 
-type Tab =
-  | "write"
-  | "plan"
-  | "previz"
-  | "shoot"
-  | "cut"
-  | "finish"
-  | "review"
-  | "library"
-  | "health"
-  | "activity";
+type Tab = "write" | "plan" | "previz" | "shoot" | "cut" | "finish" | "review" | "library" | "activity";
 
 export function ProjectView({
   project,
@@ -173,8 +163,8 @@ export function ProjectView({
       setExportArchiveName(archived.archiveName);
       setExportNotice(
         hosted
-          ? `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB at revision ${archived.revision}`
-          : `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB, written to the folder you gave at revision ${archived.revision}`,
+          ? `${archived.archiveName} â€” ${Math.round(archived.bytes / 1024)} KB at revision ${archived.revision}`
+          : `${archived.archiveName} â€” ${Math.round(archived.bytes / 1024)} KB, written to the folder you gave at revision ${archived.revision}`,
       );
     } catch (caught) {
       setExportError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
@@ -231,7 +221,7 @@ export function ProjectView({
               style={{ fontSize: "1.2rem", padding: "0.3rem 0.5rem" }}
             />
             <button className="primary" type="submit" disabled={renaming || draft.trim() === ""}>
-              {renaming ? "Saving…" : "Save"}
+              {renaming ? "Savingâ€¦" : "Save"}
             </button>
             <button
               type="button"
@@ -293,11 +283,11 @@ export function ProjectView({
         {exportNotice ? <p className="muted">{exportNotice}</p> : null}
         {exporting && canDelete ? (
           <div className="card stack" style={{ marginTop: "0.4rem" }}>
-            <strong>Export “{project.name}”</strong>
+            <strong>Export â€œ{project.name}â€</strong>
             <p className="muted" style={{ margin: 0 }}>
-              The whole folder — documents, media and exports — goes into one 7z with a manifest describing
-              it, in the host&apos;s exports folder. Save a copy opens your computer&apos;s save dialog, so a
-              copy can go wherever you keep backups.
+              The whole folder â€” documents, media and exports â€” goes into one 7z with a manifest
+              describing it, in the host&apos;s exports folder. Save a copy opens your computer&apos;s save
+              dialog, so a copy can go wherever you keep backups.
             </p>
             <div className="row">
               <button
@@ -306,7 +296,7 @@ export function ProjectView({
                 onClick={() => void exportArchive()}
                 disabled={exportBusy}
               >
-                {exportBusy ? "Archiving…" : "Export"}
+                {exportBusy ? "Archivingâ€¦" : "Export"}
               </button>
               {exportHosted && exportArchiveName ? (
                 <a
@@ -315,7 +305,7 @@ export function ProjectView({
                   download={exportArchiveName}
                   aria-label="Save a copy of the archive"
                 >
-                  Save a copy…
+                  Save a copyâ€¦
                 </a>
               ) : null}
               <button type="button" onClick={() => setExporting(false)} disabled={exportBusy}>
@@ -343,8 +333,8 @@ export function ProjectView({
                 </button>
               </div>
               <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                “Save a copy” hands the file to the browser, so the whole archive is read from disk and
-                written again — a 40 GB project moves 40 GB an extra time, through the browser. Writing
+                â€œSave a copyâ€ hands the file to the browser, so the whole archive is read from disk and
+                written again â€” a 40 GB project moves 40 GB an extra time, through the browser. Writing
                 straight to a folder is a single move made by this machine, so it is the faster and safer
                 choice once a project gets large. The folder must be reachable by the host that runs Slate; no
                 save-copy is offered, because the archive is already where you asked for it.
@@ -393,19 +383,19 @@ export function ProjectView({
         </p>
         {/* The shape and rate every still, cut and master is made to: fixed at creation, so it is stated, not chosen. */}
         <p className="muted" style={{ margin: 0, fontSize: 12 }} aria-label="Project format">
-          {framePixels(project.settings)} · {project.settings.frameRate} fps ·{" "}
+          {framePixels(project.settings)} Â· {project.settings.frameRate} fps Â·{" "}
           {Math.round(project.settings.runtimeSeconds)}s
-          {project.settings.defaultStyleId ? " · project style" : ""}
+          {project.settings.defaultStyleId ? " Â· project style" : ""}
         </p>
       </div>
 
       {deleting && canDelete ? (
         <div className="card stack" style={{ borderColor: "var(--red)" }}>
-          <strong>Delete “{project.name}”?</strong>
+          <strong>Delete â€œ{project.name}â€?</strong>
           <p className="muted" style={{ margin: 0 }}>
             The project is removed from this host.
             {keepAssets
-              ? " Its folder — media, exports and documents — stays on disk."
+              ? " Its folder â€” media, exports and documents â€” stays on disk."
               : " Its folder and everything in it are deleted."}
           </p>
           <label className="row" style={{ gap: "0.4rem", alignItems: "center", fontSize: 13 }}>
@@ -436,7 +426,7 @@ export function ProjectView({
               onClick={() => void removeProject()}
               disabled={deleteBusy || confirmName.trim() !== project.name}
             >
-              {deleteBusy ? "Deleting…" : keepAssets ? "Delete and keep the folder" : "Delete everything"}
+              {deleteBusy ? "Deletingâ€¦" : keepAssets ? "Delete and keep the folder" : "Delete everything"}
             </button>
             <button type="button" onClick={() => setDeleting(false)} disabled={deleteBusy}>
               Cancel
@@ -470,9 +460,6 @@ export function ProjectView({
         <button type="button" role="tab" aria-selected={tab === "library"} onClick={() => setTab("library")}>
           Library
         </button>
-        <button type="button" role="tab" aria-selected={tab === "health"} onClick={() => setTab("health")}>
-          Health
-        </button>
         <button
           type="button"
           role="tab"
@@ -490,148 +477,7 @@ export function ProjectView({
       {tab === "finish" ? <Finish projectId={project.id} /> : null}
       {tab === "review" ? <Review projectId={project.id} /> : null}
       {tab === "library" ? <Library projectId={project.id} /> : null}
-      {tab === "health" ? <Health projectId={project.id} /> : null}
       {tab === "activity" ? <Activity projectId={project.id} me={me} /> : null}
-    </div>
-  );
-}
-
-function Health({ projectId }: { projectId: string }) {
-  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(
-    async (refresh: boolean) => {
-      setBusy(true);
-      setError(null);
-      try {
-        const envelope = await runOp<Capabilities>(projectId, "capabilities.get", { refresh });
-        setCapabilities(envelope.data);
-      } catch (caught) {
-        setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [projectId],
-  );
-
-  useEffect(() => {
-    void load(false);
-  }, [load]);
-
-  if (error) {
-    return (
-      <div className="card">
-        <p className="error">{error}</p>
-      </div>
-    );
-  }
-
-  if (!capabilities) {
-    return (
-      <div className="card">
-        <p className="muted">Probing the host toolchain…</p>
-      </div>
-    );
-  }
-
-  const degraded = capabilities.chains.filter((chain) => chain.degraded);
-
-  return (
-    <div className="stack">
-      <div className="card">
-        <div className="row">
-          <h2 style={{ margin: 0 }}>How this will run</h2>
-          <div className="spacer" />
-          <span className="muted mono">{capabilities.platform}</span>
-          <button type="button" onClick={() => void load(true)} disabled={busy}>
-            {busy ? "Probing…" : "Probe again"}
-          </button>
-        </div>
-        <p className="muted" style={{ marginBottom: 0 }}>
-          Checked {new Date(capabilities.checkedAt).toLocaleString()}. Slate names the execution path before
-          work starts; a fallback is reported, never discovered mid-render.
-        </p>
-      </div>
-
-      <div className="card">
-        <h2>Chains</h2>
-        <table>
-          <thead>
-            <tr>
-              <th style={{ width: 120 }}>Stage</th>
-              <th style={{ width: 150 }}>Will run</th>
-              <th>Why</th>
-            </tr>
-          </thead>
-          <tbody>
-            {capabilities.chains.map((chain) => (
-              <tr key={chain.stage}>
-                <td>{chain.stage}</td>
-                <td>
-                  <span className={`dot ${chain.chosenStatus === "green" ? "green" : "amber"}`} />
-                  {chain.chosen ?? <span className="muted">none</span>}
-                </td>
-                <td>
-                  <div>{chain.reason}</div>
-                  {chain.degraded ? <span className="chip warn">degraded</span> : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {degraded.length > 0 ? (
-          <p className="muted" style={{ marginBottom: 0, fontSize: 13 }}>
-            {degraded.length} of {capabilities.chains.length} stages will run degraded. Install the preferred
-            tool to restore full capability.
-          </p>
-        ) : null}
-      </div>
-
-      <div className="card">
-        <h2>Services</h2>
-        <table>
-          <thead>
-            <tr>
-              <th style={{ width: 150 }}>Service</th>
-              <th style={{ width: 140 }}>Status</th>
-              <th style={{ width: 120 }}>Version</th>
-              <th>Detail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {capabilities.services.map((service) => (
-              <tr key={service.id}>
-                <td>
-                  <span
-                    title={service.installPath ?? undefined}
-                    style={
-                      service.installPath
-                        ? { cursor: "help", borderBottom: "1px dotted var(--line)" }
-                        : undefined
-                    }
-                  >
-                    {service.displayName}
-                  </span>
-                  {service.required ? (
-                    <span className="chip" style={{ marginLeft: 6 }}>
-                      required
-                    </span>
-                  ) : null}
-                </td>
-                <td>
-                  <span className={`dot ${service.status}`} />
-                  {service.status}
-                </td>
-                <td className="mono">{service.version ?? "—"}</td>
-                <td className="muted">{service.detail}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }
@@ -679,7 +525,7 @@ function Activity({ projectId, me }: { projectId: string; me: string }) {
   if (!commits) {
     return (
       <div className="card">
-        <p className="muted">Loading history…</p>
+        <p className="muted">Loading historyâ€¦</p>
       </div>
     );
   }
@@ -696,13 +542,13 @@ function Activity({ projectId, me }: { projectId: string; me: string }) {
             <div>
               <div>{commit.intent}</div>
               <div className="muted mono" style={{ fontSize: 12 }}>
-                r{commit.revision} · {commit.actor} · {commit.id}
+                r{commit.revision} Â· {commit.actor} Â· {commit.id}
               </div>
             </div>
             <div>
               {index === 0 && commit.actor === me ? (
                 <button type="button" onClick={() => void undo(commit.id)} disabled={undoing}>
-                  {undoing ? "Undoing…" : "Undo"}
+                  {undoing ? "Undoingâ€¦" : "Undo"}
                 </button>
               ) : null}
             </div>
