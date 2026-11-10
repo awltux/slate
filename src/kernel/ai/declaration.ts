@@ -76,14 +76,34 @@ export const EndpointSchema = z
 
 export type Endpoint = z.infer<typeof EndpointSchema>;
 
+/**
+ * A binding set is a named profile: for each capability, which endpoints to try, in order. Projects select one, so the
+ * same installation can serve a cheap draft film and an expensive final one without touching the endpoints themselves.
+ */
+export const BindingSetSchema = z
+  .object({
+    id: z.string().startsWith("aib_"),
+    name: z.string().min(1),
+    description: z.string().default(""),
+    /** capability → endpoint ids in preference order. */
+    bindings: z.record(z.string(), z.array(z.string())).default({}),
+    createdAt: z.string(),
+  })
+  .strict();
+
+export type BindingSet = z.infer<typeof BindingSetSchema>;
+
 export const AiConfigSchema = z
   .object({
     format: z.literal("slate.ai"),
     version: z.literal(1),
     providers: z.array(ProviderSchema).default([]),
     endpoints: z.array(EndpointSchema).default([]),
-    /** capability → endpoint ids in preference order. */
-    bindings: z.record(z.string(), z.array(z.string())).default({}),
+    bindingSets: z.array(BindingSetSchema).default([]),
+    /** The set a project uses when it has not chosen one. */
+    defaultBindingSetId: z.string().startsWith("aib_").nullable().default(null),
+    /** The pre-binding-sets flat map; migrated into a "Default" set on read. */
+    bindings: z.record(z.string(), z.array(z.string())).optional(),
   })
   .strict();
 

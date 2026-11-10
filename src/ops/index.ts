@@ -1,4 +1,14 @@
-import { aiBind, aiCatalog, aiEndpointSave, aiPreview, aiProviderSave, aiRemove } from "./ai.js";
+import {
+  aiBindingSetRemove,
+  aiBindingSetSave,
+  aiBindingSetUse,
+  aiBindingSets,
+  aiCatalog,
+  aiEndpointSave,
+  aiPreview,
+  aiProviderSave,
+  aiRemove,
+} from "./ai.js";
 import { capabilitiesGet } from "./capabilities.js";
 import { cutBuild, cutGet, cutRender } from "./cut.js";
 import { deliverExport, deliverQc } from "./deliver.js";
@@ -21,7 +31,7 @@ import { graphStale, sessionBrief } from "./graph.js";
 import { historyRevert, projectHistory } from "./history.js";
 import { libraryImport, libraryList, libraryPull, libraryPush } from "./library.js";
 import { blockoutAttach, previzGet, setAttach } from "./previz.js";
-import { projectCreate, projectRename } from "./project.js";
+import { projectCreate, projectRename, projectSetBindings } from "./project.js";
 import { promptExpand } from "./prompt.js";
 import { OpRegistry } from "./registry.js";
 import { noteAdd, noteList, noteResolve, reviewLink, reviewLinks, reviewRevoke } from "./review.js";
@@ -38,6 +48,7 @@ export function createRegistry(): OpRegistry {
   return new OpRegistry().register(
     projectCreate,
     projectRename,
+    projectSetBindings,
     projectHistory,
     historyRevert,
     capabilitiesGet,
@@ -64,7 +75,10 @@ export function createRegistry(): OpRegistry {
     aiCatalog,
     aiProviderSave,
     aiEndpointSave,
-    aiBind,
+    aiBindingSetSave,
+    aiBindingSets,
+    aiBindingSetUse,
+    aiBindingSetRemove,
     aiRemove,
     aiPreview,
     reviewLink,

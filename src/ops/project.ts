@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { SlateError } from "../domain/result.js";
+import { readAiConfig } from "../kernel/ai/store.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { initProject } from "../kernel/workspace/scaffold.js";
 import { defineOp } from "./registry.js";
@@ -97,6 +99,57 @@ export const projectRename = defineOp({
       version: result.project.revision,
       commit: result.commit.id,
       next: ["project.history"],
+    };
+  },
+});
+
+/**
+ * A project chooses the binding set it runs on. Two films on one machine can then spend very differently - a cheap draft
+ * profile and an expensive final one - without touching the endpoints themselves or the host default.
+ */
+export const projectSetBindings = defineOp({
+  name: "project.set-bindings",
+  policy: "write",
+  summary: "Choose the binding set this project generates with (null uses the host default).",
+  input: z
+    .object({
+      bindingSetId: z.string().nullable(),
+      expectedRevision: z.number().int().optional(),
+    })
+    .strict(),
+  output: z
+    .object({
+      bindingSetId: z.string().nullable(),
+      name: z.string().nullable(),
+    })
+    .strict(),
+  touched: () => ["project"],
+  run: async (input, context) => {
+    const config = await readAiConfig(context.home);
+    const set = input.bindingSetId
+      ? config.bindingSets.find((entry) => entry.id === input.bindingSetId)
+      : null;
+    if (input.bindingSetId && !set) {
+      throw new SlateError("not_found", `no binding set ${input.bindingSetId}`);
+    }
+
+    const result = await commitDocuments({
+      root: context.root,
+      actor: context.actor,
+      intent: set ? `bindings: use "${set.name}"` : "bindings: use the host default",
+      touched: ["project"],
+      clock: context.clock,
+      expectedRevision: input.expectedRevision,
+      mutate: ({ project }) => {
+        project.aiBindingSetId = input.bindingSetId;
+      },
+    });
+
+    return {
+      data: { bindingSetId: input.bindingSetId, name: set?.name ?? null },
+      version: result.project.revision,
+      commit: result.commit.id,
+      next: ["ai.bindingsets"],
     };
   },
 });

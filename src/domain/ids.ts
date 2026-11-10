@@ -22,6 +22,7 @@ export type IdPrefix =
   | "nte"
   | "aip"
   | "aie"
+  | "aib"
   | "usr"
   | "cmt"
   | "ses"

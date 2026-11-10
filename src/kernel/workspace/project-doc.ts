@@ -33,6 +33,8 @@ export const ProjectDocumentSchema = z
     updatedAt: z.string(),
     settings: ProjectSettingsSchema,
     budget: BudgetSchema,
+    /** Which binding set this project uses; null means the host default. */
+    aiBindingSetId: z.string().startsWith("aib_").nullable().default(null),
     chains: z.record(z.array(z.string())),
   })
   .strict();

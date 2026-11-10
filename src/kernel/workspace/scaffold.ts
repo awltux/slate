@@ -77,6 +77,7 @@ export async function initProject(request: InitProjectRequest): Promise<InitProj
     updatedAt: at,
     settings: { runtimeSeconds: request.runtimeSeconds, aspectRatio: request.aspectRatio },
     budget: { currency: "USD", ceilingUsd: request.budgetUsd },
+    aiBindingSetId: null,
     chains: {},
   };
 

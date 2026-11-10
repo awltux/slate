@@ -7,7 +7,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 
 | Operation | Policy | MCP tool | Summary |
 |---|---|---|---|
-| `ai.bind` | write | `ai_bind` | Choose which endpoints serve a capability, in preference order. |
+| `ai.bindingset.remove` | destructive | `ai_bindingset_remove` | Remove a binding set. |
+| `ai.bindingset.save` | write | `ai_bindingset_save` | Create or update a binding set: which endpoint serves each capability. |
+| `ai.bindingset.use` | write | `ai_bindingset_use` | Choose the binding set a project uses when it has not picked one itself. |
+| `ai.bindingsets` | read | `ai_bindingsets` | The binding sets available to projects. |
 | `ai.catalog` | read | `ai_catalog` | AI providers, endpoints and capability bindings, with keys masked. |
 | `ai.endpoint.save` | write | `ai_endpoint_save` | Create or update an endpoint: one capability, one path, its parameters and request template. |
 | `ai.preview` | read | `ai_preview` | Render the request an endpoint would send, without calling it. |
@@ -44,6 +47,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
 | `project.history` | read | `project_history` | Recent commits: what changed, who changed it and why. |
 | `project.rename` | write | `project_rename` | Change the project name. |
+| `project.set-bindings` | write | `project_set-bindings` | Choose the binding set this project generates with (null uses the host default). |
 | `prompt.expand` | spend | `prompt_expand` | Turn a description into a generation prompt, using the style sheet when one is applied. |
 | `review.link` | write | `review_link` | Create a signed, expiring link that lets a reviewer watch the cut and leave notes. |
 | `review.links` | read | `review_links` | Review links with their expiry and revocation state. |
@@ -75,33 +79,87 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 
 ## Input schemas
 
-### `ai.bind`
+### `ai.bindingset.remove`
 
 ```json
 {
   "type": "object",
   "properties": {
-    "capability": {
-      "type": "string",
-      "enum": [
-        "text",
-        "image",
-        "video",
-        "audio",
-        "upscale"
-      ]
-    },
-    "endpointIds": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
+    "id": {
+      "type": "string"
     }
   },
   "required": [
-    "capability",
-    "endpointIds"
+    "id"
   ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.bindingset.save`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "default": ""
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "default": {}
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.bindingset.use`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.bindingsets`
+
+```json
+{
+  "type": "object",
+  "properties": {},
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
@@ -1135,6 +1193,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
+```
+
+### `project.set-bindings`
+
+```json
+{}
 ```
 
 ### `prompt.expand`

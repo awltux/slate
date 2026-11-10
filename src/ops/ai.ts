@@ -11,8 +11,8 @@ import {
   type RenderedRequest,
   renderRequest,
 } from "../kernel/ai/declaration.js";
-import { readAiConfig, readKeys, resolveEndpoint, writeAiConfig, writeKeys } from "../kernel/ai/store.js";
-import { loadDocuments } from "./documents.js";
+import { readAiConfig, readKeys, resolveBinding, writeAiConfig, writeKeys } from "../kernel/ai/store.js";
+import { readProjectDocument } from "../kernel/workspace/project-doc.js";
 import { defineOp } from "./registry.js";
 
 const ProviderViewSchema = z
@@ -58,7 +58,18 @@ export const aiCatalog = defineOp({
     .object({
       providers: z.array(ProviderViewSchema),
       endpoints: z.array(EndpointViewSchema),
-      bindings: z.record(z.string(), z.array(z.string())),
+      bindingSets: z.array(
+        z
+          .object({
+            id: z.string(),
+            name: z.string(),
+            description: z.string(),
+            bindings: z.record(z.string(), z.array(z.string())),
+            createdAt: z.string(),
+          })
+          .strict(),
+      ),
+      defaultBindingSetId: z.string().nullable(),
       capabilities: z.array(z.string()),
     })
     .strict(),
@@ -90,7 +101,14 @@ export const aiCatalog = defineOp({
           resultPath: endpoint.resultPath,
           timeoutMs: endpoint.timeoutMs,
         })),
-        bindings: config.bindings,
+        bindingSets: config.bindingSets.map((set) => ({
+          id: set.id,
+          name: set.name,
+          description: set.description,
+          bindings: set.bindings,
+          createdAt: set.createdAt,
+        })),
+        defaultBindingSetId: config.defaultBindingSetId,
         capabilities: CapabilitySchema.options,
       },
       version: 0,
@@ -201,27 +219,127 @@ export const aiEndpointSave = defineOp({
   },
 });
 
-export const aiBind = defineOp({
-  name: "ai.bind",
+/** The profiles a project may choose from. Names only - choosing does not require seeing the endpoints. */
+export const aiBindingSets = defineOp({
+  name: "ai.bindingsets",
+  policy: "read",
+  summary: "The binding sets available to projects.",
+  input: z.object({}).strict(),
+  output: z
+    .object({
+      sets: z.array(
+        z
+          .object({ id: z.string(), name: z.string(), description: z.string(), isDefault: z.boolean() })
+          .strict(),
+      ),
+    })
+    .strict(),
+  run: async (_input, context) => {
+    const config = await readAiConfig(context.home);
+    return {
+      data: {
+        sets: config.bindingSets.map((set) => ({
+          id: set.id,
+          name: set.name,
+          description: set.description,
+          isDefault: set.id === config.defaultBindingSetId,
+        })),
+      },
+      version: 0,
+      next: ["project.set-bindings"],
+    };
+  },
+});
+
+/**
+ * A binding set is a named profile - "Draft, cheap", "Final, fal FLUX", "Claymation" - and a project picks one. Saving a
+ * set never touches the endpoints themselves, so two films on one machine can spend very differently.
+ */
+export const aiBindingSetSave = defineOp({
+  name: "ai.bindingset.save",
   ownerOnly: true,
   policy: "write",
-  summary: "Choose which endpoints serve a capability, in preference order.",
-  input: z.object({ capability: CapabilitySchema, endpointIds: z.array(z.string()) }).strict(),
-  output: z.object({ capability: z.string(), endpointIds: z.array(z.string()) }).strict(),
+  summary: "Create or update a binding set: which endpoint serves each capability.",
+  input: z
+    .object({
+      id: z.string().optional(),
+      name: z.string().trim().min(1),
+      description: z.string().default(""),
+      bindings: z.record(z.string(), z.array(z.string())).default({}),
+    })
+    .strict(),
+  output: z.object({ id: z.string(), name: z.string() }).strict(),
   touched: () => ["ai"],
   run: async (input, context) => {
     const config = await readAiConfig(context.home);
     const known = new Set(config.endpoints.map((endpoint) => endpoint.id));
-    for (const id of input.endpointIds) {
-      if (!known.has(id)) throw new SlateError("not_found", `no endpoint ${id}`);
+    for (const [capability, ids] of Object.entries(input.bindings)) {
+      if (!CapabilitySchema.options.includes(capability as never)) {
+        throw new SlateError("invalid_input", `unknown capability: ${capability}`);
+      }
+      for (const id of ids) {
+        if (!known.has(id)) throw new SlateError("not_found", `no endpoint ${id}`);
+      }
     }
-    const bindings = { ...config.bindings, [input.capability]: input.endpointIds };
-    await writeAiConfig(context.home, { ...config, bindings });
-    return {
-      data: { capability: input.capability, endpointIds: input.endpointIds },
-      version: 0,
-      next: ["ai.catalog"],
+
+    const id = input.id ?? newId("aib");
+    const existing = config.bindingSets.find((set) => set.id === id);
+    const set = {
+      id,
+      name: input.name,
+      description: input.description,
+      bindings: input.bindings,
+      createdAt: existing?.createdAt ?? context.clock.now(),
     };
+    await writeAiConfig(context.home, {
+      ...config,
+      bindingSets: [...config.bindingSets.filter((entry) => entry.id !== id), set],
+      defaultBindingSetId: config.defaultBindingSetId ?? id,
+    });
+
+    return { data: { id, name: set.name }, version: 0, next: ["ai.catalog", "project.set-bindings"] };
+  },
+});
+
+export const aiBindingSetUse = defineOp({
+  name: "ai.bindingset.use",
+  ownerOnly: true,
+  policy: "write",
+  summary: "Choose the binding set a project uses when it has not picked one itself.",
+  input: z.object({ id: z.string().nullable() }).strict(),
+  output: z.object({ defaultBindingSetId: z.string().nullable() }).strict(),
+  touched: () => ["ai"],
+  run: async (input, context) => {
+    const config = await readAiConfig(context.home);
+    if (input.id && !config.bindingSets.some((set) => set.id === input.id)) {
+      throw new SlateError("not_found", `no binding set ${input.id}`);
+    }
+    await writeAiConfig(context.home, { ...config, defaultBindingSetId: input.id });
+    return { data: { defaultBindingSetId: input.id }, version: 0, next: ["ai.catalog"] };
+  },
+});
+
+export const aiBindingSetRemove = defineOp({
+  name: "ai.bindingset.remove",
+  ownerOnly: true,
+  policy: "destructive",
+  summary: "Remove a binding set.",
+  input: z.object({ id: z.string() }).strict(),
+  output: z.object({ removed: z.string() }).strict(),
+  touched: () => ["ai"],
+  run: async (input, context) => {
+    const config = await readAiConfig(context.home);
+    const remaining = config.bindingSets.filter((set) => set.id !== input.id);
+    if (remaining.length === config.bindingSets.length) {
+      throw new SlateError("not_found", `no binding set ${input.id}`);
+    }
+    await writeAiConfig(context.home, {
+      ...config,
+      bindingSets: remaining,
+      defaultBindingSetId:
+        config.defaultBindingSetId === input.id ? (remaining[0]?.id ?? null) : config.defaultBindingSetId,
+    });
+    return { data: { removed: input.id }, version: 0, next: ["ai.catalog"] };
   },
 });
 
@@ -244,20 +362,23 @@ export const aiRemove = defineOp({
       if (doomed) gone.add(endpoint.id);
       return !doomed;
     });
-    const bindings: AiConfig["bindings"] = {};
     let cleared = 0;
-    for (const [capability, ids] of Object.entries(config.bindings)) {
-      const kept = ids.filter((id) => !gone.has(id));
-      cleared += ids.length - kept.length;
-      if (kept.length > 0) bindings[capability] = kept;
-    }
+    const bindingSets = config.bindingSets.map((set) => {
+      const bindings: Record<string, string[]> = {};
+      for (const [capability, ids] of Object.entries(set.bindings)) {
+        const kept = ids.filter((id) => !gone.has(id));
+        cleared += ids.length - kept.length;
+        if (kept.length > 0) bindings[capability] = kept;
+      }
+      return { ...set, bindings };
+    });
     await writeAiConfig(context.home, {
       ...config,
       providers: config.providers.filter(
         (provider) => !(input.kind === "provider" && provider.id === input.id),
       ),
       endpoints,
-      bindings,
+      bindingSets,
     });
     void RemoveInput;
     return { data: { removed: input.id, bindingsCleared: cleared }, version: 0, next: ["ai.catalog"] };
@@ -305,16 +426,29 @@ export const aiPreview = defineOp({
       headers: z.record(z.string(), z.string()),
       body: z.unknown(),
       missing: z.array(z.string()),
+      /** The profile that chose this endpoint, so a preview says which model the project actually runs on. */
+      bindingSetId: z.string().nullable(),
+      bindingSetName: z.string().nullable(),
     })
     .strict(),
   run: async (input, context) => {
     const config = await readAiConfig(context.home);
-    const endpoint = input.endpointId
+    // Preview runs from Setup as well, where there is no project to ask; the host default answers for it.
+    const project = await readProjectDocument(context.root).catch((error: unknown) => {
+      if (error instanceof SlateError && error.code === "not_found") return null;
+      throw error;
+    });
+
+    const explicit = input.endpointId
       ? config.endpoints.find((entry) => entry.id === input.endpointId)
+      : undefined;
+    const resolution = explicit
+      ? { endpoint: explicit, bindingSetId: null, bindingSetName: null, via: "explicit" as const }
       : input.capability
-        ? resolveEndpoint(config, input.capability)
-        : undefined;
-    if (!endpoint) throw new SlateError("not_found", "no endpoint matches that request");
+        ? resolveBinding(config, input.capability, project?.aiBindingSetId ?? null)
+        : null;
+    if (!resolution) throw new SlateError("not_found", "no endpoint matches that request");
+    const { endpoint } = resolution;
 
     const provider = config.providers.find((entry) => entry.id === endpoint.providerId);
     if (!provider) throw new SlateError("not_found", `endpoint ${endpoint.id} has no provider`);
@@ -348,11 +482,12 @@ export const aiPreview = defineOp({
         headers: request.headers,
         body: request.body,
         missing,
+        bindingSetId: resolution.bindingSetId,
+        bindingSetName: resolution.bindingSetName,
       },
       version: 0,
-      next: ["ai.bind"],
+      via: resolution.via,
+      next: ["ai.bindingsets"],
     };
   },
 });
-
-void loadDocuments;

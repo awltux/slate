@@ -1,22 +1,59 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "../workspace/atomic.js";
-import { type AiConfig, AiConfigSchema, type Endpoint, type Provider } from "./declaration.js";
+import {
+  type AiConfig,
+  AiConfigSchema,
+  type BindingSet,
+  type Endpoint,
+  type Provider,
+} from "./declaration.js";
 
 export function aiPaths(home: string): { configFile: string; keysFile: string; dir: string } {
   const dir = join(home, "ai");
   return { dir, configFile: join(dir, "config.json"), keysFile: join(dir, "keys.json") };
 }
 
+function emptyConfig(): AiConfig {
+  return {
+    format: "slate.ai",
+    version: 1,
+    providers: [],
+    endpoints: [],
+    bindingSets: [],
+    defaultBindingSetId: null,
+  };
+}
+
+/** Older configs stored one flat binding map; it becomes a single "Default" set the first time it is read. */
+function migrate(parsed: AiConfig): AiConfig {
+  const { bindings, ...rest } = parsed;
+  const bindingSets = parsed.bindingSets ?? [];
+  if (bindingSets.length > 0) {
+    return {
+      ...rest,
+      bindingSets,
+      defaultBindingSetId: parsed.defaultBindingSetId ?? bindingSets[0]?.id ?? null,
+    };
+  }
+  if (!bindings || Object.keys(bindings ?? {}).length === 0) {
+    return { ...rest, bindingSets: [], defaultBindingSetId: parsed.defaultBindingSetId ?? null };
+  }
+  const migrated: BindingSet = {
+    id: "aib_default",
+    name: "Default",
+    description: "Migrated from the original flat bindings",
+    bindings,
+    createdAt: new Date(0).toISOString(),
+  };
+  return { ...rest, bindingSets: [migrated], defaultBindingSetId: migrated.id };
+}
+
 export async function readAiConfig(home: string): Promise<AiConfig> {
   const raw = await readFile(aiPaths(home).configFile, "utf8").catch(() => null);
-  if (raw === null) {
-    return { format: "slate.ai", version: 1, providers: [], endpoints: [], bindings: {} };
-  }
+  if (raw === null) return emptyConfig();
   const parsed = AiConfigSchema.safeParse(JSON.parse(raw));
-  return parsed.success
-    ? parsed.data
-    : { format: "slate.ai", version: 1, providers: [], endpoints: [], bindings: {} };
+  return parsed.success ? migrate(parsed.data) : emptyConfig();
 }
 
 export async function writeAiConfig(home: string, config: AiConfig): Promise<void> {
@@ -52,11 +89,46 @@ export function endpointById(config: AiConfig, id: string): Endpoint | undefined
   return config.endpoints.find((endpoint) => endpoint.id === id);
 }
 
-/** The endpoint that will serve a capability: first bound one that exists, or undefined. */
-export function resolveEndpoint(config: AiConfig, capability: string): Endpoint | undefined {
-  for (const id of config.bindings[capability] ?? []) {
-    const endpoint = endpointById(config, id);
-    if (endpoint) return endpoint;
+export function bindingSetFor(config: AiConfig, setId: string | null): BindingSet | null {
+  return config.bindingSets.find((set) => set.id === setId) ?? null;
+}
+
+/** Which rung of the resolution chain answered. A degraded rung is reported, never hidden. */
+export type BindingRung = "project" | "host-default" | "any";
+
+export interface BindingResolution {
+  endpoint: Endpoint;
+  /** The set that answered; null when no set bound the capability and the last resort answered. */
+  bindingSetId: string | null;
+  bindingSetName: string | null;
+  via: BindingRung;
+}
+
+/**
+ * The endpoint that serves a capability for a project: the first live endpoint of the set the project chose, then the
+ * host default, then any endpoint of that capability. Falling back is deliberate — a set that loses an endpoint should
+ * degrade a film, not break one mid-production — but the winning rung is returned so the caller can report it.
+ */
+export function resolveBinding(
+  config: AiConfig,
+  capability: string,
+  projectSetId: string | null = null,
+): BindingResolution | null {
+  const rungs: Array<[BindingRung, BindingSet | null]> = [];
+  const chosen = bindingSetFor(config, projectSetId);
+  if (chosen) rungs.push(["project", chosen]);
+  const hostDefault = bindingSetFor(config, config.defaultBindingSetId);
+  if (hostDefault && hostDefault.id !== chosen?.id) rungs.push(["host-default", hostDefault]);
+
+  for (const [via, set] of rungs) {
+    for (const id of set?.bindings[capability] ?? []) {
+      const endpoint = endpointById(config, id);
+      if (endpoint) {
+        return { endpoint, bindingSetId: set?.id ?? null, bindingSetName: set?.name ?? null, via };
+      }
+    }
   }
-  return config.endpoints.find((endpoint) => endpoint.capability === capability);
+
+  const any = config.endpoints.find((endpoint) => endpoint.capability === capability);
+  return any ? { endpoint: any, bindingSetId: null, bindingSetName: null, via: "any" } : null;
 }
