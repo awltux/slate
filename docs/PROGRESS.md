@@ -26,6 +26,20 @@ four surfaces exist.
 | 19 | Health belongs to the host | `pnpm gate:19` | **done** | [host health](../artifacts/19/host-health.png) · [report](../artifacts/19/report.json) |
 | 20 | One place for the project's configuration | `pnpm gate:20` | **done** | [config](../artifacts/20/project-config.png) · [report](../artifacts/20/report.json) |
 | 21 | Uploads are an endpoint; endpoints declare responses | `pnpm gate:21` | **done** | [upload endpoint](../artifacts/21/upload-endpoint.png) · [report](../artifacts/21/report.json) |
+| 22 | Each library type has instructions, in three layers | `pnpm gate:22` | **done** | [film's copy](../artifacts/22/type-prompts.png) · [report](../artifacts/22/type-prompts-host.png) |
+
+## Slice 22 — what it proves
+
+- **Instructions belong to the type, not to the code.** A character, a location, a prop, a style, a costume and a body
+  each say what a prompt about them must contain. `prompt.expand` and `prompt.expand-text` send the resolved text as
+  the system message; a unit test with an injected transport reads the request back and finds the project's words in
+  it, which is the only way to prove a system prompt is used rather than merely written.
+- **Three layers, and the screen says which applies.** The film's copy, else the host's, else the built-in. A blank
+  box is not an override: clearing returns to inheriting, so "empty" can never become an empty instruction.
+- **The host edits its own layer on the app Library tab**, behind one title that is closed until opened, and the gate
+  asserts it starts closed. What it changes, every film inherits — hence owner-only.
+- **The film's copy sits on the project Library tab**, one row per type, also minimised, and editing starts from the
+  wording in force rather than an empty box.
 
 ## Slice 21 — what it proves
 
