@@ -1,3 +1,4 @@
+import { agentAccess } from "./agent.js";
 import {
   aiBindingSetRemove,
   aiBindingSetSave,
@@ -86,6 +87,7 @@ export function createRegistry(): OpRegistry {
     aiBindingSetSave,
     aiBindingSets,
     aiBindingSetUse,
+    agentAccess,
     aiBindingSetRemove,
     aiRemove,
     aiPreview,

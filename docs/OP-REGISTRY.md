@@ -7,6 +7,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 
 | Operation | Policy | Scope | MCP tool | Summary |
 |---|---|---|---|---|
+| `agent.access` | read | host | `agent_access` | The surfaces an agent can drive, the command to wire one up, and how many operations it will see. |
 | `ai.bindingset.remove` | destructive | project, owner | `ai_bindingset_remove` | Remove a binding set. |
 | `ai.bindingset.save` | write | project, owner | `ai_bindingset_save` | Create or update a binding set: which endpoint serves each capability. |
 | `ai.bindingset.use` | write | project, owner | `ai_bindingset_use` | Choose the binding set a project uses when it has not picked one itself. |
@@ -85,6 +86,17 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `variant.update` | write | project | `variant_update` | Change a wardrobe item's name, description or prompt. |
 
 ## Input schemas
+
+### `agent.access`
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
 
 ### `ai.bindingset.remove`
 

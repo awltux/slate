@@ -188,3 +188,33 @@ describe("capabilities.get", () => {
     expect(await readFile(capabilitiesFile(context.home), "utf8")).toBeTruthy();
   });
 });
+
+describe("agent.access", () => {
+  it("names the surfaces an agent can drive, and counts every operation it will see", async () => {
+    const registry = createRegistry();
+    const result = expectOk(
+      await registry.execute(
+        "agent.access",
+        {},
+        makeContext(root, async () => missing),
+      ),
+    );
+    const data = result.data as {
+      operations: number;
+      mcp: { transport: string; command: string; args: string[]; config: string };
+      http: { route: string; auth: string };
+      cli: { command: string };
+    };
+
+    // Every operation, because an agent sees the same registry the browser does.
+    expect(data.operations).toBe(registry.list().length);
+    expect(data.mcp.transport).toBe("stdio");
+    expect(data.mcp.args[0]).toBe("mcp");
+    // The config a harness pastes must name the server and the command, with no host path baked in.
+    expect(data.mcp.config).toContain("mcpServers");
+    expect(data.mcp.config).not.toMatch(/[A-Za-z]:\\\\/u);
+    expect(data.http.route).toContain("/api/op/");
+    expect(data.http.auth).toContain("no bearer-token API yet");
+    expect(data.cli.command).toContain("slate op");
+  });
+});
