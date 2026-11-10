@@ -2720,6 +2720,19 @@ async function browserFlow(steps: string[]): Promise<void> {
         "this host is expected to lack at least one tool, or the check proves nothing",
       );
 
+      // An agent is a caller, not a service: the panel says how one connects and how much it can reach.
+      await page.waitForSelector("text=Agent access", { timeout: 20_000 });
+      const mcpConfig = await page.locator("pre.mono").first().textContent();
+      assert(
+        Boolean(mcpConfig?.includes("mcpServers")),
+        `the panel must offer a paste-ready config, got: ${mcpConfig}`,
+      );
+      assert(
+        Boolean(mcpConfig?.includes("slate")),
+        "the config must name the server, so a harness knows what it is connecting to",
+      );
+      steps.push("ui: the panel says how an agent connects, with a config to paste");
+
       await page.screenshot({ path: join(artifactDir, "host-health.png"), fullPage: true });
       steps.push("ui: health is a top-level page, and a missing tool links to how to install it");
 

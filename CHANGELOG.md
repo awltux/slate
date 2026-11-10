@@ -2,6 +2,14 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Health says how an agent drives Slate
+
+- **An "Agent access" card** on the health page names the three surfaces - MCP over stdio, the HTTP API, the CLI - and
+  how many operations each one reaches. It carries a paste-ready MCP client config, so wiring a harness is a copy, not
+  a guess.
+- **The harness is a caller, not a service.** It is deliberately not a row in the toolchain: Slate runs without one.
+  What the panel reports is the way in, and the honest limit of each: MCP needs no credentials because it is a local
+  process, the HTTP surface takes a browser session cookie and has no bearer-token API yet.
 ## The Frames button on the plan page works again
 
 - **Frames was rejected as invalid input.** `frame.generate` did not accept the revision the plan page sends with every

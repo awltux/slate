@@ -59,6 +59,10 @@ four surfaces exist.
   which is how a fresh host starts — and the cache moved with it: one snapshot in the home, not one copy per film.
 - **Every tool is listed once**, including the archiver, with its version and (for the owner) the install path that
   explains a surprise.
+- **An agent is a caller, not a service.** The panel names the three surfaces an agent can drive (MCP over stdio, HTTP,
+  the CLI), counts the operations each reaches, and carries a paste-ready MCP config. It is not a toolchain row because
+  Slate runs without a harness; what matters is the way in, and the honest limits of each (MCP needs no credentials, the
+  HTTP surface has no bearer token yet).
 - **A tool that is missing is actionable**: the row links to its download page and states the version Slate relies on,
   so a red dot is a next step rather than a diagnosis with no treatment. The gate asserts every non-green row carries an
   https link and a requirement, and that at least one such row exists on the gate host.

@@ -25,6 +25,13 @@ interface ChainRow {
   reason: string;
 }
 
+interface AgentAccess {
+  operations: number;
+  mcp: { transport: string; command: string; args: string[]; config: string };
+  http: { route: string; transport: string; auth: string };
+  cli: { command: string };
+}
+
 interface Capabilities {
   checkedAt: string;
   platform: string;
@@ -40,6 +47,7 @@ export function Health() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [agent, setAgent] = useState<AgentAccess | null>(null);
 
   const load = useCallback(async (refresh: boolean) => {
     setBusy(true);
@@ -57,6 +65,13 @@ export function Health() {
   useEffect(() => {
     void load(false);
   }, [load]);
+
+  // Not a service: an agent is a caller. This is how one connects, and how many operations it will see.
+  useEffect(() => {
+    void runGlobalOp<AgentAccess>("agent.access", {})
+      .then((envelope) => setAgent(envelope.data))
+      .catch(() => undefined);
+  }, []);
 
   if (error) {
     return (
@@ -96,6 +111,70 @@ export function Health() {
         </p>
       </div>
 
+      <div className="card">
+        <h2>Agent access</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Slate can be driven by a person in the browser or by an agent over a protocol. Every operation is
+          reachable both ways, so an agent is a caller of this same system rather than a second
+          implementation.
+          {agent ? ` ${agent.operations} operations are exposed.` : ""}
+        </p>
+        {agent ? (
+          <>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: 90 }}>Surface</th>
+                  <th>How</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>MCP</td>
+                  <td>
+                    <div className="mono" style={{ fontSize: 12 }}>
+                      {agent.mcp.command} {agent.mcp.args.join(" ")}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      stdio, one tool per operation. Paste this into the harness&apos;s client config:
+                    </div>
+                    <pre
+                      className="mono"
+                      style={{ fontSize: 11, margin: "0.3rem 0 0", whiteSpace: "pre-wrap" }}
+                    >
+                      {agent.mcp.config}
+                    </pre>
+                  </td>
+                </tr>
+                <tr>
+                  <td>HTTP</td>
+                  <td>
+                    <div className="mono" style={{ fontSize: 12 }}>
+                      {agent.http.route}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {agent.http.auth}
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>CLI</td>
+                  <td>
+                    <div className="mono" style={{ fontSize: 12 }}>
+                      {agent.cli.command}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      The same registry with no daemon: useful for a script, a cron job or a CI check.
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <p className="muted">Reading the surfaces…</p>
+        )}
+      </div>
       <div className="card">
         <h2>Chains</h2>
         <table>
