@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { SlateError } from "../domain/result.js";
 import { ingestAsset } from "../kernel/production/assets.js";
+import { sheetReference } from "../kernel/production/entities.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import {
   type ProductionDocument,
@@ -86,7 +87,7 @@ export const cutBuild = defineOp({
       const sceneLocation = before.scenes[shot.sceneId]?.entityIds
         .map((id) => before.entities[id])
         .find((entity) => entity?.kind === "location");
-      const cover = sceneLocation?.identity?.images[0]?.assetId;
+      const cover = sheetReference(sceneLocation?.identity ?? null);
       const assetId = shot.frames.first ?? shot.frames.board ?? cover;
       if (!assetId) continue;
       items.push({ shotId: shot.id, assetId, durationSec: shot.durationSec });

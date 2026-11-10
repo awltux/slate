@@ -9,6 +9,7 @@ import {
   writeGlobalLibrary,
 } from "../kernel/library/store.js";
 import { assetFile, ingestAsset } from "../kernel/production/assets.js";
+import type { SheetVersion } from "../kernel/production/entities.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { loadDocuments } from "./documents.js";
 import { defineOp } from "./registry.js";
@@ -32,7 +33,8 @@ function itemView(item: GlobalItem) {
     name: item.name,
     version: item.version,
     updatedAt: item.updatedAt,
-    coverAssetId: item.identity?.images[0]?.assetId ?? null,
+    // The cover is the composed reference sheet, which is the picture the sheet is known by.
+    coverAssetId: item.identity?.compositeAssetId ?? item.identity?.images[0]?.assetId ?? null,
     sourceProjectId: item.sourceProjectId,
   };
 }
@@ -66,27 +68,32 @@ export const libraryPush = defineOp({
     const version = (existing?.version ?? 0) + 1;
 
     // Images are copied into the library store so the global item outlives the project.
-    const copySheet = async (images: Array<{ role: string; assetId: string }>) => {
-      const copied: Array<{ role: string; assetId: string }> = [];
-      for (const image of images) {
-        const asset = production.assets[image.assetId];
-        if (!asset) continue;
-        const libraryAssetId = `last_${image.assetId.slice(4)}`;
-        await copyIntoLibrary(context.home, assetFile(context.root, asset), libraryAssetId);
-        copied.push({ role: image.role, assetId: libraryAssetId });
-      }
-      return copied;
+    const copyImage = async (assetId: string): Promise<string | null> => {
+      const asset = production.assets[assetId];
+      if (!asset) return null;
+      const libraryAssetId = `last_${assetId.slice(4)}`;
+      await copyIntoLibrary(context.home, assetFile(context.root, asset), libraryAssetId);
+      return libraryAssetId;
     };
 
-    const identity = entity.identity
-      ? {
-          version: entity.identity.version,
-          images: await copySheet(entity.identity.images),
-          heightM: entity.identity.measurements.heightM,
-          licence: entity.identity.rights.licence,
-          likenessConsent: entity.identity.rights.likenessConsent,
-        }
-      : null;
+    const copySheet = async (sheet: SheetVersion) => {
+      const images: Array<{ role: string | null; assetId: string; status: string }> = [];
+      for (const image of sheet.images) {
+        const copied = await copyImage(image.assetId);
+        if (copied) images.push({ role: image.role, assetId: copied, status: image.status });
+      }
+      return {
+        version: sheet.version,
+        images,
+        // The composed reference travels with the sheet: the library item's cover is that one picture.
+        compositeAssetId: sheet.compositeAssetId ? await copyImage(sheet.compositeAssetId) : null,
+        heightM: sheet.measurements.heightM,
+        licence: sheet.rights.licence,
+        likenessConsent: sheet.rights.likenessConsent,
+      };
+    };
+
+    const identity = entity.identity ? await copySheet(entity.identity) : null;
 
     const variants: GlobalItem["variants"] = [];
     for (const variant of entity.variants) {
@@ -94,15 +101,7 @@ export const libraryPush = defineOp({
         name: variant.name,
         description: variant.description,
         prompt: variant.prompt,
-        sheet: variant.sheet
-          ? {
-              version: variant.sheet.version,
-              images: await copySheet(variant.sheet.images),
-              heightM: variant.sheet.measurements.heightM,
-              licence: variant.sheet.rights.licence,
-              likenessConsent: variant.sheet.rights.likenessConsent,
-            }
-          : null,
+        sheet: variant.sheet ? await copySheet(variant.sheet) : null,
       });
     }
 
@@ -174,25 +173,35 @@ export const libraryPull = defineOp({
       throw new SlateError("not_found", `the global item ${entity.libraryId} no longer exists`);
     }
 
-    const ingestImages = async (images: Array<{ role: string; assetId: string }>) => {
+    const ingestImage = async (assetId: string): Promise<string> => {
       const paths = libraryPaths(context.home);
-      const results: Array<{ role: string; assetId: string }> = [];
-      for (const image of images) {
-        const source = `${paths.assetsDir}/${image.assetId}.png`;
-        const asset = await ingestAsset(context.root, {
-          kind: "sheet",
-          sourcePath: source,
-          clock: context.clock,
-        });
-        results.push({ role: image.role, assetId: asset.id });
-      }
-      return results;
+      const asset = await ingestAsset(context.root, {
+        kind: "sheet",
+        sourcePath: `${paths.assetsDir}/${assetId}.png`,
+        clock: context.clock,
+      });
+      return asset.id;
     };
 
-    const identityImages = item.identity ? await ingestImages(item.identity.images) : [];
-    const variantImages = new Map<string, Array<{ role: string; assetId: string }>>();
+    const ingestSheet = async (sheet: NonNullable<GlobalItem["identity"]>) => {
+      const images: Array<{ role: string | null; assetId: string; status: string }> = [];
+      for (const image of sheet.images) {
+        images.push({ role: image.role, assetId: await ingestImage(image.assetId), status: image.status });
+      }
+      const compositeAssetId = sheet.compositeAssetId ? await ingestImage(sheet.compositeAssetId) : null;
+      return { images, compositeAssetId };
+    };
+
+    const identity = item.identity ? await ingestSheet(item.identity) : null;
+    const variantSheets = new Map<
+      string,
+      {
+        images: Array<{ role: string | null; assetId: string; status: string }>;
+        compositeAssetId: string | null;
+      }
+    >();
     for (const variant of item.variants) {
-      if (variant.sheet) variantImages.set(variant.name, await ingestImages(variant.sheet.images));
+      if (variant.sheet) variantSheets.set(variant.name, await ingestSheet(variant.sheet));
     }
 
     const result = await commitDocuments({
@@ -209,11 +218,14 @@ export const libraryPull = defineOp({
         local.description = item.description;
         local.prompt = item.prompt;
         local.libraryVersion = item.version;
-        if (item.identity && local.identity) {
+        // The global item is the authority on a pull, so any edit in progress is abandoned rather than merged.
+        local.sheetDraft = null;
+        if (item.identity && local.identity && identity) {
           local.identity = {
             ...local.identity,
             version: local.identity.version + 1,
-            images: identityImages.map((image) => ({ role: image.role as never, assetId: image.assetId })),
+            compositeAssetId: identity.compositeAssetId,
+            images: identity.images as never,
             measurements: { heightM: item.identity.heightM },
             rights: {
               licence: item.identity.licence,
@@ -225,28 +237,31 @@ export const libraryPull = defineOp({
           };
         }
         local.variants = item.variants.map((variant) => {
-          const images = variantImages.get(variant.name) ?? [];
+          const sheet = variantSheets.get(variant.name);
           return {
             id: newId("var"),
             name: variant.name,
             description: variant.description,
             prompt: variant.prompt,
-            sheet: variant.sheet
-              ? {
-                  version: variant.sheet.version,
-                  kind: "variant" as const,
-                  variantId: null,
-                  images: images.map((image) => ({ role: image.role as never, assetId: image.assetId })),
-                  measurements: { heightM: variant.sheet.heightM },
-                  rights: {
-                    licence: variant.sheet.licence,
-                    likenessConsent: variant.sheet.likenessConsent as never,
-                  },
-                  note: `pulled from the library v${item.version}`,
-                  actor: context.actor,
-                  createdAt: context.clock.now(),
-                }
-              : null,
+            sheet:
+              variant.sheet && sheet
+                ? {
+                    version: variant.sheet.version,
+                    kind: "variant" as const,
+                    variantId: null,
+                    compositeAssetId: sheet.compositeAssetId,
+                    images: sheet.images as never,
+                    measurements: { heightM: variant.sheet.heightM },
+                    rights: {
+                      licence: variant.sheet.licence,
+                      likenessConsent: variant.sheet.likenessConsent as never,
+                    },
+                    note: `pulled from the library v${item.version}`,
+                    actor: context.actor,
+                    createdAt: context.clock.now(),
+                  }
+                : null,
+            sheetDraft: null,
             createdAt: context.clock.now(),
           };
         });
@@ -254,7 +269,7 @@ export const libraryPull = defineOp({
     });
 
     return {
-      data: { entityId: input.entityId, version: item.version, images: identityImages.length },
+      data: { entityId: input.entityId, version: item.version, images: identity?.images.length ?? 0 },
       version: result.project.revision,
       commit: result.commit.id,
       next: ["entity.list"],
@@ -283,23 +298,34 @@ export const libraryImport = defineOp({
 
     const paths = libraryPaths(context.home);
     const entityId = newId("ent");
-    const ingest = async (images: Array<{ role: string; assetId: string }>) => {
-      const results: Array<{ role: string; assetId: string }> = [];
-      for (const image of images) {
-        const asset = await ingestAsset(context.root, {
-          kind: "sheet",
-          sourcePath: `${paths.assetsDir}/${image.assetId}.png`,
-          clock: context.clock,
-        });
-        results.push({ role: image.role, assetId: asset.id });
-      }
-      return results;
+    const ingestImage = async (assetId: string): Promise<string> => {
+      const asset = await ingestAsset(context.root, {
+        kind: "sheet",
+        sourcePath: `${paths.assetsDir}/${assetId}.png`,
+        clock: context.clock,
+      });
+      return asset.id;
     };
 
-    const identity = item.identity ? await ingest(item.identity.images) : null;
-    const variantSheets = new Map<string, Array<{ role: string; assetId: string }>>();
+    const ingestSheet = async (sheet: NonNullable<GlobalItem["identity"]>) => {
+      const images: Array<{ role: string | null; assetId: string; status: string }> = [];
+      for (const image of sheet.images) {
+        images.push({ role: image.role, assetId: await ingestImage(image.assetId), status: image.status });
+      }
+      const compositeAssetId = sheet.compositeAssetId ? await ingestImage(sheet.compositeAssetId) : null;
+      return { images, compositeAssetId };
+    };
+
+    const identity = item.identity ? await ingestSheet(item.identity) : null;
+    const variantSheets = new Map<
+      string,
+      {
+        images: Array<{ role: string | null; assetId: string; status: string }>;
+        compositeAssetId: string | null;
+      }
+    >();
     for (const variant of item.variants) {
-      if (variant.sheet) variantSheets.set(variant.name, await ingest(variant.sheet.images));
+      if (variant.sheet) variantSheets.set(variant.name, await ingestSheet(variant.sheet));
     }
 
     const result = await commitDocuments({
@@ -326,7 +352,8 @@ export const libraryImport = defineOp({
                   version: 1,
                   kind: "identity",
                   variantId: null,
-                  images: identity.map((image) => ({ role: image.role as never, assetId: image.assetId })),
+                  compositeAssetId: identity.compositeAssetId,
+                  images: identity.images as never,
                   measurements: { heightM: item.identity.heightM },
                   rights: {
                     licence: item.identity.licence,
@@ -337,30 +364,31 @@ export const libraryImport = defineOp({
                   createdAt: context.clock.now(),
                 }
               : null,
+          sheetDraft: null,
           variants: item.variants.map((variant) => ({
             id: newId("var"),
             name: variant.name,
             description: variant.description,
             prompt: variant.prompt,
-            sheet: variant.sheet
-              ? {
-                  version: 1,
-                  kind: "variant" as const,
-                  variantId: null,
-                  images: (variantSheets.get(variant.name) ?? []).map((image) => ({
-                    role: image.role as never,
-                    assetId: image.assetId,
-                  })),
-                  measurements: { heightM: variant.sheet.heightM },
-                  rights: {
-                    licence: variant.sheet.licence,
-                    likenessConsent: variant.sheet.likenessConsent as never,
-                  },
-                  note: `imported from the library v${item.version}`,
-                  actor: context.actor,
-                  createdAt: context.clock.now(),
-                }
-              : null,
+            sheet:
+              variant.sheet && variantSheets.get(variant.name)
+                ? {
+                    version: 1,
+                    kind: "variant" as const,
+                    variantId: null,
+                    compositeAssetId: variantSheets.get(variant.name)?.compositeAssetId ?? null,
+                    images: (variantSheets.get(variant.name)?.images ?? []) as never,
+                    measurements: { heightM: variant.sheet.heightM },
+                    rights: {
+                      licence: variant.sheet.licence,
+                      likenessConsent: variant.sheet.likenessConsent as never,
+                    },
+                    note: `imported from the library v${item.version}`,
+                    actor: context.actor,
+                    createdAt: context.clock.now(),
+                  }
+                : null,
+            sheetDraft: null,
             createdAt: context.clock.now(),
           })),
           candidates: [],

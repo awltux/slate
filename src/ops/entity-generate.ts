@@ -8,6 +8,7 @@ import { SlateError } from "../domain/result.js";
 import { renderStill } from "../kernel/catalog/fake-gateway.js";
 import { appendLedger, readLedger, remainingUsd } from "../kernel/ledger/ledger.js";
 import { type Asset, ingestAsset } from "../kernel/production/assets.js";
+import { draftSheet } from "../kernel/production/entities.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { projectPaths } from "../kernel/workspace/paths.js";
 import { loadDocuments } from "./documents.js";
@@ -130,6 +131,19 @@ export const entityGenerate = defineOp({
             createdAt: context.clock.now(),
           });
         }
+        // New pictures join the set that is already there rather than replacing it: the sheet goes back into edit mode
+        // with the published items, the ones already decided, and these.
+        if (variant === null) {
+          const draft = draftSheet(entity, context.actor, context.clock.now());
+          target.sheetDraft = {
+            ...draft,
+            actor: context.actor,
+            images: [
+              ...draft.images,
+              ...created.map((item) => ({ role: null, assetId: item.asset.id, status: "active" as const })),
+            ],
+          };
+        }
       },
     });
 
@@ -149,7 +163,7 @@ export const entityGenerate = defineOp({
       version: result.project.revision,
       commit: result.commit.id,
       via: "fake",
-      next: ["sheet.select"],
+      next: ["sheet.edit", "sheet.publish"],
     };
   },
 });

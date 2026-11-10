@@ -60,7 +60,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `service.set-path` | write | `service_set-path` | Point a service at a specific executable, after checking that it runs. |
 | `session.brief` | read | `session_brief` | A bounded read of where the film stands: the cheapest way for a new session to start. |
 | `set.attach` | write | `set_attach` | Attach a digital set: a validated manifest, plus the .blend it came from when available. |
-| `sheet.select` | write | `sheet_select` | Publish a sheet from chosen candidates, for the identity or a variant. |
+| `sheet.edit` | write | `sheet_edit` | Open a sheet for editing, or replace the items in the sheet being edited. |
+| `sheet.publish` | write | `sheet_publish` | Publish the sheet being edited and compose its active items into one reference image. |
 | `shot.create` | write | `shot_create` | Add a shot to a scene; it is built from that scene's current text. |
 | `shot.get` | read | `shot_get` | One shot with its readiness checks and staleness. |
 | `shot.rebase` | write | `shot_rebase` | Record that a shot has been re-checked against its scene's current text. |
@@ -1596,7 +1597,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
-### `sheet.select`
+### `sheet.edit`
 
 ```json
 {
@@ -1605,39 +1606,82 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "entityId": {
       "type": "string"
     },
-    "images": {
+    "variantId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "items": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
+          "assetId": {
+            "type": "string"
+          },
           "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "front",
+                  "three-quarter-left",
+                  "profile-left",
+                  "back",
+                  "profile-right",
+                  "three-quarter-right",
+                  "close-up",
+                  "detail",
+                  "lighting",
+                  "plate",
+                  "palette",
+                  "texture"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "status": {
             "type": "string",
             "enum": [
-              "front",
-              "three-quarter-left",
-              "profile-left",
-              "back",
-              "profile-right",
-              "three-quarter-right",
-              "close-up",
-              "detail",
-              "lighting",
-              "plate",
-              "palette",
-              "texture"
-            ]
-          },
-          "candidateId": {
-            "type": "string"
+              "active",
+              "disabled",
+              "deleted"
+            ],
+            "default": "active"
           }
         },
         "required": [
-          "role",
-          "candidateId"
+          "assetId"
         ],
         "additionalProperties": false
-      },
-      "minItems": 1
+      }
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "entityId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `sheet.publish`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entityId": {
+      "type": "string"
     },
     "variantId": {
       "type": [
@@ -1677,8 +1721,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     }
   },
   "required": [
-    "entityId",
-    "images"
+    "entityId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

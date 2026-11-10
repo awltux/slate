@@ -6,12 +6,21 @@ import {
   EntityKindSchema,
   HEADSHOT_ANGLES,
   RightsSchema,
+  type SheetImage,
+  SheetItemStatusSchema,
   SheetRoleSchema,
+  type SheetVersion,
+  draftSheetFrom,
   missingAngles,
 } from "../kernel/production/entities.js";
+import { composeSheetAsset } from "../kernel/production/sheet-asset.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { loadDocuments } from "./documents.js";
 import { defineOp } from "./registry.js";
+
+const SheetItemViewSchema = z
+  .object({ role: z.string().nullable(), assetId: z.string(), status: z.string() })
+  .strict();
 
 const EntityViewSchema = z
   .object({
@@ -25,7 +34,18 @@ const EntityViewSchema = z
     libraryId: z.string().nullable(),
     libraryVersion: z.number().int().nullable(),
     version: z.number().int(),
-    images: z.array(z.object({ role: z.string(), assetId: z.string() }).strict()),
+    images: z.array(SheetItemViewSchema),
+    /** The one image the published sheet shares as a reference. */
+    compositeAssetId: z.string().nullable(),
+    /** Present while the sheet is being edited, holding the version publishing would produce. */
+    draft: z
+      .object({
+        version: z.number().int(),
+        items: z.array(SheetItemViewSchema),
+        missingAngles: z.array(z.string()),
+      })
+      .strict()
+      .nullable(),
     missingAngles: z.array(z.string()),
     heightM: z.number().nullable(),
     licence: z.string(),
@@ -38,7 +58,7 @@ const EntityViewSchema = z
           description: z.string(),
           prompt: z.string(),
           version: z.number().int(),
-          images: z.array(z.object({ role: z.string(), assetId: z.string() }).strict()),
+          images: z.array(SheetItemViewSchema),
           missingAngles: z.array(z.string()),
         })
         .strict(),
@@ -49,6 +69,10 @@ const EntityViewSchema = z
     createdAt: z.string(),
   })
   .strict();
+
+function itemView(image: SheetImage) {
+  return { role: image.role, assetId: image.assetId, status: image.status };
+}
 
 function entityView(entity: Entity) {
   return {
@@ -62,7 +86,15 @@ function entityView(entity: Entity) {
     libraryId: entity.libraryId,
     libraryVersion: entity.libraryVersion,
     version: entity.identity?.version ?? 0,
-    images: entity.identity?.images.map((image) => ({ role: image.role, assetId: image.assetId })) ?? [],
+    images: entity.identity?.images.map(itemView) ?? [],
+    compositeAssetId: entity.identity?.compositeAssetId ?? null,
+    draft: entity.sheetDraft
+      ? {
+          version: entity.sheetDraft.version,
+          items: entity.sheetDraft.images.map(itemView),
+          missingAngles: entity.kind === "character" ? missingAngles(entity.sheetDraft) : [],
+        }
+      : null,
     missingAngles: entity.kind === "character" ? missingAngles(entity.identity) : [],
     heightM: entity.identity?.measurements.heightM ?? null,
     licence: entity.identity?.rights.licence ?? "",
@@ -73,7 +105,7 @@ function entityView(entity: Entity) {
       description: variant.description,
       prompt: variant.prompt,
       version: variant.sheet?.version ?? 0,
-      images: variant.sheet?.images.map((image) => ({ role: image.role, assetId: image.assetId })) ?? [],
+      images: variant.sheet?.images.map(itemView) ?? [],
       missingAngles: entity.kind === "character" ? missingAngles(variant.sheet) : [],
     })),
     candidates: entity.candidates.map((candidate) => ({
@@ -123,6 +155,7 @@ export const entityCreate = defineOp({
           libraryId: null,
           libraryVersion: null,
           identity: null,
+          sheetDraft: null,
           variants: [],
           candidates: [],
           createdAt: context.clock.now(),
@@ -231,6 +264,7 @@ export const variantCreate = defineOp({
           description: input.description,
           prompt: input.prompt,
           sheet: null,
+          sheetDraft: null,
           createdAt: context.clock.now(),
         });
       },
@@ -320,21 +354,152 @@ export const entityAngles = defineOp({
   summary: "The six headshot rotations a character sheet must cover.",
   input: z.object({}).strict(),
   output: z.object({ angles: z.array(z.string()) }).strict(),
-  run: async () => ({ data: { angles: [...HEADSHOT_ANGLES] }, version: 0, next: ["sheet.select"] }),
+  run: async () => ({ data: { angles: [...HEADSHOT_ANGLES] }, version: 0, next: ["sheet.edit"] }),
 });
 
 /**
- * Choose which candidates become the sheet. For a character the identity sheet is a headshot set of six rotations; a
- * selection missing one is accepted but reported, because a usable sheet with five angles beats no sheet at all.
+ * The published sheet and the sheet being edited, for the identity or for one variant. A variant with no id is a mistake,
+ * not an empty sheet, so it is reported rather than silently treated as the identity.
  */
-export const sheetSelect = defineOp({
-  name: "sheet.select",
+function sheetHolder(entity: Entity, variantId: string | null) {
+  if (variantId === null) {
+    return {
+      published: entity.identity,
+      draft: entity.sheetDraft,
+      kind: "identity" as const,
+      variantId: null,
+      label: entity.name,
+      save: (production: { entities: Record<string, Entity> }, sheet: SheetVersion | null) => {
+        const target = production.entities[entity.id];
+        if (target) target.sheetDraft = sheet;
+      },
+      commitSheet: (production: { entities: Record<string, Entity> }, sheet: SheetVersion | null) => {
+        const target = production.entities[entity.id];
+        if (target) target.identity = sheet;
+      },
+    };
+  }
+  const variant = entity.variants.find((item) => item.id === variantId);
+  if (!variant) throw new SlateError("not_found", `no variant ${variantId}`);
+  return {
+    published: variant.sheet,
+    draft: variant.sheetDraft,
+    kind: "variant" as const,
+    variantId,
+    label: `${entity.name} / ${variant.name}`,
+    save: (production: { entities: Record<string, Entity> }, sheet: SheetVersion | null) => {
+      const target = production.entities[entity.id]?.variants.find((item) => item.id === variantId);
+      if (target) target.sheetDraft = sheet;
+    },
+    commitSheet: (production: { entities: Record<string, Entity> }, sheet: SheetVersion | null) => {
+      const target = production.entities[entity.id]?.variants.find((item) => item.id === variantId);
+      if (target) target.sheet = sheet;
+    },
+  };
+}
+
+/**
+ * Opening a sheet for editing and changing it are the same operation: the first call seeds a draft from the published
+ * sheet, and every later call replaces the item set. Nothing here touches the published version, so a shot pinned to it
+ * does not go stale merely because someone started editing.
+ */
+export const sheetEdit = defineOp({
+  name: "sheet.edit",
   policy: "write",
-  summary: "Publish a sheet from chosen candidates, for the identity or a variant.",
+  summary: "Open a sheet for editing, or replace the items in the sheet being edited.",
   input: z
     .object({
       entityId: z.string(),
-      images: z.array(z.object({ role: SheetRoleSchema, candidateId: z.string() }).strict()).min(1),
+      variantId: z.string().nullable().default(null),
+      items: z
+        .array(
+          z
+            .object({
+              assetId: z.string(),
+              role: SheetRoleSchema.nullable().default(null),
+              status: SheetItemStatusSchema.default("active"),
+            })
+            .strict(),
+        )
+        .optional(),
+      expectedRevision: z.number().int().optional(),
+    })
+    .strict(),
+  output: z
+    .object({
+      entityId: z.string(),
+      variantId: z.string().nullable(),
+      version: z.number().int(),
+      items: z.array(SheetItemViewSchema),
+      missingAngles: z.array(z.string()),
+      compositeAssetId: z.string().nullable(),
+    })
+    .strict(),
+  touched: (input) => [`entity:${input.entityId}`],
+  run: async (input, context) => {
+    const { production: before } = await loadDocuments(context);
+    const entity = before.entities[input.entityId];
+    if (!entity) throw new SlateError("not_found", `no entity ${input.entityId}`);
+
+    for (const item of input.items ?? []) {
+      if (!before.assets[item.assetId]) throw new SlateError("not_found", `no image ${item.assetId}`);
+    }
+
+    const holder = sheetHolder(entity, input.variantId);
+    const draft =
+      holder.draft ??
+      draftSheetFrom(holder.published, {
+        kind: holder.kind,
+        variantId: holder.variantId,
+        defaultConsent: entity.kind === "character" ? "pending" : "not-required",
+        actor: context.actor,
+        now: context.clock.now(),
+      });
+    const items = input.items ?? draft.images;
+
+    const result = await commitDocuments({
+      root: context.root,
+      actor: context.actor,
+      intent: `sheet: edit ${holder.label} v${draft.version} (${items.length} item(s))`,
+      touched: [`entity:${entity.id}`],
+      clock: context.clock,
+      expectedRevision: input.expectedRevision,
+      mutate: ({ production }) => {
+        holder.save(production, { ...draft, images: items, actor: context.actor });
+      },
+    });
+
+    const updated = result.production.entities[input.entityId];
+    const edited = updated ? sheetHolder(updated, input.variantId).draft : null;
+    if (!updated || !edited) throw new SlateError("internal", "the sheet draft was not written");
+    return {
+      data: {
+        entityId: updated.id,
+        variantId: input.variantId,
+        version: edited.version,
+        items: edited.images.map(itemView),
+        missingAngles: updated.kind === "character" ? missingAngles(edited) : [],
+        compositeAssetId: sheetHolder(updated, input.variantId).published?.compositeAssetId ?? null,
+      },
+      version: result.project.revision,
+      commit: result.commit.id,
+      next: ["sheet.edit", "sheet.publish"],
+    };
+  },
+});
+
+/**
+ * Publishing turns the sheet being edited into the contract: the active items are tiled into one reference image, the
+ * disabled ones stay listed but out of it, and the deleted ones are gone. The version advances only here, so a pin is
+ * only invalidated by a real publish.
+ */
+export const sheetPublish = defineOp({
+  name: "sheet.publish",
+  policy: "write",
+  summary: "Publish the sheet being edited and compose its active items into one reference image.",
+  input: z
+    .object({
+      entityId: z.string(),
       variantId: z.string().nullable().default(null),
       heightM: z.number().positive().optional(),
       rights: RightsSchema.partial().optional(),
@@ -345,9 +510,12 @@ export const sheetSelect = defineOp({
   output: z
     .object({
       entityId: z.string(),
+      variantId: z.string().nullable(),
       version: z.number().int(),
-      images: z.array(z.object({ role: z.string(), assetId: z.string() }).strict()),
+      images: z.array(SheetItemViewSchema),
+      compositeAssetId: z.string().nullable(),
       missingAngles: z.array(z.string()),
+      dropped: z.number().int(),
     })
     .strict(),
   touched: (input) => [`entity:${input.entityId}`],
@@ -356,80 +524,107 @@ export const sheetSelect = defineOp({
     const entity = before.entities[input.entityId];
     if (!entity) throw new SlateError("not_found", `no entity ${input.entityId}`);
 
-    const variant = input.variantId ? entity.variants.find((item) => item.id === input.variantId) : null;
-    if (input.variantId && !variant) throw new SlateError("not_found", `no variant ${input.variantId}`);
+    const holder = sheetHolder(entity, input.variantId);
+    const draft = holder.draft;
+    if (!draft) {
+      throw new SlateError("readiness_failed", "this sheet is not being edited", {
+        detail: { checks: [{ id: "draft", status: "fail", detail: "open it with sheet.edit first" }] },
+      });
+    }
 
-    const chosen = input.images.map((image) => {
-      const candidate = entity.candidates.find((item) => item.id === image.candidateId);
-      if (!candidate) throw new SlateError("not_found", `no candidate ${image.candidateId}`);
-      return { role: image.role, assetId: candidate.assetId, candidateId: candidate.id };
-    });
+    const kept = draft.images.filter((image) => image.status !== "deleted");
+    if (kept.length === 0) {
+      throw new SlateError("readiness_failed", "every item is marked delete, so there would be no sheet", {
+        detail: { checks: [{ id: "items", status: "fail", detail: "no item would remain" }] },
+      });
+    }
+    const active = kept.filter((image) => image.status === "active");
 
-    const previous = variant ? variant.sheet : entity.identity;
-    const version = (previous?.version ?? 0) + 1;
-    const defaultConsent = entity.kind === "character" ? "pending" : "not-required";
     const rights = {
-      licence: input.rights?.licence ?? previous?.rights.licence ?? "",
-      likenessConsent: input.rights?.likenessConsent ?? previous?.rights.likenessConsent ?? defaultConsent,
+      licence: input.rights?.licence ?? draft.rights.licence,
+      likenessConsent: input.rights?.likenessConsent ?? draft.rights.likenessConsent,
     };
+
+    const ffmpeg = await context.tool("ffmpeg");
+    const composite = await composeSheetAsset({
+      root: context.root,
+      production: before,
+      images: active,
+      ffmpeg,
+      run: context.run,
+      clock: context.clock,
+    });
 
     const result = await commitDocuments({
       root: context.root,
       actor: context.actor,
-      intent: `sheet: ${entity.name}${variant ? ` / ${variant.name}` : ""} v${version} (${chosen.length} views)`,
+      intent: `sheet: ${holder.label} v${draft.version} published (${active.length} of ${kept.length} in the reference)`,
       touched: [`entity:${entity.id}`],
       clock: context.clock,
       expectedRevision: input.expectedRevision,
       mutate: ({ production }) => {
-        const target = production.entities[input.entityId];
-        if (!target) return;
-        const sheet = {
-          version,
-          kind: variant ? ("variant" as const) : ("identity" as const),
-          variantId: variant?.id ?? null,
-          images: chosen.map((image) => ({ role: image.role as never, assetId: image.assetId })),
-          measurements: { heightM: input.heightM ?? previous?.measurements.heightM ?? null },
-          rights: { licence: rights.licence, likenessConsent: rights.likenessConsent },
-          note: input.note,
+        if (composite) production.assets[composite.id] = composite;
+        holder.commitSheet(production, {
+          version: draft.version,
+          kind: holder.kind,
+          variantId: holder.variantId,
+          images: kept,
+          compositeAssetId: composite?.id ?? null,
+          measurements: { heightM: input.heightM ?? draft.measurements.heightM },
+          rights,
+          note: input.note || draft.note,
           actor: context.actor,
           createdAt: context.clock.now(),
-        };
-        if (variant) {
-          const targetVariant = target.variants.find((item) => item.id === variant.id);
-          if (targetVariant) targetVariant.sheet = sheet;
-        } else {
-          target.identity = sheet;
+        });
+        holder.save(production, null);
+        // A candidate is a decision waiting to be made; once the sheet is published, it has been made.
+        const target = production.entities[input.entityId];
+        const decided = new Set(draft.images.map((image) => image.assetId));
+        if (target) {
+          target.candidates = target.candidates.filter(
+            (candidate) =>
+              !decided.has(candidate.assetId) || candidate.variantId !== (holder.variantId ?? null),
+          );
         }
-        const used = new Set(chosen.map((image) => image.candidateId));
-        target.candidates = target.candidates.filter((candidate) => !used.has(candidate.id));
       },
     });
 
     const updated = result.production.entities[input.entityId];
-    const sheet = variant
-      ? updated?.variants.find((item) => item.id === variant.id)?.sheet
-      : updated?.identity;
+    const sheet = updated ? sheetHolder(updated, input.variantId).published : null;
     if (!updated || !sheet) throw new SlateError("internal", "the sheet was not written");
 
-    const staleShots = variant
-      ? []
-      : Object.values(result.production.shots).filter(
-          (shot) =>
-            shot.entityIds.includes(input.entityId) &&
-            shot.pins[input.entityId] !== (updated.identity?.version ?? 0),
-        );
+    const staleShots =
+      input.variantId === null
+        ? Object.values(result.production.shots).filter(
+            (shot) => shot.entityIds.includes(input.entityId) && shot.pins[input.entityId] !== sheet.version,
+          )
+        : [];
 
     return {
       data: {
         entityId: updated.id,
+        variantId: input.variantId,
         version: sheet.version,
-        images: sheet.images.map((image) => ({ role: image.role, assetId: image.assetId })),
+        images: sheet.images.map(itemView),
+        compositeAssetId: sheet.compositeAssetId,
         missingAngles: updated.kind === "character" ? missingAngles(sheet) : [],
+        dropped: draft.images.length - kept.length,
       },
       version: result.project.revision,
       commit: result.commit.id,
       stale: { added: staleShots.map((shot) => shot.id), cleared: [] },
-      next: ["shot.set-entities"],
+      warnings: composite
+        ? []
+        : [
+            {
+              code: "no_composite",
+              message:
+                active.length === 0
+                  ? "No active item, so the sheet has no reference image to share."
+                  : "FFmpeg is unavailable, so the sheet has no reference image yet.",
+            },
+          ],
+      next: ["shot.set-entities", "library.push"],
     };
   },
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { newId } from "../domain/ids.js";
 import { SlateError } from "../domain/result.js";
+import { sheetReference } from "../kernel/production/entities.js";
 import { isShotStale } from "../kernel/production/graph.js";
 import { readinessSummary, shotReadiness } from "../kernel/production/readiness.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
@@ -54,13 +55,13 @@ export function sceneSummary(sceneId: string, production: ProductionDocument) {
       entityId: entity.id,
       name: entity.name,
       kind: entity.kind,
-      coverAssetId: entity.identity?.images[0]?.assetId ?? null,
+      coverAssetId: sheetReference(entity.identity),
     })),
     location: location
       ? {
           entityId: location.id,
           name: location.name,
-          coverAssetId: location.identity?.images[0]?.assetId ?? null,
+          coverAssetId: sheetReference(location.identity),
         }
       : null,
     staleCount: shots.filter((shot) => shot.stale).length,
@@ -247,7 +248,7 @@ export const sceneSetEntities = defineOp({
           ? {
               entityId: locationEntity.id,
               name: locationEntity.name,
-              coverAssetId: locationEntity.identity?.images[0]?.assetId ?? null,
+              coverAssetId: sheetReference(locationEntity.identity),
             }
           : null,
       },

@@ -11,7 +11,11 @@ import { z } from "zod";
 export const GlobalSheetSchema = z
   .object({
     version: z.number().int().positive(),
-    images: z.array(z.object({ role: z.string(), assetId: z.string() }).strict()),
+    images: z.array(
+      z.object({ role: z.string().nullable(), assetId: z.string(), status: z.string() }).strict(),
+    ),
+    /** The composed reference image, copied into the library store under a library-owned id. */
+    compositeAssetId: z.string().nullable().default(null),
     heightM: z.number().positive().nullable(),
     licence: z.string(),
     likenessConsent: z.string(),

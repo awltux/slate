@@ -22,10 +22,21 @@ export const SheetRoleSchema = z.enum([
   "texture",
 ]);
 
+/**
+ * What is happening to an item in a sheet being edited. `active` is in the reference image; `disabled` stays in the sheet
+ * but is left out of it; `deleted` is dropped when the sheet is published, so a mistake is undone in the same gesture that
+ * made it rather than by rewriting history.
+ */
+export const SheetItemStatusSchema = z.enum(["active", "disabled", "deleted"]);
+
+export type SheetItemStatus = z.infer<typeof SheetItemStatusSchema>;
+
 export const SheetImageSchema = z
   .object({
-    role: SheetRoleSchema,
+    /** Null until someone assigns a rotation or a kind: a freshly generated candidate is in the set, not yet placed. */
+    role: SheetRoleSchema.nullable(),
     assetId: z.string().startsWith("ast_"),
+    status: SheetItemStatusSchema.default("active"),
   })
   .strict();
 
@@ -44,9 +55,14 @@ export const RightsSchema = z
   })
   .strict();
 
+export type SheetImage = z.infer<typeof SheetImageSchema>;
+
 /**
- * A published sheet is a contract: the images are what a model is conditioned on, the measurements are what a proxy is
+ * A published sheet is a contract: the items are what a model is conditioned on, the measurements are what a proxy is
  * scaled from, and the rights gate the expensive tier. `kind` distinguishes the identity sheet from a variant's.
+ *
+ * `compositeAssetId` is the one image every reference passes on: the items tiled into a single reference sheet. It is
+ * composed on publish, so `images` is the record of what went into it rather than a substitute for it.
  */
 export const SheetVersionSchema = z
   .object({
@@ -54,6 +70,7 @@ export const SheetVersionSchema = z
     kind: z.enum(["identity", "variant"]),
     variantId: z.string().nullable(),
     images: z.array(SheetImageSchema),
+    compositeAssetId: z.string().startsWith("ast_").nullable().default(null),
     measurements: MeasurementsSchema,
     rights: RightsSchema,
     note: z.string(),
@@ -76,6 +93,8 @@ export const VariantSchema = z
     /** An outfit is generated from its own prompt, so a wardrobe item is reproducible on its own. */
     prompt: z.string(),
     sheet: SheetVersionSchema.nullable(),
+    /** The variant's sheet being edited, on the same terms as the identity sheet's. */
+    sheetDraft: SheetVersionSchema.nullable().default(null),
     createdAt: z.string(),
   })
   .strict();
@@ -116,6 +135,11 @@ export const EntitySchema = z
     /** The global version this clone was last pushed from or to; null when never linked. */
     libraryVersion: z.number().int().nullable().default(null),
     identity: SheetVersionSchema.nullable(),
+    /**
+     * The sheet being edited: the published items plus whatever has been generated or marked since. It holds the next
+     * version number, so publishing never rewrites the version a shot is pinned to.
+     */
+    sheetDraft: SheetVersionSchema.nullable().default(null),
     variants: z.array(VariantSchema),
     candidates: z.array(CandidateSchema),
     createdAt: z.string(),
@@ -124,11 +148,70 @@ export const EntitySchema = z
 
 export type Entity = z.infer<typeof EntitySchema>;
 
+/** The items that go into the reference image: everything not disabled or deleted. */
+export function activeItems(sheet: SheetVersion | null): SheetImage[] {
+  return sheet ? sheet.images.filter((image) => image.status === "active") : [];
+}
+
+/**
+ * The one image a reference passes to a model. A sheet published before composites existed has none, so its first active
+ * view stands in - the same picture a single-view reference used to get.
+ */
+export function sheetReference(sheet: SheetVersion | null): string | null {
+  if (!sheet) return null;
+  return sheet.compositeAssetId ?? activeItems(sheet)[0]?.assetId ?? null;
+}
+
 /** Whether a character's identity sheet covers all six head rotations. */
 export function missingAngles(sheet: SheetVersion | null): string[] {
   if (!sheet) return [...HEADSHOT_ANGLES];
-  const covered = new Set(sheet.images.map((image) => image.role));
+  // A disabled view still belongs to the sheet; a deleted one is on its way out, so it covers nothing.
+  const covered = new Set(
+    sheet.images
+      .filter((image) => image.role !== null && image.status !== "deleted")
+      .map((image) => image.role as string),
+  );
   return HEADSHOT_ANGLES.filter((angle) => !covered.has(angle));
+}
+
+/** A fresh draft of a sheet: the next version, holding the published items exactly as they stood. */
+export function draftSheetFrom(
+  published: SheetVersion | null,
+  options: {
+    kind: "identity" | "variant";
+    variantId: string | null;
+    defaultConsent: "pending" | "not-required";
+    actor: string;
+    now: string;
+  },
+): SheetVersion {
+  return {
+    version: (published?.version ?? 0) + 1,
+    kind: options.kind,
+    variantId: options.variantId,
+    // A published sheet was pruned of deletes when it was published, so its items come back exactly as they stood.
+    images: published ? published.images.map((image) => ({ ...image })) : [],
+    compositeAssetId: null,
+    measurements: { heightM: published?.measurements.heightM ?? null },
+    rights: published?.rights ?? { licence: "", likenessConsent: options.defaultConsent },
+    note: "",
+    actor: options.actor,
+    createdAt: options.now,
+  };
+}
+
+/** The sheet being edited, seeded from the published one so edit mode starts from what is live instead of nothing. */
+export function draftSheet(entity: Entity, actor: string, now: string): SheetVersion {
+  return (
+    entity.sheetDraft ??
+    draftSheetFrom(entity.identity, {
+      kind: "identity",
+      variantId: null,
+      defaultConsent: entity.kind === "character" ? "pending" : "not-required",
+      actor,
+      now,
+    })
+  );
 }
 
 export function currentVersionNumber(entity: Entity): number {
