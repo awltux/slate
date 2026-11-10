@@ -16,6 +16,7 @@ const fal: Provider = {
   auth: { header: "Authorization", scheme: "Key {{key}}" },
   reference: DEFAULT_REFERENCE_POLICY,
   testPath: "/",
+  testMethod: "GET",
   notes: "",
 };
 

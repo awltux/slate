@@ -92,6 +92,11 @@ export const ProviderSchema = z
      * while the host is perfectly healthy, so the path that actually proves it belongs in the declaration.
      */
     testPath: z.string().default("/"),
+    /**
+     * The method a connection test uses. Almost every generation endpoint is POST-only, so a GET test answers 404/405
+     * however healthy the host is - the method belongs beside the path it is sent to.
+     */
+    testMethod: z.enum(["GET", "POST"]).default("GET"),
     notes: z.string().default(""),
   })
   .strict();

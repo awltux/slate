@@ -12,6 +12,8 @@ interface ProviderView {
   authScheme: string;
   /** Appended to the base url when Test is pressed. */
   testPath: string;
+  /** GET for a readable path, POST for the hosts that only answer a POST. */
+  testMethod: string;
   hasKey: boolean;
   notes: string;
   endpointCount: number;
@@ -728,6 +730,7 @@ function ProviderForm({
   const [authHeader, setAuthHeader] = useState(provider?.authHeader ?? "Authorization");
   const [authScheme, setAuthScheme] = useState(provider?.authScheme ?? "Bearer {{key}}");
   const [testPath, setTestPath] = useState(provider?.testPath ?? "/");
+  const [testMethod, setTestMethod] = useState(provider?.testMethod ?? "GET");
   const [mode, setMode] = useState(provider?.mode ?? "sync");
   const [apiKey, setApiKey] = useState("");
   const [forgetKey, setForgetKey] = useState(false);
@@ -825,6 +828,17 @@ function ProviderForm({
             aria-label={label("test path")}
             title="Appended to the base URL when you press Test. /models for an OpenAI-compatible host; / for most others."
           />
+        </Field>
+        <Field id={`${prefix}-provider-test-method`} label="Test method">
+          <select
+            id={`${prefix}-provider-test-method`}
+            value={testMethod}
+            onChange={(event) => setTestMethod(event.target.value)}
+            aria-label={label("test method")}
+          >
+            <option value="GET">GET — a path that answers a read</option>
+            <option value="POST">POST — an empty body, for POST-only hosts</option>
+          </select>
         </Field>
       </div>
 

@@ -47,6 +47,7 @@ const ProviderViewSchema = z
     authScheme: z.string(),
     hasKey: z.boolean(),
     testPath: z.string(),
+    testMethod: z.string(),
     notes: z.string(),
     endpointCount: z.number().int(),
     reference: ReferenceViewSchema,
@@ -155,13 +156,17 @@ export const aiTest = defineOp({
       shownHeaders[header] = apiKey ? value.replace(apiKey, "***") : value;
     }
 
+    // A POST test sends an empty object on purpose: it exercises routing and the key without describing a job.
+    const method = provider.testMethod ?? "GET";
+    const sentBody = method === "POST" ? "{}" : "";
     const send = context.http ?? httpPort;
     const started = Date.now();
     let status: number | null = null;
     let body = "";
     let failure: string | null = null;
     try {
-      const response = await send({ url, method: "GET", headers });
+      // A GET with a body is rejected by fetch, so the body is only present when there is one.
+      const response = await send({ url, method, headers, ...(sentBody ? { body: sentBody } : {}) });
       status = response.status;
       body = response.body.slice(0, 2_000);
     } catch (error) {
@@ -200,7 +205,7 @@ export const aiTest = defineOp({
         method: "GET",
         status,
         reachable: status !== null,
-        request: { method: "GET", url, headers: shownHeaders, body: "" },
+        request: { method, url, headers: shownHeaders, body: sentBody },
         response: { status, body: status === null ? "" : body, error: failure },
         auth,
         ms,
@@ -253,6 +258,7 @@ export const aiCatalog = defineOp({
           mode: provider.mode,
           baseUrl: provider.baseUrl,
           testPath: provider.testPath,
+          testMethod: provider.testMethod,
           authHeader: provider.auth.header,
           authScheme: provider.auth.scheme,
           hasKey: Boolean(keys[provider.id]),
@@ -312,6 +318,8 @@ export const aiProviderSave = defineOp({
       baseUrl: z.string().url(),
       /** Appended to the base url for a connection test. "/models" for an OpenAI-compatible host, "/" for most others. */
       testPath: z.string().default("/"),
+      /** GET for a host with a readable path, POST for the POST-only generation hosts. */
+      testMethod: z.enum(["GET", "POST"]).default("GET"),
       authHeader: z.string().default("Authorization"),
       authScheme: z.string().default("Bearer {{key}}"),
       notes: z.string().default(""),
@@ -340,6 +348,7 @@ export const aiProviderSave = defineOp({
       auth: { header: input.authHeader, scheme: input.authScheme },
       reference: input.reference ?? existing?.reference ?? DEFAULT_REFERENCE_POLICY,
       testPath: input.testPath,
+      testMethod: input.testMethod,
       notes: input.notes,
     };
 

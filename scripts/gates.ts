@@ -2352,6 +2352,32 @@ async function gate23(steps: string[]): Promise<void> {
   });
   assert(queueTest.data.mode === "queue", "a queue host's test must say which style it checked");
   assert(queueTest.data.reachable, "a queue host can still be proven reachable");
+  // POST-only hosts: a GET test can only ever say 405, so the method is part of the declaration.
+  const poster = await hostOp<{ id: string }>("ai.provider.save", {
+    name: "gate poster",
+    baseUrl: base,
+    testPath: "/gate-infer",
+    testMethod: "POST",
+    apiKey: "gate-key",
+  });
+  const posted = await hostOp<{
+    request: { method: string; body: string };
+    response: { status: number | null; body: string };
+    reachable: boolean;
+  }>("ai.test", { providerId: poster.data.id });
+  assert(posted.data.request.method === "POST", "a POST test must actually send a POST");
+  assert(posted.data.request.body === "{}", "a POST test sends an empty body");
+  assert(posted.data.reachable, "a 422 is a pass: the host answered and understood the address");
+  assert(
+    posted.data.response.status === 422,
+    `expected 422 from the POST-only route, got ${posted.data.response.status}`,
+  );
+  assert(
+    (posted.data.response.body ?? "").includes("prompt is required"),
+    "the host's complaint must be reported, because it is what tells you the call reached the model",
+  );
+  steps.push("method: a POST-only host is tested with a POST and an empty body, and its answer is reported");
+
   steps.push("mode: a queue host is recorded, can be tested, and is not mistaken for a sync one");
 
   steps.push("test: an unreachable host is reported with a reason, not thrown");
@@ -3605,6 +3631,13 @@ async function main(): Promise<number> {
   // leaving the machine. The routes record what they were sent, so the gate can assert the typed body and the bytes.
   if (gateNumber === 23) {
     app.get("/gate-ping", (c) => c.json({ ok: true }));
+    // A POST-only route: the case every generation endpoint presents, and the reason the method is declared.
+    app.post("/gate-infer", async (c) => {
+      const body = await c.req.json().catch(() => null);
+      return body === null
+        ? c.json({ detail: [{ msg: "body must be JSON" }] }, 400)
+        : c.json({ detail: [{ msg: "prompt is required" }] }, 422);
+    });
     // A model that was never activated: the shape of failure a person actually has to read.
     app.get("/gate-bad", (c) => c.json({ error: { message: "model not activated" } }, 500));
   }

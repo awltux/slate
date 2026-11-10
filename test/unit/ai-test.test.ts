@@ -321,3 +321,65 @@ describe("sync and queue hosts", () => {
     expect(data.status).toBe(200);
   });
 });
+
+describe("the method a test uses", () => {
+  it("sends POST when the host only speaks POST, and says so", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        {
+          name: "fal",
+          baseUrl: "https://fal.run",
+          testPath: "/fal-ai/flux/schnell",
+          testMethod: "POST",
+          apiKey: "k",
+        },
+        context,
+      ),
+    ).data as { id: string };
+
+    const seen: Array<{ method: string }> = [];
+    const port: HttpPort = async (input) => {
+      seen.push({ method: input.method });
+      return { status: 422, body: JSON.stringify({ detail: [{ msg: "prompt is required" }] }) };
+    };
+
+    const data = expectOk(
+      await registry.execute("ai.test", { providerId: provider.id }, testContext(root, { home, http: port })),
+    ).data as {
+      request: { method: string; body: string };
+      response: { status: number; body: string };
+      reachable: boolean;
+    };
+
+    expect(data.request.method).toBe("POST");
+    // A test sends an empty object: enough to route and to check the key, not enough to describe a job.
+    expect(data.request.body).toBe("{}");
+    expect(seen[0]?.method).toBe("POST");
+    expect(data.response.status).toBe(422);
+    // 422 is a pass: the host answered and understood the address, it just wanted a prompt.
+    expect(data.reachable).toBe(true);
+    expect(data.response.body).toContain("prompt is required");
+  });
+
+  it("still defaults to GET, because a readable path is the simplest thing to prove", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "llm", baseUrl: "https://llm.example", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+
+    const data = expectOk(
+      await registry.execute(
+        "ai.test",
+        { providerId: provider.id },
+        testContext(root, { home, http: answering(200) }),
+      ),
+    ).data as { request: { method: string; body: string } };
+
+    expect(data.request.method).toBe("GET");
+    expect(data.request.body).toBe("");
+  });
+});

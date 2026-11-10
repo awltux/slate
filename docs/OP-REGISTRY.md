@@ -501,6 +501,14 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "string",
       "default": "/"
     },
+    "testMethod": {
+      "type": "string",
+      "enum": [
+        "GET",
+        "POST"
+      ],
+      "default": "GET"
+    },
     "authHeader": {
       "type": "string",
       "default": "Authorization"

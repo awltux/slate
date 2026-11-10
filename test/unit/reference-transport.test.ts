@@ -21,6 +21,7 @@ const fal: Provider = {
   auth: { header: "Authorization", scheme: "Key {{key}}" },
   reference: { transport: "upload", maxInlineBytes: 1_000 },
   testPath: "/",
+  testMethod: "GET",
   notes: "",
 };
 

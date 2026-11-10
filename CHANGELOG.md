@@ -2,6 +2,15 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## A test declares its method, not just its path
+
+- **Providers carry a test method**: GET for a host with a readable path, POST for the generation hosts that answer
+  nothing else. A GET at a POST-only endpoint can only ever report 404 or 405, which reads as a broken provider when
+  nothing is broken.
+- **A POST test sends an empty body** — `{}` — on purpose: enough to route and to check the key, not enough to describe a
+  job. A `422 prompt is required` is a pass, and the host's complaint is shown, because it is what proves the call reached
+  the model.
+
 ## A provider says whether it is sync or queue
 
 - **Every provider carries a call style**: *sync* means the call returns the result, *queue* means it returns a request to
