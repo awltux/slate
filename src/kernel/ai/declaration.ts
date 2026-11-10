@@ -9,7 +9,7 @@ import { z } from "zod";
  * arbitrary REST shape is expressible without a bespoke adapter per API.
  */
 
-export const CapabilitySchema = z.enum(["text", "image", "video", "audio", "upscale"]);
+export const CapabilitySchema = z.enum(["text", "image", "video", "audio", "upscale", "upload"]);
 export type Capability = z.infer<typeof CapabilitySchema>;
 
 /** Methods an endpoint may use. Bodies go with POST/PUT/PATCH; GET and DELETE carry their values in the query. */
@@ -53,15 +53,13 @@ export const ReferenceUploadSchema = z
   .strict();
 
 /**
- * What to do with a reference image. Inline is the default because it needs no second service and no public URL; an
- * image too large to inline goes through the provider's own upload, or the call is refused rather than silently sent
- * without the reference it claims to have.
+ * How a local reference reaches a provider that fetches URLs instead of accepting bytes. The transport decides whether
+ * an image can go in the body; the *upload endpoint* (capability "upload") declares how the bytes get somewhere public.
  */
 export const ReferencePolicySchema = z
   .object({
     transport: ReferenceTransportSchema.default("inline"),
     maxInlineBytes: z.number().int().positive().default(1_500_000),
-    upload: ReferenceUploadSchema.nullable().default(null),
   })
   .strict();
 
@@ -91,6 +89,19 @@ export const ProviderSchema = z
 export type Provider = z.infer<typeof ProviderSchema>;
 
 /**
+ * A named value an endpoint returns, addressed by a path into the response. `resultPath` says where the *main* value is;
+ * `response` says what else the call gives back, by name — which is how an upload endpoint tells Slate that its reply
+ * carries both a place to PUT the bytes and the public url to use afterwards.
+ */
+export const ResponseFieldSchema = z
+  .object({
+    path: z.string().min(1),
+    type: z.enum(["string", "number", "boolean", "string[]"]).default("string"),
+    description: z.string().default(""),
+  })
+  .strict();
+
+/**
  * An endpoint is one callable model. `body` is a template whose string values may interpolate `{{prompt}}`,
  * `{{image}}`, `{{seconds}}` or `{{param:NAME}}`. `resultPath` is a dotted/bracketed path into the response.
  */
@@ -108,6 +119,8 @@ export const EndpointSchema = z
     body: z.record(z.string(), z.unknown()).default({}),
     /** Where the useful value sits in the response, e.g. "images[0].url". Empty means "the whole response". */
     resultPath: z.string().default(""),
+    /** The other named values the response carries, so a caller does not have to guess at the provider's shape. */
+    response: z.record(z.string(), ResponseFieldSchema).default({}),
   })
   .strict();
 

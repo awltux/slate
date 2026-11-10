@@ -9,11 +9,14 @@ import {
   CapabilitySchema,
   DEFAULT_REFERENCE_POLICY,
   type Endpoint,
+  EndpointSchema,
   HttpMethodSchema,
   ParamSpecSchema,
   type Provider,
   ReferencePolicySchema,
   type RenderedRequest,
+  ResponseFieldSchema,
+  readResult,
   renderRequest,
 } from "../kernel/ai/declaration.js";
 import { type ReferencePlan, httpPort, planReference, stageReference } from "../kernel/ai/reference.js";
@@ -27,17 +30,8 @@ const ReferenceViewSchema = z
   .object({
     transport: z.string(),
     maxInlineBytes: z.number().int(),
-    /** The declared file API, or null when this provider takes none beyond the inline limit. */
-    upload: z
-      .object({
-        url: z.string(),
-        method: z.string(),
-        body: z.record(z.string(), z.unknown()),
-        uploadUrlPath: z.string(),
-        fileUrlPath: z.string(),
-      })
-      .strict()
-      .nullable(),
+    /** The upload endpoint this provider has bound, when one is declared: uploads are endpoints, not a side channel. */
+    uploadEndpointId: z.string().nullable(),
   })
   .strict();
 
@@ -67,6 +61,7 @@ const EndpointViewSchema = z
     params: z.array(z.unknown()),
     body: z.record(z.string(), z.unknown()),
     resultPath: z.string(),
+    response: z.record(z.string(), z.object({ path: z.string(), type: z.string(), description: z.string() })),
     timeoutMs: z.number().int(),
   })
   .strict();
@@ -118,15 +113,10 @@ export const aiCatalog = defineOp({
           reference: {
             transport: provider.reference.transport,
             maxInlineBytes: provider.reference.maxInlineBytes,
-            upload: provider.reference.upload
-              ? {
-                  url: provider.reference.upload.url,
-                  method: provider.reference.upload.method,
-                  body: provider.reference.upload.body,
-                  uploadUrlPath: provider.reference.upload.uploadUrlPath,
-                  fileUrlPath: provider.reference.upload.fileUrlPath,
-                }
-              : null,
+            uploadEndpointId:
+              config.endpoints.find(
+                (endpoint) => endpoint.providerId === provider.id && endpoint.capability === "upload",
+              )?.id ?? null,
           },
         })),
         endpoints: config.endpoints.map((endpoint) => ({
@@ -139,6 +129,7 @@ export const aiCatalog = defineOp({
           params: endpoint.params,
           body: endpoint.body,
           resultPath: endpoint.resultPath,
+          response: endpoint.response,
           timeoutMs: endpoint.timeoutMs,
         })),
         bindingSets: config.bindingSets.map((set) => ({
@@ -232,6 +223,8 @@ export const aiEndpointSave = defineOp({
       params: z.array(ParamSpecSchema).default([]),
       body: z.record(z.string(), z.unknown()).default({}),
       resultPath: z.string().default(""),
+      /** Named values the response carries, so an upload endpoint can promise a place to PUT and a url to use. */
+      response: z.record(z.string(), ResponseFieldSchema).default({}),
       timeoutMs: z.number().int().min(1000).max(3_600_000).default(120_000),
     })
     .strict(),
@@ -257,6 +250,7 @@ export const aiEndpointSave = defineOp({
       params: input.params,
       body: input.body,
       resultPath: input.resultPath,
+      response: input.response,
       timeoutMs: input.timeoutMs,
     };
     await writeAiConfig(context.home, {
@@ -558,7 +552,13 @@ export const aiPreview = defineOp({
       if (!stats) throw new SlateError("media_missing", `the file for ${asset.id} is missing`);
       reference = {
         assetId: asset.id,
-        plan: planReference({ bytes: stats.size, provider }),
+        plan: planReference({
+          bytes: stats.size,
+          provider,
+          hasUploadEndpoint: config.endpoints.some(
+            (entry) => entry.providerId === provider.id && entry.capability === "upload",
+          ),
+        }),
       };
     }
 
@@ -627,8 +627,14 @@ export const aiReferenceTest = defineOp({
     const config = await readAiConfig(context.home);
     const provider = config.providers.find((entry) => entry.id === input.providerId);
     if (!provider) throw new SlateError("not_found", `no provider ${input.providerId}`);
-    if (!provider.reference.upload) {
-      throw new SlateError("invalid_input", `${provider.name} declares no upload endpoint`);
+    const upload = config.endpoints.find(
+      (entry) => entry.providerId === provider.id && entry.capability === "upload",
+    );
+    if (!upload) {
+      throw new SlateError(
+        "invalid_input",
+        `${provider.name} has no upload endpoint; add one with the upload capability`,
+      );
     }
 
     const ffmpeg = await context.tool("ffmpeg");
@@ -661,6 +667,7 @@ export const aiReferenceTest = defineOp({
       const staged = await stageReference({
         file,
         provider: { ...provider, reference: { ...provider.reference, maxInlineBytes: 0 } },
+        upload,
         http: context.http ?? httpPort,
         key: keys[provider.id] ?? null,
       });
@@ -673,5 +680,165 @@ export const aiReferenceTest = defineOp({
     } finally {
       await rm(work, { recursive: true, force: true });
     }
+  },
+});
+
+/** What the drafter asks a text model to produce: an endpoint without the ids only Slate can mint. */
+const EndpointProposalSchema = EndpointSchema.omit({ id: true, providerId: true });
+
+const DRAFT_INSTRUCTIONS = `You are declaring one endpoint of a REST API for a film production system.
+Reply with a single JSON object and nothing else. It must have exactly these keys:
+{
+  "name": string,                        // short human label, e.g. "FLUX dev"
+  "capability": "text" | "image" | "video" | "audio" | "upscale" | "upload",
+  "method": "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  "path": string,                        // path only, starting with /, appended to the base url
+  "params": [ { "key": string, "label": string, "type": "string"|"number"|"integer"|"boolean"|"enum",
+                "required": boolean, "default"?: string|number|boolean, "choices": string[], "help": string } ],
+  "body": object,                        // request template; strings may contain {{prompt}}, {{image}}, {{seconds}} or {{param:KEY}}
+  "resultPath": string,                  // where the main value sits in the response, e.g. "images[0].url"
+  "response": { "<name>": { "path": string, "type": "string"|"number"|"boolean"|"string[]", "description": string } }
+}
+If the endpoint uploads a file, give it capability "upload" and declare response.upload_url (where to PUT the bytes)
+and response.file_url (the public url to use afterwards). Do not invent parameters the API does not document.`;
+
+/**
+ * Ask a text model how an endpoint works and return the declaration it proposes. This is the honest use of a language
+ * model here: it drafts data that a person then reviews and saves, and it is never allowed to save anything itself.
+ *
+ * It requires a text endpoint to be bound: the drafter has no model of its own. A text completion is billed by the
+ * provider outside Slate's ledger, because an endpoint carries no price � routing this through the budget needs declared
+ * costs on endpoints, which is its own slice. It is one short completion, and only a button reaches it.
+ */
+export const aiEndpointDraft = defineOp({
+  name: "ai.endpoint.draft",
+  ownerOnly: true,
+  policy: "read",
+  summary:
+    "Ask the bound text model to draft an endpoint declaration from the provider's base url and a path.",
+  input: z
+    .object({
+      providerId: z.string(),
+      /** The endpoint URI as the provider documents it, e.g. "/fal-ai/flux/dev". */
+      path: z.string().min(1),
+      /** Anything known: a doc excerpt, the parameter names, the response shape. */
+      hint: z.string().default(""),
+    })
+    .strict(),
+  output: z
+    .object({
+      proposal: EndpointProposalSchema,
+      /** The model that drafted it, so a person knows what to trust it against. */
+      model: z.string(),
+      textEndpointId: z.string(),
+    })
+    .strict(),
+  run: async (input, context) => {
+    const config = await readAiConfig(context.home);
+    const provider = config.providers.find((entry) => entry.id === input.providerId);
+    if (!provider) throw new SlateError("not_found", `no provider ${input.providerId}`);
+
+    const project = await readProjectDocument(context.root).catch(() => null);
+    const resolution = resolveBinding(config, "text", project?.aiBindingSetId ?? null);
+    if (!resolution) {
+      throw new SlateError(
+        "capability_missing",
+        "no text endpoint is bound, so nothing can draft this: add a text endpoint in Setup and bind it",
+      );
+    }
+
+    const prompt = [
+      DRAFT_INSTRUCTIONS,
+      "",
+      `Provider: ${provider.name} (${provider.kind})`,
+      `Base url: ${provider.baseUrl}`,
+      `Endpoint uri: ${input.path}`,
+      input.hint.trim() === "" ? "" : `What is known about it:\n${input.hint.trim()}`,
+    ].join("\n");
+
+    // The draft is rendered against the model that will answer, not against the provider being described.
+    const textProvider = config.providers.find((entry) => entry.id === resolution.endpoint.providerId);
+    if (!textProvider) {
+      throw new SlateError("not_found", `endpoint ${resolution.endpoint.id} has no provider`);
+    }
+
+    const keys = await readKeys(context.home);
+    const request = renderRequest(
+      textProvider,
+      resolution.endpoint,
+      { prompt, params: {} },
+      keys[textProvider.id] ?? null,
+    );
+    const response = await (context.http ?? httpPort)({
+      url: request.url,
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(request.body ?? {}),
+    });
+    if (response.status < 200 || response.status >= 300) {
+      throw new SlateError(
+        "provider_error",
+        `the text model refused the draft with HTTP ${response.status}`,
+        {
+          retryable: response.status >= 500,
+          detail: { status: response.status, body: response.body.slice(0, 400) },
+        },
+      );
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(response.body);
+    } catch {
+      throw new SlateError("provider_error", "the text model did not answer with JSON", {
+        detail: { body: response.body.slice(0, 400) },
+      });
+    }
+
+    const text = resolution.endpoint.resultPath ? readResult(body, resolution.endpoint.resultPath) : body;
+    if (typeof text !== "string") {
+      throw new SlateError(
+        "provider_error",
+        "the text model's reply has no text at the declared result path",
+        {
+          detail: { resultPath: resolution.endpoint.resultPath },
+        },
+      );
+    }
+
+    // Models wrap JSON in prose or fences; take the outermost object and let the schema do the judging.
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start === -1 || end <= start) {
+      throw new SlateError("invalid_input", "the draft contains no JSON object", {
+        detail: { text: text.slice(0, 400) },
+      });
+    }
+    let proposal: unknown;
+    try {
+      proposal = JSON.parse(text.slice(start, end + 1));
+    } catch {
+      throw new SlateError("invalid_input", "the draft's JSON does not parse", {
+        detail: { text: text.slice(0, 400) },
+      });
+    }
+
+    const parsed = EndpointProposalSchema.safeParse(proposal);
+    if (!parsed.success) {
+      throw new SlateError("invalid_input", "the draft is not a valid endpoint declaration", {
+        detail: { issues: parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`) },
+      });
+    }
+
+    return {
+      data: {
+        proposal: parsed.data,
+        model: resolution.endpoint.name,
+        textEndpointId: resolution.endpoint.id,
+      },
+      version: project?.revision ?? 0,
+      via: resolution.via,
+      next: ["ai.endpoint.save"],
+    };
   },
 });

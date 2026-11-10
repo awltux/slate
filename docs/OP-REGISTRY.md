@@ -12,6 +12,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `ai.bindingset.use` | write | project, owner | `ai_bindingset_use` | Choose the binding set a project uses when it has not picked one itself. |
 | `ai.bindingsets` | read | host | `ai_bindingsets` | The binding sets available to projects. |
 | `ai.catalog` | read | project, owner | `ai_catalog` | AI providers, endpoints and capability bindings, with keys masked. |
+| `ai.endpoint.draft` | read | project, owner | `ai_endpoint_draft` | Ask the bound text model to draft an endpoint declaration from the provider's base url and a path. |
 | `ai.endpoint.save` | write | project, owner | `ai_endpoint_save` | Create or update an endpoint: one capability, one path, its parameters and request template. |
 | `ai.preview` | read | project, owner | `ai_preview` | Render the request an endpoint would send, without calling it. |
 | `ai.provider.save` | write | project, owner | `ai_provider_save` | Create or update an AI provider: one host, one auth scheme, one credential. |
@@ -182,6 +183,33 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `ai.endpoint.draft`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "providerId": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hint": {
+      "type": "string",
+      "default": ""
+    }
+  },
+  "required": [
+    "providerId",
+    "path"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `ai.endpoint.save`
 
 ```json
@@ -205,7 +233,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
         "image",
         "video",
         "audio",
-        "upscale"
+        "upscale",
+        "upload"
       ]
     },
     "method": {
@@ -292,6 +321,37 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "string",
       "default": ""
     },
+    "response": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "string[]"
+            ],
+            "default": "string"
+          },
+          "description": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "default": {}
+    },
     "timeoutMs": {
       "type": "integer",
       "minimum": 1000,
@@ -325,7 +385,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
         "image",
         "video",
         "audio",
-        "upscale"
+        "upscale",
+        "upload"
       ]
     },
     "reference": {
@@ -437,51 +498,6 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
           "type": "integer",
           "exclusiveMinimum": 0,
           "default": 1500000
-        },
-        "upload": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "url": {
-                  "type": "string",
-                  "format": "uri"
-                },
-                "method": {
-                  "type": "string",
-                  "enum": [
-                    "GET",
-                    "POST",
-                    "PUT",
-                    "PATCH",
-                    "DELETE"
-                  ],
-                  "default": "POST"
-                },
-                "body": {
-                  "type": "object",
-                  "additionalProperties": {},
-                  "default": {}
-                },
-                "uploadUrlPath": {
-                  "type": "string",
-                  "default": "upload_url"
-                },
-                "fileUrlPath": {
-                  "type": "string",
-                  "default": "file_url"
-                }
-              },
-              "required": [
-                "url"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
         }
       },
       "additionalProperties": false

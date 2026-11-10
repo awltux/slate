@@ -1,12 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { SlateError } from "../../domain/result.js";
-import { type Provider, readResult } from "./declaration.js";
+import { type Endpoint, type Provider, readResult, renderRequest } from "./declaration.js";
 
 /**
  * A reference is an image Slate holds and a model has to fetch. Providers never reach a localhost URL, so the bytes
- * must travel with the call: either inline as a data URI, or through the provider's own upload, which hands back a URL
- * it can fetch. Both rungs are reported, never chosen silently.
+ * must travel with the call: either inline as a data URI, or through an **upload endpoint** - an ordinary declared
+ * endpoint whose job is to give the bytes a public home. Both rungs are reported, never chosen silently.
  */
 
 /** The one network dependency an operation gets: injected, so tests never reach the internet. */
@@ -39,8 +39,12 @@ export interface ReferencePlan {
 }
 
 /** What would happen to a reference of this size: the whole decision, with no bytes moved. */
-export function planReference(input: { bytes: number; provider: Provider }): ReferencePlan {
-  const { maxInlineBytes, upload } = input.provider.reference;
+export function planReference(input: {
+  bytes: number;
+  provider: Provider;
+  hasUploadEndpoint: boolean;
+}): ReferencePlan {
+  const { maxInlineBytes } = input.provider.reference;
   if (input.bytes <= maxInlineBytes) {
     return {
       rung: "inline",
@@ -49,12 +53,12 @@ export function planReference(input: { bytes: number; provider: Provider }): Ref
       reason: `${input.bytes} bytes fits the ${maxInlineBytes}-byte inline limit`,
     };
   }
-  if (upload) {
+  if (input.hasUploadEndpoint) {
     return {
       rung: "upload",
       bytes: input.bytes,
       maxInlineBytes,
-      reason: `${input.bytes} bytes is over the ${maxInlineBytes}-byte inline limit, so it is uploaded to ${upload.url}`,
+      reason: `${input.bytes} bytes is over the ${maxInlineBytes}-byte inline limit, so it goes through the provider's upload endpoint`,
     };
   }
   return {
@@ -77,7 +81,7 @@ export interface StagedReference {
   contentType: string;
 }
 
-const MAX_COVER: Record<string, string> = {
+const MIME: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
@@ -86,39 +90,22 @@ const MAX_COVER: Record<string, string> = {
 
 export function contentTypeFor(file: string): string {
   const extension = file.split(".").pop()?.toLowerCase() ?? "";
-  return MAX_COVER[extension] ?? "application/octet-stream";
+  return MIME[extension] ?? "application/octet-stream";
 }
 
-/**
- * Interpolate the upload body template. A value that is exactly one placeholder keeps its declared type - the byte
- * count must go out as a number, not a string - which is the same rule the request renderer follows.
- */
-function renderTemplate(value: unknown, values: Record<string, string | number>): unknown {
-  if (typeof value === "string") {
-    const exact = /^\{\{\s*(\w+)\s*\}\}$/u.exec(value.trim());
-    if (exact?.[1] && exact[1] in values) return values[exact[1]];
-    return value.replace(/\{\{\s*(\w+)\s*\}\}/gu, (_, key: string) => String(values[key] ?? ""));
-  }
-  if (Array.isArray(value)) return value.map((item) => renderTemplate(item, values));
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
-        key,
-        renderTemplate(item, values),
-      ]),
-    );
-  }
-  return value;
-}
+/** The names an upload endpoint must promise, or the bytes have nowhere to go and no url to come back as. */
+export const UPLOAD_RESPONSE = { uploadUrl: "upload_url", fileUrl: "file_url" } as const;
 
 /**
- * Move one reference to where the provider can reach it. Inline when it fits; otherwise a two-step upload to the
- * provider's own storage, whose response names both the presigned PUT and the public URL. A reference that cannot be
- * sent is a coded refusal: sending the call without it would be a lie about what the model was given.
+ * Move one reference to where the provider can reach it. Inline when it fits; otherwise the declared upload endpoint -
+ * rendered, called, and read through its declared response - followed by a PUT to the url it handed back. A reference
+ * that cannot be sent is a coded refusal: sending the call without it would misreport what the model saw.
  */
 export async function stageReference(input: {
   file: string;
   provider: Provider;
+  /** The upload endpoint, when the provider has one bound. */
+  upload?: Endpoint | null;
   http: HttpPort;
   key?: string | null;
 }): Promise<StagedReference> {
@@ -126,38 +113,43 @@ export async function stageReference(input: {
   if (!bytes) throw new SlateError("media_missing", `cannot read the reference ${basename(input.file)}`);
 
   const contentType = contentTypeFor(input.file);
-  const plan = planReference({ bytes: bytes.byteLength, provider: input.provider });
+  const plan = planReference({
+    bytes: bytes.byteLength,
+    provider: input.provider,
+    hasUploadEndpoint: Boolean(input.upload),
+  });
   if (plan.rung === "inline") {
     return { value: dataUri(bytes, contentType), via: "inline", bytes: bytes.byteLength, contentType };
   }
-  if (plan.rung === "none") {
+  if (plan.rung === "none" || !input.upload) {
     throw new SlateError("invalid_input", plan.reason, {
       detail: { bytes: plan.bytes, maxInlineBytes: plan.maxInlineBytes },
     });
   }
 
-  const upload = input.provider.reference.upload;
-  if (!upload) throw new SlateError("invalid_input", plan.reason);
-
-  const body = renderTemplate(upload.body ?? {}, {
-    contentType,
-    bytes: bytes.byteLength,
-    fileName: basename(input.file),
-  }) as Record<string, unknown>;
-
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (input.key) {
-    headers[input.provider.auth.header] = input.provider.auth.scheme.replace(
-      /\{\{\s*key\s*\}\}/gu,
-      input.key,
-    );
+  const upload = input.upload;
+  const missing = [UPLOAD_RESPONSE.uploadUrl, UPLOAD_RESPONSE.fileUrl].filter(
+    (name) => !(name in upload.response),
+  );
+  if (missing.length > 0) {
+    throw new SlateError("invalid_input", `the upload endpoint does not declare ${missing.join(" and ")}`, {
+      detail: { declared: Object.keys(upload.response) },
+    });
   }
 
+  // The same renderer as a generation call: the body template decides where the size and the type go.
+  const request = renderRequest(
+    input.provider,
+    upload,
+    { params: { bytes: bytes.byteLength, contentType, fileName: basename(input.file) } },
+    input.key ?? null,
+  );
+
   const initiated = await input.http({
-    url: upload.url,
-    method: upload.method,
-    headers,
-    body: JSON.stringify(body),
+    url: request.url,
+    method: request.method,
+    headers: request.headers,
+    body: JSON.stringify(request.body ?? {}),
   });
   if (initiated.status < 200 || initiated.status >= 300) {
     throw new SlateError("provider_error", `the upload was refused with HTTP ${initiated.status}`, {
@@ -174,14 +166,18 @@ export async function stageReference(input: {
       detail: { body: initiated.body.slice(0, 400) },
     });
   }
-  const uploadUrl = readResult(parsed, upload.uploadUrlPath);
-  const fileUrl = readResult(parsed, upload.fileUrlPath);
+
+  const uploadUrl = readResult(parsed, upload.response[UPLOAD_RESPONSE.uploadUrl]?.path ?? "");
+  const fileUrl = readResult(parsed, upload.response[UPLOAD_RESPONSE.fileUrl]?.path ?? "");
   if (typeof uploadUrl !== "string" || typeof fileUrl !== "string") {
     throw new SlateError(
       "provider_error",
       "the upload response did not name both an upload url and a file url",
       {
-        detail: { uploadUrlPath: upload.uploadUrlPath, fileUrlPath: upload.fileUrlPath },
+        detail: {
+          uploadUrlPath: upload.response[UPLOAD_RESPONSE.uploadUrl]?.path ?? "",
+          fileUrlPath: upload.response[UPLOAD_RESPONSE.fileUrl]?.path ?? "",
+        },
       },
     );
   }
