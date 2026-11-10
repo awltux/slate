@@ -70,6 +70,9 @@ export function Setup() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [openProvider, setOpenProvider] = useState<string | null>(null);
   const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [editingProvider, setEditingProvider] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -96,6 +99,7 @@ export function Setup() {
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       await action();
       await load();
@@ -104,6 +108,29 @@ export function Setup() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Deleting a provider takes its endpoints and any profile bindings that named them, so the confirmation says how
+   * much goes with it and the notice afterwards reports what actually did.
+   */
+  async function deleteProvider(provider: ProviderView) {
+    await run(async () => {
+      const result = await runGlobalOp<{ endpointsRemoved: number; bindingsCleared: number }>("ai.remove", {
+        kind: "provider",
+        id: provider.id,
+      });
+      setConfirmDelete(null);
+      setEditingProvider((current) => (current === provider.id ? null : current));
+      setOpenProvider((current) => (current === provider.id ? null : current));
+
+      const parts = [`${provider.name} deleted`];
+      const endpoints = result.data.endpointsRemoved;
+      const bindings = result.data.bindingsCleared;
+      if (endpoints > 0) parts.push(`${endpoints} endpoint${endpoints === 1 ? "" : "s"} went with it`);
+      if (bindings > 0) parts.push(`${bindings} profile binding${bindings === 1 ? "" : "s"} cleared`);
+      setNotice(`${parts.join(" — ")}.`);
+    });
   }
 
   if (!catalog) {
@@ -126,6 +153,7 @@ export function Setup() {
       </div>
 
       {error ? <p className="error">{error}</p> : null}
+      {notice ? <p className="muted">{notice}</p> : null}
 
       <div className="card">
         <div className="row">
@@ -144,6 +172,16 @@ export function Setup() {
 
       {catalog.providers.map((provider) => {
         const endpoints = catalog.endpoints.filter((endpoint) => endpoint.providerId === provider.id);
+        const endpointIds = new Set(endpoints.map((endpoint) => endpoint.id));
+        // What deleting this provider takes with it: its models, and every profile binding that names one of them.
+        const boundCount = catalog.bindingSets.reduce(
+          (total, set) =>
+            total +
+            Object.values(set.bindings)
+              .flat()
+              .filter((id) => endpointIds.has(id)).length,
+          0,
+        );
         const open = openProvider === provider.id;
         return (
           <div className="card stack" key={provider.id}>
@@ -166,6 +204,50 @@ export function Setup() {
                 {provider.baseUrl}
               </span>
               <div className="spacer" />
+              {confirmDelete === provider.id ? (
+                <>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {provider.name}
+                    {endpoints.length > 0
+                      ? `, its ${endpoints.length} endpoint${endpoints.length === 1 ? "" : "s"}`
+                      : ""}
+                    {boundCount > 0 ? ` and ${boundCount} profile binding${boundCount === 1 ? "" : "s"}` : ""}{" "}
+                    go for good
+                  </span>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy}
+                    onClick={() => void deleteProvider(provider)}
+                  >
+                    Delete it
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => setConfirmDelete(null)}>
+                    Keep
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-label={`Edit ${provider.name}`}
+                    onClick={() =>
+                      setEditingProvider((current) => (current === provider.id ? null : provider.id))
+                    }
+                  >
+                    {editingProvider === provider.id ? "Close" : "Edit"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-label={`Delete ${provider.name}`}
+                    onClick={() => setConfirmDelete(provider.id)}
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => setOpenProvider(open ? null : provider.id)}
@@ -174,6 +256,19 @@ export function Setup() {
                 {endpoints.length} endpoint{endpoints.length === 1 ? "" : "s"}
               </button>
             </div>
+
+            {editingProvider === provider.id ? (
+              <ProviderForm
+                key={provider.id}
+                busy={busy}
+                provider={provider}
+                onSubmit={async (values) => {
+                  await run(() => runGlobalOp("ai.provider.save", values));
+                  setEditingProvider(null);
+                }}
+                onCancel={() => setEditingProvider(null)}
+              />
+            ) : null}
 
             {open ? (
               <>
@@ -395,15 +490,32 @@ function Field({
   );
 }
 
-function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: unknown) => Promise<void> }) {
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState("custom");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [authHeader, setAuthHeader] = useState("Authorization");
-  const [authScheme, setAuthScheme] = useState("Bearer {{key}}");
+function ProviderForm({
+  busy,
+  provider,
+  onSubmit,
+  onCancel,
+}: {
+  busy: boolean;
+  /** Present when editing: the form starts from the stored provider and can keep the key it already holds. */
+  provider?: ProviderView;
+  onSubmit: (values: unknown) => Promise<void>;
+  onCancel?: () => void;
+}) {
+  const editing = Boolean(provider);
+  // Two forms can be on screen at once (the new-provider form and an edit), so the ids carry the instance.
+  const prefix = provider ? provider.id : "new";
+  const label = (what: string) => (editing ? `Edit ${what}` : what);
+  const [name, setName] = useState(provider?.name ?? "");
+  const [kind, setKind] = useState(provider?.kind ?? "custom");
+  const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
+  const [authHeader, setAuthHeader] = useState(provider?.authHeader ?? "Authorization");
+  const [authScheme, setAuthScheme] = useState(provider?.authScheme ?? "Bearer {{key}}");
   const [apiKey, setApiKey] = useState("");
+  const [forgetKey, setForgetKey] = useState(false);
 
   const headerSent = authScheme.replace(/\{\{\s*key\s*\}\}/g, "••••");
+  const hasKey = provider?.hasKey ?? false;
 
   return (
     <form
@@ -411,72 +523,96 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
       style={{ marginTop: "0.75rem", gap: "0.5rem" }}
       onSubmit={(event) => {
         event.preventDefault();
-        void onSubmit({ name, kind, baseUrl, authHeader, authScheme, apiKey });
-        setName("");
-        setBaseUrl("");
-        setApiKey("");
+        const values: Record<string, unknown> = { name, kind, baseUrl, authHeader, authScheme };
+        if (provider) values.id = provider.id;
+        // On an edit, a blank key field means "keep the one that is stored"; forgetting it is an explicit checkbox.
+        if (!editing) values.apiKey = apiKey;
+        else if (apiKey !== "") values.apiKey = apiKey;
+        else if (forgetKey) values.apiKey = "";
+        void onSubmit(values);
+        if (!editing) {
+          setName("");
+          setBaseUrl("");
+          setApiKey("");
+        }
       }}
     >
       <div className="row" style={{ alignItems: "flex-start" }}>
-        <Field id="provider-name" label="Name">
+        <Field id={`${prefix}-provider-name`} label="Name">
           <input
-            id="provider-name"
+            id={`${prefix}-provider-name`}
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="fal"
-            aria-label="Provider name"
+            aria-label={label("provider name")}
           />
         </Field>
-        <Field id="provider-kind" label="Kind">
+        <Field id={`${prefix}-provider-kind`} label="Kind">
           <input
-            id="provider-kind"
+            id={`${prefix}-provider-kind`}
             value={kind}
             onChange={(event) => setKind(event.target.value)}
             placeholder="fal, openai-compatible, custom…"
-            aria-label="Provider kind"
+            aria-label={label("provider kind")}
           />
         </Field>
-        <Field id="provider-base-url" label="Base URL">
+        <Field id={`${prefix}-provider-base-url`} label="Base URL">
           <input
-            id="provider-base-url"
+            id={`${prefix}-provider-base-url`}
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
             placeholder="https://fal.run"
-            aria-label="Base URL"
+            aria-label={label("base URL")}
           />
         </Field>
       </div>
 
       <div className="row" style={{ alignItems: "flex-start" }}>
-        <Field id="provider-header" label="Key header">
+        <Field id={`${prefix}-provider-header`} label="Key header">
           <input
-            id="provider-header"
+            id={`${prefix}-provider-header`}
             value={authHeader}
             onChange={(event) => setAuthHeader(event.target.value)}
             placeholder="Authorization"
-            aria-label="Auth header"
+            aria-label={label("auth header")}
           />
         </Field>
-        <Field id="provider-scheme" label="Key format">
+        <Field id={`${prefix}-provider-scheme`} label="Key format">
           <input
-            id="provider-scheme"
+            id={`${prefix}-provider-scheme`}
             value={authScheme}
             onChange={(event) => setAuthScheme(event.target.value)}
             placeholder="Bearer {{key}}   or   Key {{key}}"
-            aria-label="Auth scheme"
+            aria-label={label("auth scheme")}
           />
         </Field>
-        <Field id="provider-key" label="API key">
+        <Field id={`${prefix}-provider-key`} label="API key">
           <input
-            id="provider-key"
+            id={`${prefix}-provider-key`}
             type="password"
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
-            placeholder="paste the key"
-            aria-label="API key"
+            placeholder={editing && hasKey ? "leave blank to keep the key" : "paste the key"}
+            disabled={forgetKey}
+            aria-label={label("API key")}
           />
         </Field>
       </div>
+
+      {editing && hasKey ? (
+        <label className="row" style={{ fontSize: 12, gap: "0.4rem", alignItems: "center" }}>
+          <input
+            type="checkbox"
+            checked={forgetKey}
+            onChange={(event) => {
+              setForgetKey(event.target.checked);
+              if (event.target.checked) setApiKey("");
+            }}
+            aria-label="Forget the stored key"
+          />
+          Forget the stored key
+        </label>
+      ) : null}
 
       <div className="row">
         <span className="muted" style={{ fontSize: 12 }}>
@@ -486,8 +622,13 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
           </span>
         </span>
         <div className="spacer" />
+        {onCancel ? (
+          <button type="button" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+        ) : null}
         <button className="primary" type="submit" disabled={busy || name === "" || baseUrl === ""}>
-          Add provider
+          {editing ? "Save provider" : "Add provider"}
         </button>
       </div>
     </form>
