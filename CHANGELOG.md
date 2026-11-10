@@ -67,7 +67,8 @@ User-visible changes per slice. Internal refactors are not listed.
 - **Parameters are declared once** and placed by a body template (`"num_images": "{{param:num_images}}"`), so each API's
   unique shape is expressible without a new adapter. Parameters keep their declared types — `4`, not `"4"`.
 - **Preview proves a connection without spending anything**: it renders the exact request, with the key masked, and
-  never calls the network.
+  never calls the network — and it is retired as soon as the provider or model it described is edited, so it cannot
+  claim a scheme the connection no longer uses.
 - **Keys are write-only.** Setup can replace a key but never display it, and only the owner can open the tab at all.
 - **A connection can be edited or deleted.** Edit opens on what is stored — host, kind, auth header and format — and a
   blank key field keeps the credential already held, with a checkbox to forget it on purpose. Deleting a provider takes
