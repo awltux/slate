@@ -2,6 +2,13 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## The Frames button on the plan page works again
+
+- **Frames was rejected as invalid input.** `frame.generate` did not accept the revision the plan page sends with every
+  other write, so the button failed before rendering anything. It now takes the revision, checks it *before* spending,
+  and still checks at commit time - a shot edited while a frame is rendering is a `conflict`, not an overwrite.
+- **And the two frames a button press makes no longer conflict with each other**: the plan page carries the revision
+  forward from the first commit to the second, instead of claiming the same snapshot twice.
 ## Uploads are an endpoint, and endpoints declare what they return
 
 - **The file API moved out of the provider.** An upload is now an endpoint with the `upload` capability: a method, a

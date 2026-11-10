@@ -3238,8 +3238,16 @@ async function browserFlow(steps: string[]): Promise<void> {
       );
       await page.click("text=Add shot");
       await page.waitForSelector("text=1A", { timeout: 15_000 });
+
+      // The Frames button on the plan page: it sends the shot, the role and the revision, and this used to be
+      // rejected as invalid input because frame.generate did not accept a revision at all.
+      await page.click('button[aria-label^="Generate frames for shot"]');
+      await page.waitForFunction(() => !document.body.innerText.includes("invalid_input"), undefined, {
+        timeout: 60_000,
+      });
+      await page.waitForSelector('img[alt^="Start frame for shot"]', { timeout: 120_000 });
       await page.screenshot({ path: join(artifactDir, "plan.png"), fullPage: true });
-      steps.push("ui: wrote the five lines and planned a shot in the browser");
+      steps.push("ui: wrote the five lines, planned a shot, and generated its frames from the plan page");
     } else {
       // Health is a host tab: it is reachable from anywhere, with or without a project.
       await page.click('header [role="tab"]:has-text("Health")');

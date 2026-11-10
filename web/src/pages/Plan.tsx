@@ -301,8 +301,16 @@ function SceneCard({
     setBusy(true);
     setError(null);
     try {
+      // Two frames, two commits: the revision moves after the first, so the second must claim the one it just made.
+      // Holding the page's original revision here would be this gesture conflicting with itself.
+      let expected = revision;
       for (const role of ["first", "last"] as const) {
-        await runOp(projectId, "frame.generate", { shotId, role, expectedRevision: revision });
+        const generated = await runOp(projectId, "frame.generate", {
+          shotId,
+          role,
+          expectedRevision: expected,
+        });
+        expected = generated.version;
       }
       await onChange();
     } catch (caught) {
