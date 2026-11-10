@@ -25,6 +25,20 @@ four surfaces exist.
 | 18 | Project backup and restore | `pnpm gate:18` | **done** | [export](../artifacts/18/project-export.png) · [import](../artifacts/18/project-import.png) · [report](../artifacts/18/report.json) |
 | 19 | Health belongs to the host | `pnpm gate:19` | **done** | [host health](../artifacts/19/host-health.png) · [report](../artifacts/19/report.json) |
 | 20 | One place for the project's configuration | `pnpm gate:20` | **done** | [config](../artifacts/20/project-config.png) · [report](../artifacts/20/report.json) |
+| 21 | Uploads are an endpoint; endpoints declare responses | `pnpm gate:21` | **done** | [upload endpoint](../artifacts/21/upload-endpoint.png) · [report](../artifacts/21/report.json) |
+
+## Slice 21 — what it proves
+
+- **An upload is an endpoint, not a provider field.** The provider keeps only the inline ceiling; the file API is a
+  declared endpoint with the `upload` capability, and the catalog points at the one bound to the provider. The gate
+  saves one, checks the catalog points at it, and uploads a reference through it to its own loopback fake.
+- **Endpoints declare their responses.** Named fields with paths, so an upload promises `upload_url` and `file_url` the
+  way an image endpoint promises `images[0].url` — and a missing one is a coded refusal, not a guess.
+- **A text model can draft an endpoint**, from the provider's base url and the path, and the form fills with the
+  proposal for review. Unit tests prove the request the drafter builds and its four failure modes with an injected
+  transport; the gate proves the button refuses with `capability_missing` when no text endpoint is bound, which is the
+  prerequisite.
+- **Nothing is saved by a model**: the drafter returns a proposal and the person saves it.
 
 ## Slice 20 — what it proves
 

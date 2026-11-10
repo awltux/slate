@@ -2,6 +2,18 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Uploads are an endpoint, and endpoints declare what they return
+
+- **The file API moved out of the provider.** An upload is now an endpoint with the `upload` capability: a method, a
+  path, a body template and a response you declare — the same shape as every other model. The provider keeps only how
+  big a reference may be before it needs one, and the catalog points at the endpoint that takes the bytes.
+- **Endpoints declare their responses**, by name and path, not just one result path. An upload therefore promises
+  `upload_url` and `file_url` the way an image endpoint promises `images[0].url`, and a call can read both without
+  guessing at the provider's shape.
+- **Draft with AI.** A text endpoint is asked how a provider's endpoint works — given the base url and the path — and
+  the form is filled with what it proposes, for review. The proposal is never saved by the model: you save it.
+- **It says what it needs.** With no text endpoint bound, Draft with AI refuses with `capability_missing` and a
+  sentence telling you to add and bind one, which is the prerequisite the whole feature depends on.
 ## Configuration lives in one place
 
 - **A Config tab, first in the row**, holds every decision the film was made with: name, runtime, aspect ratio, frame
