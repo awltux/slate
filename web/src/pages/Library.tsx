@@ -90,7 +90,7 @@ export function Library({ projectId }: { projectId: string }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   /** A costume is clothes on a body, so the body is chosen when the garment is made. */
-  const [wornBy, setWornBy] = useState("");
+  const [forCharacter, setWornBy] = useState("");
   const characters = (entities ?? []).filter((item) => item.kind === "character");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -135,7 +135,7 @@ export function Library({ projectId }: { projectId: string }) {
         kind,
         name,
         description,
-        wornBy: kind === "costume" ? wornBy || null : null,
+        forCharacter: kind === "costume" || kind === "body" ? forCharacter || null : null,
       });
       setName("");
       setDescription("");
@@ -180,6 +180,7 @@ export function Library({ projectId }: { projectId: string }) {
             <option value="prop">prop</option>
             <option value="style">style</option>
             <option value="costume">costume</option>
+            <option value="body">body</option>
           </select>
           <input
             value={name}
@@ -188,11 +189,11 @@ export function Library({ projectId }: { projectId: string }) {
             aria-label="Entity name"
             style={{ flex: 1 }}
           />
-          {kind === "costume" ? (
+          {kind === "costume" || kind === "body" ? (
             <select
-              value={wornBy}
+              value={forCharacter}
               onChange={(event) => setWornBy(event.target.value)}
-              aria-label="Costume worn by"
+              aria-label={kind === "body" ? "Body of character" : "Costume worn by"}
               style={{ minWidth: 200 }}
             >
               <option value="">worn by which character?</option>
@@ -206,7 +207,9 @@ export function Library({ projectId }: { projectId: string }) {
           <button
             className="primary"
             type="submit"
-            disabled={busy || name.trim() === "" || (kind === "costume" && wornBy === "")}
+            disabled={
+              busy || name.trim() === "" || ((kind === "costume" || kind === "body") && forCharacter === "")
+            }
           >
             {busy ? "Creating…" : "Define entry"}
           </button>

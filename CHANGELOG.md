@@ -2,6 +2,16 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## A body is a library type of its own
+
+- **A body is a mannequin of one character**: a separate entry kind that names the character it belongs to. It has its
+  own reference sheet, in mannequin poses (front, three-quarter, profile, back) rather than head rotations, and its
+  prompt is built from that character's build — *"headless mannequin of The keeper: tall, stooped… full body, no head,
+  no face"*.
+- **A costume uses it.** When a character has a body entry, the costume's prompt says the body reference is the mannequin
+  the garment is photographed on, so the two are one reference instead of two guesses.
+- **`wornBy` became `forCharacter`**, because the relation now covers both: a costume is *worn by* a character, a body
+  *is* a character's. One field, two honest readings.
 ## Costumes are a kind of library item
 
 - **A costume is clothes cut for one character.** It is created with the character it is worn by — the chooser appears

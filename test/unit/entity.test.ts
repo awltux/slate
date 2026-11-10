@@ -296,6 +296,56 @@ describe("the shape of a sheet image", () => {
   });
 });
 
+describe("bodies", () => {
+  it("refuses a body without the character it is a mannequin of", async () => {
+    const refused = await registry.execute(
+      "entity.create",
+      { kind: "body", name: "Keeper body", description: "tall, stooped" },
+      context,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.error.code).toBe("invalid_input");
+      expect(refused.error.message).toContain("character");
+    }
+  });
+
+  it("asks for poses, and makes a mannequin of that character", async () => {
+    const keeper = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "tall, stooped, salt-eaten hands" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const body = expectOk(
+      await registry.execute(
+        "entity.create",
+        {
+          kind: "body",
+          name: "Keeper body",
+          description: "narrow shoulders, long arms",
+          forCharacter: keeper.entityId,
+        },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const angles = expectOk(await registry.execute("entity.angles", { kind: "body" }, context)).data as {
+      angles: string[];
+    };
+    expect(angles.angles).toEqual(["front", "three-quarter-left", "profile-left", "back"]);
+
+    const generated = expectOk(
+      await registry.execute("entity.generate", { entityId: body.entityId, count: 1 }, context),
+    ).data as { prompt: string };
+    expect(generated.prompt).toContain("headless mannequin");
+    expect(generated.prompt).toContain("The keeper");
+    expect(generated.prompt.toLowerCase()).toContain("no head");
+  });
+});
+
 describe("costumes", () => {
   it("refuses a costume without the character it is cut for", async () => {
     const refused = await registry.execute(
@@ -321,7 +371,7 @@ describe("costumes", () => {
 
     const refused = await registry.execute(
       "entity.create",
-      { kind: "costume", name: "Sunday coat", wornBy: room.entityId },
+      { kind: "costume", name: "Sunday coat", forCharacter: room.entityId },
       context,
     );
     expect(refused.ok).toBe(false);
@@ -344,7 +394,7 @@ describe("costumes", () => {
           kind: "costume",
           name: "Sunday coat",
           description: "heavy wool coat, collar turned up",
-          wornBy: keeper.entityId,
+          forCharacter: keeper.entityId,
         },
         context,
       ),

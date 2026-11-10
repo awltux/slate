@@ -61,18 +61,42 @@ export const entityGenerate = defineOp({
 
     // A costume is shown on the body it is cut for, without a head: the sheet is about the garment, and a face would
     // compete with the character's own sheet.
-    const wornBy =
-      entity.kind === "costume" && entity.wornBy ? (before.entities[entity.wornBy] ?? null) : null;
+    const character =
+      (entity.kind === "costume" || entity.kind === "body") && entity.forCharacter
+        ? (before.entities[entity.forCharacter] ?? null)
+        : null;
+
+    // A costume is shown on the body made for its character, when one exists: the garment and the mannequin are one
+    // reference, not two guesses.
+    const bodyFor = character
+      ? (Object.values(before.entities).find(
+          (entry) => entry.kind === "body" && entry.forCharacter === character.id,
+        ) ?? null)
+      : null;
+
     const written = (variant?.prompt || entity.prompt || entity.description).trim();
-    const prompt = wornBy
-      ? [
-          written,
-          `worn on a headless mannequin with the build of ${wornBy.name}: ${wornBy.description}`,
-          "full body, garment only, no head, no face",
-        ]
-          .filter(Boolean)
-          .join(". ")
-      : written;
+    const prompt =
+      entity.kind === "body" && character
+        ? [
+            written,
+            `headless mannequin of ${character.name}: ${character.description}`,
+            bodyFor ? `matching the body reference "${bodyFor.name}"` : "",
+            "full body, no head, no face, neutral pose",
+          ]
+            .filter(Boolean)
+            .join(". ")
+        : entity.kind === "costume" && character
+          ? [
+              written,
+              `worn on a headless mannequin with the build of ${character.name}: ${character.description}`,
+              bodyFor?.identity?.compositeAssetId
+                ? `the body reference "${bodyFor.name}" is the mannequin`
+                : "",
+              "full body, garment only, no head, no face",
+            ]
+              .filter(Boolean)
+              .join(". ")
+          : written;
     if (prompt === "") {
       throw new SlateError("readiness_failed", "this entity has no prompt yet", {
         detail: {

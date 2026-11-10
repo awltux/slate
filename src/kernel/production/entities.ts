@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const EntityKindSchema = z.enum(["character", "location", "prop", "style", "costume"]);
+export const EntityKindSchema = z.enum(["character", "location", "prop", "style", "costume", "body"]);
 
 /** The four turns a costume's mannequin sheet must cover: full body, no head. */
 export const COSTUME_POSES = ["front", "three-quarter-left", "profile-left", "back"] as const;
@@ -134,10 +134,10 @@ export const EntitySchema = z
     /** A style sheet applied to this entity's generations; null means the project default. */
     styleId: z.string().startsWith("ent_").nullable(),
     /**
-     * For a costume: the character whose build it is cut for. The costume's sheet is made on that body, so the two cannot
-     * drift into a garment that fits nobody.
+     * The character this item is *about*: a costume is worn by them, a body is a mannequin of them. Either way the sheet
+     * is made from that character's build, so the two cannot drift into a garment that fits nobody.
      */
-    wornBy: z.string().startsWith("ent_").nullable().default(null),
+    forCharacter: z.string().startsWith("ent_").nullable().default(null),
     /** Set when this entity is a clone of a global library item; null means it was authored here. */
     libraryId: z.string().startsWith("lib_").nullable().default(null),
     /** The global version this clone was last pushed from or to; null when never linked. */

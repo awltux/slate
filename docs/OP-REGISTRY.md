@@ -27,7 +27,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `deliver.export` | spend | project | `deliver_export` | Encode the cut into a master with optional audio, run QC, and write a provenance manifest. |
 | `deliver.qc` | read | project | `deliver_qc` | The QC report and manifest from the last delivery. |
 | `dialog.pick-folder` | read | host, owner | `dialog_pick-folder` | Open the host's folder dialog and return a token naming the folder, not its path. |
-| `entity.angles` | read | project | `entity_angles` | The views a reference sheet must cover: head rotations for a character, poses for a costume. |
+| `entity.angles` | read | project | `entity_angles` | The views a sheet must cover: head rotations for a character, poses for a costume or a body. |
 | `entity.create` | write | project | `entity_create` | Define a character, location, prop or style in the library. |
 | `entity.delete` | destructive | project | `entity_delete` | Delete an entity that nothing references. |
 | `entity.generate` | spend | project | `entity_generate` | Generate candidate images from an entity's prompt (or a variant's), priced per image. |
@@ -760,7 +760,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
         "location",
         "prop",
         "style",
-        "costume"
+        "costume",
+        "body"
       ],
       "default": "character"
     }
@@ -783,7 +784,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
         "location",
         "prop",
         "style",
-        "costume"
+        "costume",
+        "body"
       ]
     },
     "name": {
@@ -801,7 +803,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       },
       "default": []
     },
-    "wornBy": {
+    "forCharacter": {
       "anyOf": [
         {
           "type": "string",
@@ -895,7 +897,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
         "location",
         "prop",
         "style",
-        "costume"
+        "costume",
+        "body"
       ]
     }
   },
@@ -925,7 +928,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
         "null"
       ]
     },
-    "wornBy": {
+    "forCharacter": {
       "type": [
         "string",
         "null"

@@ -128,8 +128,8 @@ export const entityCreate = defineOp({
       name: z.string().trim().min(1),
       description: z.string().default(""),
       aliases: z.array(z.string()).default([]),
-      /** For a costume: the character whose build it is cut for. Required, because a garment fits someone. */
-      wornBy: z.string().startsWith("ent_").nullable().default(null),
+      /** The character this item is about: a costume is worn by them, a body is a mannequin of them. */
+      forCharacter: z.string().startsWith("ent_").nullable().default(null),
       expectedRevision: z.number().int().optional(),
     })
     .strict(),
@@ -140,16 +140,20 @@ export const entityCreate = defineOp({
 
     // A costume is clothes on a body: without the character it is cut for, the reference could fit anyone - which is to
     // say no one. The character must exist and must be a character, not a prop.
-    if (input.kind === "costume") {
-      if (!input.wornBy) {
-        throw new SlateError("invalid_input", "choose the character this costume is worn by", {
-          detail: { field: "wornBy" },
-        });
+    if (input.kind === "costume" || input.kind === "body") {
+      if (!input.forCharacter) {
+        throw new SlateError(
+          "invalid_input",
+          input.kind === "costume"
+            ? "choose the character this costume is worn by"
+            : "choose the character this body belongs to",
+          { detail: { field: "forCharacter" } },
+        );
       }
-      const body = existing.entities[input.wornBy];
-      if (!body) throw new SlateError("not_found", `no entity ${input.wornBy}`);
-      if (body.kind !== "character") {
-        throw new SlateError("invalid_input", `${body.name} is a ${body.kind}, not a character`);
+      const character = existing.entities[input.forCharacter];
+      if (!character) throw new SlateError("not_found", `no entity ${input.forCharacter}`);
+      if (character.kind !== "character") {
+        throw new SlateError("invalid_input", `${character.name} is a ${character.kind}, not a character`);
       }
     }
 
@@ -172,7 +176,7 @@ export const entityCreate = defineOp({
           aliases: input.aliases,
           styleId: null,
           // Only a costume is worn by anyone; the others are their own thing.
-          wornBy: input.kind === "costume" ? input.wornBy : null,
+          forCharacter: input.kind === "costume" || input.kind === "body" ? input.forCharacter : null,
           libraryId: null,
           libraryVersion: null,
           identity: null,
@@ -208,7 +212,7 @@ export const entityUpdate = defineOp({
       prompt: z.string().optional(),
       styleId: z.string().nullable().optional(),
       /** Re-cut a costume for a different body. */
-      wornBy: z.string().nullable().optional(),
+      forCharacter: z.string().nullable().optional(),
       expectedRevision: z.number().int().optional(),
     })
     .strict(),
@@ -221,14 +225,14 @@ export const entityUpdate = defineOp({
     if (input.styleId && !before.entities[input.styleId]) {
       throw new SlateError("not_found", `no style ${input.styleId}`);
     }
-    if (input.wornBy) {
-      const body = before.entities[input.wornBy];
-      if (!body) throw new SlateError("not_found", `no entity ${input.wornBy}`);
-      if (entity.kind !== "costume") {
-        throw new SlateError("invalid_input", "only a costume is worn by a character");
+    if (input.forCharacter) {
+      const character = before.entities[input.forCharacter];
+      if (!character) throw new SlateError("not_found", `no entity ${input.forCharacter}`);
+      if (entity.kind !== "costume" && entity.kind !== "body") {
+        throw new SlateError("invalid_input", "only a costume or a body belongs to a character");
       }
-      if (body.kind !== "character") {
-        throw new SlateError("invalid_input", `${body.name} is a ${body.kind}, not a character`);
+      if (character.kind !== "character") {
+        throw new SlateError("invalid_input", `${character.name} is a ${character.kind}, not a character`);
       }
     }
 
@@ -384,13 +388,13 @@ export const entityList = defineOp({
 export const entityAngles = defineOp({
   name: "entity.angles",
   policy: "read",
-  summary: "The views a reference sheet must cover: head rotations for a character, poses for a costume.",
+  summary: "The views a sheet must cover: head rotations for a character, poses for a costume or a body.",
   input: z.object({ kind: EntityKindSchema.default("character") }).strict(),
   output: z.object({ angles: z.array(z.string()) }).strict(),
   run: async (input) => ({
     data: {
       // A costume is a garment on a body, so its reference is a mannequin turned about, not a head rotated.
-      angles: [...(input.kind === "costume" ? COSTUME_POSES : HEADSHOT_ANGLES)],
+      angles: [...(input.kind === "costume" || input.kind === "body" ? COSTUME_POSES : HEADSHOT_ANGLES)],
     },
     version: 0,
     next: ["sheet.edit"],
