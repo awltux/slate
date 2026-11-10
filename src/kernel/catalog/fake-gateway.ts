@@ -16,7 +16,10 @@ export async function renderClip(
     /** The resolved FFmpeg binary: the gateway must never assume a bare name is on PATH. */
     binary: string;
     endpoint: Endpoint;
+    /** The opening frame. */
     boardFile: string | null;
+    /** The closing frame: when present, the clip moves from the first to the last instead of holding one image. */
+    lastFile?: string | null;
     durationSec: number;
     seed: number;
     outputFile: string;
@@ -27,11 +30,50 @@ export async function renderClip(
   const size = `${width}x${height}`;
   const hue = (Math.abs(input.seed) % 60) - 30;
 
+  const pair = Boolean(input.boardFile && input.lastFile);
   const args: string[] = [input.binary, "-y"];
   if (input.boardFile) {
-    args.push("-loop", "1", "-i", input.boardFile);
+    args.push("-loop", "1", "-t", String(input.durationSec), "-i", input.boardFile);
+    if (pair) args.push("-loop", "1", "-t", String(input.durationSec), "-i", input.lastFile as string);
   } else {
     args.push("-f", "lavfi", "-i", `testsrc2=size=${size}:rate=30:duration=${input.durationSec}`);
+  }
+
+  const fit = (index: number) =>
+    `[${index}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2[s${index}]`;
+
+  // Two frames means the clip must move between them, which needs a filter graph rather than a simple -vf chain.
+  if (pair) {
+    const blend = `blend=all_expr='A*(1-T/${input.durationSec})+B*(T/${input.durationSec})'`;
+    const graph = `${fit(0)};${fit(1)};[s0][s1]${blend},hue=h=${hue},format=yuv420p[v]`;
+    args.push(
+      "-filter_complex",
+      graph,
+      "-map",
+      "[v]",
+      "-t",
+      String(input.durationSec),
+      "-r",
+      "30",
+      "-c:v",
+      "libx264",
+      "-crf",
+      "22",
+      "-threads",
+      "1",
+      "-pix_fmt",
+      "yuv420p",
+      "-fflags",
+      "+bitexact",
+      "-flags:v",
+      "+bitexact",
+      input.outputFile,
+    );
+
+    const rendered = await run(args);
+    if (rendered.failedToStart) throw new Error(`ffmpeg could not be started at ${input.binary}`);
+    if (rendered.code !== 0) throw new Error(`ffmpeg failed: ${rendered.stderr.slice(-600)}`);
+    return;
   }
 
   const filter = input.boardFile

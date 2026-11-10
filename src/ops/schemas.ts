@@ -24,6 +24,15 @@ export const ShotSummarySchema = z
     description: z.string(),
     stale: z.boolean(),
     staleCause: z.string().nullable(),
+    frames: z
+      .object({
+        board: z.string().optional(),
+        first: z.string().optional(),
+        last: z.string().optional(),
+        firstSource: z.unknown().optional(),
+        lastSource: z.unknown().optional(),
+      })
+      .strict(),
     readiness: ReadinessSummarySchema,
   })
   .strict();
@@ -35,6 +44,16 @@ export const SceneSummarySchema = z
     heading: z.object({ intExt: z.string(), location: z.string(), timeOfDay: z.string() }).strict(),
     synopsis: z.string(),
     body: z.string(),
+    entities: z.array(
+      z
+        .object({
+          entityId: z.string(),
+          name: z.string(),
+          kind: z.string(),
+          coverAssetId: z.string().nullable(),
+        })
+        .strict(),
+    ),
     location: z
       .object({
         entityId: z.string(),

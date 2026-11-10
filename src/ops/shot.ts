@@ -30,7 +30,13 @@ const ShotViewSchema = z
     durationSec: z.number(),
     description: z.string(),
     frames: z
-      .object({ board: z.string().optional(), first: z.string().optional(), last: z.string().optional() })
+      .object({
+        board: z.string().optional(),
+        first: z.string().optional(),
+        last: z.string().optional(),
+        firstSource: z.unknown().optional(),
+        lastSource: z.unknown().optional(),
+      })
       .strict(),
     builtFromSceneHash: z.string(),
     createdAt: z.string(),

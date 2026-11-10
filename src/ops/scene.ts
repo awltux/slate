@@ -31,6 +31,7 @@ export function shotSummary(shot: Shot, production: ProductionDocument) {
     description: shot.description,
     stale: stale !== null,
     staleCause: stale?.cause ?? null,
+    frames: shot.frames,
     readiness: readinessSummary(shotReadiness(shot, production)),
   };
 }
@@ -39,13 +40,22 @@ export function sceneSummary(sceneId: string, production: ProductionDocument) {
   const scene = production.scenes[sceneId];
   if (!scene) throw new SlateError("not_found", `no scene ${sceneId}`);
   const shots = shotsOfScene(production, sceneId).map((shot) => shotSummary(shot, production));
-  const location = scene.locationEntityId ? production.entities[scene.locationEntityId] : null;
+  const attached = scene.entityIds
+    .map((id) => production.entities[id])
+    .filter((entity): entity is NonNullable<typeof entity> => Boolean(entity));
+  const location = attached.find((entity) => entity.kind === "location") ?? null;
   return {
     id: scene.id,
     number: scene.number,
     heading: scene.heading,
     synopsis: scene.synopsis,
     body: scene.body,
+    entities: attached.map((entity) => ({
+      entityId: entity.id,
+      name: entity.name,
+      kind: entity.kind,
+      coverAssetId: entity.identity?.images[0]?.assetId ?? null,
+    })),
     location: location
       ? {
           entityId: location.id,
@@ -83,8 +93,8 @@ export const sceneCreate = defineOp({
       heading: HeadingSchema,
       synopsis: z.string().default(""),
       body: z.string().default(""),
-      /** Optional location entity whose sheet is the background for this scene. */
-      locationEntityId: z.string().nullable().optional(),
+      /** Library items in this scene; the first location among them is the backdrop. */
+      entityIds: z.array(z.string()).default([]),
       expectedRevision: z.number().int().optional(),
     })
     .strict(),
@@ -112,7 +122,7 @@ export const sceneCreate = defineOp({
           synopsis: input.synopsis,
           body: input.body,
           shotIds: [],
-          locationEntityId: input.locationEntityId ?? null,
+          entityIds: input.entityIds ?? [],
           createdAt: now,
           updatedAt: now,
         };
@@ -176,24 +186,24 @@ export const sceneUpdate = defineOp({
 });
 
 /**
- * A scene may point at a location entity. The location's identity sheet then supplies the background plate for
- * anything rendered from that scene, and the link is what makes "same place, two scenes" a shared fact rather than a
- * coincidence of slugline text.
+ * A scene carries the library items that are in it: the place, the people, the things. Any number, of any kind. The
+ * first location among them is the backdrop used when a shot has no frame of its own.
  */
-export const sceneSetLocation = defineOp({
-  name: "scene.set-location",
+export const sceneSetEntities = defineOp({
+  name: "scene.set-entities",
   policy: "write",
-  summary: "Link a scene to a location entity (or clear the link). Its sheet becomes the scene background.",
+  summary: "Attach library items to a scene, or clear them.",
   input: z
     .object({
       sceneId: z.string(),
-      entityId: z.string().nullable(),
+      entityIds: z.array(z.string()),
       expectedRevision: z.number().int().optional(),
     })
     .strict(),
   output: z
     .object({
       sceneId: z.string(),
+      entityIds: z.array(z.string()),
       location: z
         .object({ entityId: z.string(), name: z.string(), coverAssetId: z.string().nullable() })
         .strict()
@@ -205,47 +215,42 @@ export const sceneSetLocation = defineOp({
     const { production: before } = await loadDocuments(context);
     const scene = before.scenes[input.sceneId];
     if (!scene) throw new SlateError("not_found", `no scene ${input.sceneId}`);
-
-    if (input.entityId) {
-      const entity = before.entities[input.entityId];
-      if (!entity) throw new SlateError("not_found", `no entity ${input.entityId}`);
-      if (entity.kind !== "location") {
-        throw new SlateError("invalid_input", `${entity.name} is a ${entity.kind}, not a location`, {
-          detail: { kind: entity.kind },
-        });
-      }
+    for (const entityId of input.entityIds) {
+      if (!before.entities[entityId]) throw new SlateError("not_found", `no entity ${entityId}`);
     }
 
     const result = await commitDocuments({
       root: context.root,
       actor: context.actor,
-      intent: input.entityId
-        ? `scene ${scene.number}: location -> ${before.entities[input.entityId]?.name ?? input.entityId}`
-        : `scene ${scene.number}: clear location`,
+      intent: `scene ${scene.number}: attach ${input.entityIds.length} library item(s)`,
       touched: [`scene:${input.sceneId}`],
       clock: context.clock,
       expectedRevision: input.expectedRevision,
       mutate: ({ production }) => {
         const target = production.scenes[input.sceneId];
         if (!target) return;
-        target.locationEntityId = input.entityId;
+        target.entityIds = input.entityIds;
         target.updatedAt = context.clock.now();
       },
     });
 
     const updated = result.production.scenes[input.sceneId];
-    const location =
-      updated?.locationEntityId && result.production.entities[updated.locationEntityId]
-        ? {
-            entityId: updated.locationEntityId,
-            name: result.production.entities[updated.locationEntityId]?.name ?? "",
-            coverAssetId:
-              result.production.entities[updated.locationEntityId]?.identity?.images[0]?.assetId ?? null,
-          }
-        : null;
+    const locationEntity = updated?.entityIds
+      .map((id) => result.production.entities[id])
+      .find((entity) => entity?.kind === "location");
 
     return {
-      data: { sceneId: input.sceneId, location },
+      data: {
+        sceneId: input.sceneId,
+        entityIds: updated?.entityIds ?? [],
+        location: locationEntity
+          ? {
+              entityId: locationEntity.id,
+              name: locationEntity.name,
+              coverAssetId: locationEntity.identity?.images[0]?.assetId ?? null,
+            }
+          : null,
+      },
       version: result.project.revision,
       commit: result.commit.id,
       next: ["scene.list", "cut.build"],

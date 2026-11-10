@@ -28,6 +28,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `entity.update` | write | `entity_update` | Set an entity's description, its generation prompt, or the style sheet it uses. |
 | `estimate.create` | read | `estimate_create` | Price a batch of takes for the given tier before anything is submitted. |
 | `frame.attach` | write | `frame_attach` | Attach an image to a shot slot (board, first or last), copied into the project by content hash. |
+| `frame.generate` | spend | `frame_generate` | Generate a shot's start or end frame from its scene's library items and the previz blockout. |
 | `graph.stale` | read | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
 | `history.revert` | destructive | `history_revert` | Undo the most recent commit by restoring the state before it. |
 | `job.get` | read | `job_get` | The state of a job. |
@@ -49,7 +50,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `review.revoke` | destructive | `review_revoke` | Revoke a review link so it stops working immediately. |
 | `scene.create` | write | `scene_create` | Add a scene. Numbers are assigned in order and are never reused. |
 | `scene.list` | read | `scene_list` | Scenes with their shots, readiness and staleness. |
-| `scene.set-location` | write | `scene_set-location` | Link a scene to a location entity (or clear the link). Its sheet becomes the scene background. |
+| `scene.set-entities` | write | `scene_set-entities` | Attach library items to a scene, or clear them. |
 | `scene.update` | write | `scene_update` | Change a scene. Its shots become stale because they were reviewed against the old text. |
 | `service.clear-path` | write | `service_clear-path` | Forget an explicit executable path and go back to discovery. |
 | `service.set-path` | write | `service_set-path` | Point a service at a specific executable, after checking that it runs. |
@@ -777,6 +778,40 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `frame.generate`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "shotId": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "first",
+        "last"
+      ]
+    },
+    "useBlockout": {
+      "type": "boolean",
+      "default": true
+    },
+    "seed": {
+      "type": "integer",
+      "default": 0
+    }
+  },
+  "required": [
+    "shotId",
+    "role"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `graph.stale`
 
 ```json
@@ -1227,11 +1262,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "string",
       "default": ""
     },
-    "locationEntityId": {
-      "type": [
-        "string",
-        "null"
-      ]
+    "entityIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
     },
     "expectedRevision": {
       "type": "integer"
@@ -1256,7 +1292,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
-### `scene.set-location`
+### `scene.set-entities`
 
 ```json
 {}

@@ -70,8 +70,8 @@ describe("scene location", () => {
 
     const linked = expectOk(
       await registry.execute(
-        "scene.set-location",
-        { sceneId: scene.sceneId, entityId: location.entityId },
+        "scene.set-entities",
+        { sceneId: scene.sceneId, entityIds: [location.entityId] },
         context,
       ),
     ).data as { location: { entityId: string; coverAssetId: string | null } | null };
@@ -85,7 +85,7 @@ describe("scene location", () => {
     expect(list.scenes[0]?.location?.name).toBe("Lantern room");
   });
 
-  it("refuses to link something that is not a location", async () => {
+  it("accepts any library item but refuses one that does not exist", async () => {
     const character = expectOk(
       await registry.execute("entity.create", { kind: "character", name: "The keeper" }, context),
     ).data as { entityId: string };
@@ -97,13 +97,23 @@ describe("scene location", () => {
       ),
     ).data as { sceneId: string };
 
-    const result = await registry.execute(
-      "scene.set-location",
-      { sceneId: scene.sceneId, entityId: character.entityId },
+    const allowed = expectOk(
+      await registry.execute(
+        "scene.set-entities",
+        { sceneId: scene.sceneId, entityIds: [character.entityId] },
+        context,
+      ),
+    ).data as { entityIds: string[]; location: unknown };
+    expect(allowed.entityIds).toHaveLength(1);
+    expect(allowed.location).toBeNull();
+
+    const missing = await registry.execute(
+      "scene.set-entities",
+      { sceneId: scene.sceneId, entityIds: ["ent_missing"] },
       context,
     );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("invalid_input");
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.error.code).toBe("not_found");
   });
 
   it("falls back to the location cover when a shot has no frame of its own", async () => {
@@ -116,8 +126,8 @@ describe("scene location", () => {
       ),
     ).data as { sceneId: string };
     await registry.execute(
-      "scene.set-location",
-      { sceneId: scene.sceneId, entityId: location.entityId },
+      "scene.set-entities",
+      { sceneId: scene.sceneId, entityIds: [location.entityId] },
       context,
     );
     const shot = expectOk(

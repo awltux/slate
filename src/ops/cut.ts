@@ -83,8 +83,10 @@ export const cutBuild = defineOp({
     const items: Array<{ shotId: string; assetId: string; durationSec: number }> = [];
     for (const { shot } of orderedShots(before)) {
       // A shot's own frame wins; otherwise the scene's location sheet stands in as the background plate.
-      const sceneLocation = before.scenes[shot.sceneId]?.locationEntityId;
-      const cover = sceneLocation ? before.entities[sceneLocation]?.identity?.images[0]?.assetId : undefined;
+      const sceneLocation = before.scenes[shot.sceneId]?.entityIds
+        .map((id) => before.entities[id])
+        .find((entity) => entity?.kind === "location");
+      const cover = sceneLocation?.identity?.images[0]?.assetId;
       const assetId = shot.frames.first ?? shot.frames.board ?? cover;
       if (!assetId) continue;
       items.push({ shotId: shot.id, assetId, durationSec: shot.durationSec });

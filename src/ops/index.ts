@@ -15,6 +15,7 @@ import {
   variantDelete,
   variantUpdate,
 } from "./entity.js";
+import { frameGenerate } from "./frame-generate.js";
 import { frameAttach } from "./frame.js";
 import { graphStale, sessionBrief } from "./graph.js";
 import { historyRevert, projectHistory } from "./history.js";
@@ -24,7 +25,7 @@ import { projectCreate, projectRename } from "./project.js";
 import { promptExpand } from "./prompt.js";
 import { OpRegistry } from "./registry.js";
 import { noteAdd, noteList, noteResolve, reviewLink, reviewLinks, reviewRevoke } from "./review.js";
-import { sceneCreate, sceneList, sceneSetLocation, sceneUpdate } from "./scene.js";
+import { sceneCreate, sceneList, sceneSetEntities, sceneUpdate } from "./scene.js";
 import { serviceClearPath, serviceSetPath } from "./service.js";
 import { shotCreate, shotGet, shotRebase, shotUpdate } from "./shot.js";
 import { estimateCreate, spendApprove, spendSummary } from "./spend.js";
@@ -43,7 +44,7 @@ export function createRegistry(): OpRegistry {
     storyGet,
     storySet,
     sceneCreate,
-    sceneSetLocation,
+    sceneSetEntities,
     sceneUpdate,
     sceneList,
     shotCreate,
@@ -72,6 +73,7 @@ export function createRegistry(): OpRegistry {
     noteAdd,
     noteList,
     noteResolve,
+    frameGenerate,
     promptExpand,
     libraryPush,
     libraryPull,

@@ -78,9 +78,9 @@ export function shotReadiness(shot: Shot, production: ProductionDocument): Readi
 
   // A shot with no frame of its own can still render if its scene points at a location with a sheet.
   const sceneForBackdrop = production.scenes[shot.sceneId];
-  const sceneLocation = sceneForBackdrop?.locationEntityId
-    ? production.entities[sceneForBackdrop.locationEntityId]
-    : null;
+  const sceneLocation = sceneForBackdrop?.entityIds
+    .map((id) => production.entities[id])
+    .find((entity) => entity?.kind === "location");
   const background = sceneLocation?.identity?.images[0]?.assetId ?? null;
   checks.push(
     shot.frames.board || shot.frames.first

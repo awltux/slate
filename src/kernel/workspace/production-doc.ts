@@ -48,11 +48,27 @@ export const ShotMovementSchema = z.enum([
 export const FRAME_ROLES = ["board", "first", "last"] as const;
 export type FrameRole = (typeof FRAME_ROLES)[number];
 
+/**
+ * A frame records not just which image it is but what made it: the library items it was conditioned on and whether a
+ * previz render supplied the block outline. Without that, "regenerate this frame" is a guess.
+ */
+export const FrameSourceSchema = z
+  .object({
+    entityIds: z.array(z.string()).default([]),
+    entityPins: z.record(z.string(), z.number().int()).default({}),
+    blockoutAssetId: z.string().nullable().default(null),
+    via: z.string().default("local"),
+    at: z.string(),
+  })
+  .strict();
+
 export const ShotFramesSchema = z
   .object({
     board: z.string().startsWith("ast_").optional(),
     first: z.string().startsWith("ast_").optional(),
     last: z.string().startsWith("ast_").optional(),
+    firstSource: FrameSourceSchema.optional(),
+    lastSource: FrameSourceSchema.optional(),
   })
   .strict();
 
@@ -91,6 +107,9 @@ export const TakeSchema = z
     usd: z.number().nonnegative(),
     jobId: z.string(),
     actor: z.string(),
+    /** The frames the clip was generated between; null when the shot had none. */
+    fromFrameId: z.string().startsWith("ast_").nullable().default(null),
+    toFrameId: z.string().startsWith("ast_").nullable().default(null),
     createdAt: z.string(),
   })
   .strict();
@@ -105,8 +124,8 @@ export const SceneSchema = z
     synopsis: z.string(),
     body: z.string(),
     shotIds: z.array(z.string().startsWith("sht_")),
-    /** Optional link to a location entity whose sheet is the scene background. */
-    locationEntityId: z.string().startsWith("ent_").nullable().default(null),
+    /** Library items attached to this scene: who and what is in it. The first location among them is the backdrop. */
+    entityIds: z.array(z.string().startsWith("ent_")).default([]),
     createdAt: z.string(),
     updatedAt: z.string(),
   })

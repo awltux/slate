@@ -41,12 +41,21 @@ async function writeJob(root: string, job: JobRecord): Promise<void> {
   await writeFileAtomic(jobFile(root, job.id), `${JSON.stringify(job, null, 2)}\n`);
 }
 
-function boardFileFor(root: string, production: ProductionDocument, shotId: string): string | null {
-  const shot = production.shots[shotId];
-  const assetId = shot?.frames.first ?? shot?.frames.board;
+function frameFile(root: string, production: ProductionDocument, assetId: string | undefined): string | null {
   if (!assetId) return null;
   const asset = production.assets[assetId];
   return asset ? join(root, asset.path) : null;
+}
+
+/** The opening image for a shot: its start frame, or the board if it has none. */
+function boardFileFor(root: string, production: ProductionDocument, shotId: string): string | null {
+  const shot = production.shots[shotId];
+  return frameFile(root, production, shot?.frames.first ?? shot?.frames.board);
+}
+
+/** The closing image: only present when the shot has a real end frame. */
+function lastFileFor(root: string, production: ProductionDocument, shotId: string): string | null {
+  return frameFile(root, production, production.shots[shotId]?.frames.last);
 }
 
 const TakeViewSchema = z
@@ -63,6 +72,8 @@ const TakeViewSchema = z
     jobId: z.string(),
     createdAt: z.string(),
     selected: z.boolean(),
+    fromFrameId: z.string().nullable(),
+    toFrameId: z.string().nullable(),
   })
   .strict();
 
@@ -178,6 +189,7 @@ export const takeGenerate = defineOp({
               binary: ffmpegBinary,
               endpoint,
               boardFile: boardFileFor(context.root, before, item.shotId),
+              lastFile: lastFileFor(context.root, before, item.shotId),
               durationSec: item.durationSec,
               seed: input.seed,
               outputFile,
@@ -222,6 +234,8 @@ export const takeGenerate = defineOp({
               usd: item.usd,
               jobId,
               actor: context.actor,
+              fromFrameId: before.shots[item.shotId]?.frames.first ?? null,
+              toFrameId: before.shots[item.shotId]?.frames.last ?? null,
               createdAt: context.clock.now(),
             };
             const shot = production.shots[item.shotId];
@@ -251,6 +265,8 @@ export const takeGenerate = defineOp({
           usd: item.usd,
           jobId,
           createdAt: record?.createdAt ?? startedAt,
+          fromFrameId: record?.fromFrameId ?? null,
+          toFrameId: record?.toFrameId ?? null,
           selected: committed.production.shots[item.shotId]?.selectedTakeId === item.takeId,
         };
       });
@@ -311,6 +327,8 @@ export const takeList = defineOp({
         usd: take.usd,
         jobId: take.jobId,
         createdAt: take.createdAt,
+        fromFrameId: take.fromFrameId ?? null,
+        toFrameId: take.toFrameId ?? null,
         selected: production.shots[take.shotId]?.selectedTakeId === take.id,
       }));
     return { data: { takes }, version: project.revision, next: ["take.select"] };

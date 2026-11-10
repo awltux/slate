@@ -90,6 +90,18 @@ export function migrateProduction(raw: unknown): unknown {
   if (!document.blockouts || typeof document.blockouts !== "object") document.blockouts = {};
   if (document.delivery === undefined) document.delivery = null;
 
+  if (document.scenes && typeof document.scenes === "object") {
+    for (const scene of Object.values(document.scenes as Record<string, unknown>)) {
+      if (!scene || typeof scene !== "object") continue;
+      const target = scene as Record<string, unknown>;
+      if (!Array.isArray(target.entityIds)) {
+        const previous = target.locationEntityId;
+        target.entityIds = typeof previous === "string" && previous.length > 0 ? [previous] : [];
+      }
+      Reflect.deleteProperty(target, "locationEntityId");
+    }
+  }
+
   if (document.shots && typeof document.shots === "object") {
     for (const shot of Object.values(document.shots as Record<string, unknown>)) {
       if (!shot || typeof shot !== "object") continue;
