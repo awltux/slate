@@ -117,3 +117,88 @@ describe("provider connections", () => {
     expect(await readKeys(home)).toEqual({});
   });
 });
+
+describe("endpoint connections", () => {
+  const addEndpoint = async (providerId: string, input: Record<string, unknown>) =>
+    expectOk(await registry.execute("ai.endpoint.save", { providerId, ...input }, context)).data as {
+      id: string;
+    };
+
+  it("edits an endpoint in place instead of minting a second one", async () => {
+    const providerId = await fal();
+    const endpoint = await addEndpoint(providerId, {
+      name: "FLUX dev",
+      capability: "image",
+      path: "/fal-ai/flux/dev",
+    });
+
+    const edited = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          id: endpoint.id,
+          providerId,
+          name: "FLUX dev 2",
+          capability: "image",
+          path: "/fal-ai/flux/dev-2",
+          resultPath: "images[0].url",
+        },
+        context,
+      ),
+    ).data as { id: string };
+
+    expect(edited.id).toBe(endpoint.id);
+    const config = await readAiConfig(home);
+    expect(config.endpoints).toHaveLength(1);
+    expect(config.endpoints[0]?.name).toBe("FLUX dev 2");
+    expect(config.endpoints[0]?.path).toBe("/fal-ai/flux/dev-2");
+    expect(config.endpoints[0]?.resultPath).toBe("images[0].url");
+  });
+
+  it("refuses an endpoint id that is not there", async () => {
+    const providerId = await fal();
+    const result = await registry.execute(
+      "ai.endpoint.save",
+      { id: "aie_missing", providerId, name: "ghost", capability: "image", path: "/ghost" },
+      context,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("not_found");
+  });
+
+  it("deleting an endpoint keeps the provider, its key and its other models", async () => {
+    const providerId = await fal();
+    const image = await addEndpoint(providerId, {
+      name: "FLUX dev",
+      capability: "image",
+      path: "/fal-ai/flux/dev",
+    });
+    const text = await addEndpoint(providerId, {
+      name: "TTS base",
+      capability: "text",
+      path: "/tts",
+    });
+    expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Final", bindings: { image: [image.id], text: [text.id] } },
+        context,
+      ),
+    );
+
+    const removed = expectOk(await registry.execute("ai.remove", { kind: "endpoint", id: image.id }, context))
+      .data as { endpointsRemoved: number; bindingsCleared: number };
+
+    expect(removed.endpointsRemoved).toBe(1);
+    expect(removed.bindingsCleared).toBe(1);
+
+    const config = await readAiConfig(home);
+    expect(config.providers).toHaveLength(1);
+    expect(config.endpoints.map((endpoint) => endpoint.id)).toEqual([text.id]);
+    // Only the binding that named the deleted model is cleared; the other capability still resolves.
+    expect(config.bindingSets[0]?.bindings.image).toBeUndefined();
+    expect(config.bindingSets[0]?.bindings.text).toEqual([text.id]);
+    // The host keeps its credential: deleting a model is not deleting a provider.
+    expect((await readKeys(home))[providerId]).toBe("key-one");
+  });
+});
