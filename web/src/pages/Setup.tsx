@@ -74,8 +74,16 @@ export function Setup() {
 
   const load = useCallback(async () => {
     try {
-      const result = await runGlobalOp<Catalog>("ai.catalog", {});
-      setCatalog(result.data);
+      const result = await runGlobalOp<Partial<Catalog>>("ai.catalog", {});
+      // A daemon older than this page answers with the flat binding map and no profiles at all. Reading a missing
+      // list would blank the whole tab, so the page degrades to "no profile yet" and says what to do about it.
+      setCatalog({
+        providers: result.data.providers ?? [],
+        endpoints: result.data.endpoints ?? [],
+        bindingSets: result.data.bindingSets ?? [],
+        defaultBindingSetId: result.data.defaultBindingSetId ?? null,
+        capabilities: result.data.capabilities ?? [],
+      });
     } catch (caught) {
       setError(message(caught));
     }
