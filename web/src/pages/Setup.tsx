@@ -26,10 +26,19 @@ interface EndpointView {
   timeoutMs: number;
 }
 
+interface BindingSetView {
+  id: string;
+  name: string;
+  description: string;
+  bindings: Record<string, string[]>;
+  createdAt: string;
+}
+
 interface Catalog {
   providers: ProviderView[];
   endpoints: EndpointView[];
-  bindings: Record<string, string[]>;
+  bindingSets: BindingSetView[];
+  defaultBindingSetId: string | null;
   capabilities: string[];
 }
 
@@ -265,38 +274,95 @@ export function Setup() {
         </div>
       ) : null}
 
-      <div className="card">
-        <h2>Bindings</h2>
-        <p className="muted">Which endpoint serves each capability. First entry wins.</p>
-        {CAPABILITIES.map((capability) => {
-          const bound = catalog.bindings[capability] ?? [];
-          const options = catalog.endpoints.filter((endpoint) => endpoint.capability === capability);
-          return (
-            <div className="row" key={capability} style={{ marginBottom: "0.4rem" }}>
-              <span className="chip">{capability}</span>
-              <select
-                aria-label={`Endpoint for ${capability}`}
-                value={bound[0] ?? ""}
-                disabled={busy || options.length === 0}
-                onChange={(event) =>
-                  void run(() =>
-                    runGlobalOp("ai.bind", {
-                      capability,
-                      endpointIds: event.target.value ? [event.target.value] : [],
-                    }),
-                  )
-                }
+      <div className="card stack">
+        <div className="row">
+          <h2 style={{ margin: 0 }}>Binding sets</h2>
+          <div className="spacer" />
+          <span className="chip">{catalog.bindingSets.length}</span>
+        </div>
+        <p className="muted" style={{ margin: 0 }}>
+          A binding set is a profile: which endpoint serves each capability. A project picks one, so the same
+          install can run a cheap draft and an expensive final without touching the endpoints.
+        </p>
+
+        {catalog.bindingSets.length === 0 ? (
+          <p className="empty">No profile yet. Create one and choose an endpoint per capability.</p>
+        ) : null}
+
+        {catalog.bindingSets.map((set) => (
+          <div
+            key={set.id}
+            className="stack"
+            style={{ gap: "0.35rem", borderTop: "1px solid var(--line)", paddingTop: "0.6rem" }}
+          >
+            <div className="row">
+              <strong>{set.name}</strong>
+              {set.id === catalog.defaultBindingSetId ? <span className="chip">host default</span> : null}
+              {set.description ? (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {set.description}
+                </span>
+              ) : null}
+              <div className="spacer" />
+              {set.id === catalog.defaultBindingSetId ? null : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void run(() => runGlobalOp("ai.bindingset.use", { id: set.id }))}
+                >
+                  Make default
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void run(() => runGlobalOp("ai.bindingset.remove", { id: set.id }))}
               >
-                <option value="">{options.length === 0 ? "no endpoint" : "unbound"}</option>
-                {options.map((endpoint) => (
-                  <option key={endpoint.id} value={endpoint.id}>
-                    {endpoint.name}
-                  </option>
-                ))}
-              </select>
+                Delete
+              </button>
             </div>
-          );
-        })}
+
+            {CAPABILITIES.map((capability) => {
+              const options = catalog.endpoints.filter((endpoint) => endpoint.capability === capability);
+              const selected = set.bindings[capability]?.[0] ?? "";
+              return (
+                <div className="row" key={capability}>
+                  <span className="chip">{capability}</span>
+                  <select
+                    aria-label={`${capability} endpoint for ${set.name}`}
+                    value={selected}
+                    disabled={busy || options.length === 0}
+                    onChange={(event) => {
+                      const bindings = { ...set.bindings };
+                      if (event.target.value) bindings[capability] = [event.target.value];
+                      else delete bindings[capability];
+                      void run(() =>
+                        runGlobalOp("ai.bindingset.save", {
+                          id: set.id,
+                          name: set.name,
+                          description: set.description,
+                          bindings,
+                        }),
+                      );
+                    }}
+                  >
+                    <option value="">{options.length === 0 ? "no endpoint" : "unset"}</option>
+                    {options.map((endpoint) => (
+                      <option key={endpoint.id} value={endpoint.id}>
+                        {endpoint.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+
+        <BindingSetForm
+          busy={busy}
+          onSubmit={(values) => run(() => runGlobalOp("ai.bindingset.save", values))}
+        />
       </div>
     </div>
   );
@@ -541,6 +607,61 @@ function EndpointForm({
         </button>
       </div>
       {formError ? <p className="error">{formError}</p> : null}
+    </form>
+  );
+}
+
+function BindingSetForm({
+  busy,
+  onSubmit,
+}: {
+  busy: boolean;
+  onSubmit: (values: unknown) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  return (
+    <form
+      className="row"
+      style={{ marginTop: "0.5rem", gap: "0.4rem", alignItems: "flex-start" }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSubmit({ name, description, bindings: {} });
+        setName("");
+        setDescription("");
+      }}
+    >
+      <Field id="binding-set-name" label="New profile" hint="e.g. Draft, cheap / Final, FLUX">
+        <input
+          id="binding-set-name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Draft, cheap"
+          aria-label="Binding set name"
+        />
+      </Field>
+      <Field
+        id="binding-set-description"
+        label="Description"
+        hint="what it is for, and roughly what it costs"
+      >
+        <input
+          id="binding-set-description"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="small model, cents per shot"
+          aria-label="Binding set description"
+        />
+      </Field>
+      <button
+        className="primary"
+        type="submit"
+        disabled={busy || name === ""}
+        style={{ marginTop: "1.1rem" }}
+      >
+        Add profile
+      </button>
     </form>
   );
 }

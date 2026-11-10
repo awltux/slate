@@ -169,7 +169,12 @@ export function createApp(options: AppOptions): Hono {
     const named = await Promise.all(
       projects.map(async (project) => {
         const document = await readProjectDocument(project.path).catch(() => null);
-        return { id: project.id, name: document?.name ?? project.name, createdAt: project.createdAt };
+        return {
+          id: project.id,
+          name: document?.name ?? project.name,
+          createdAt: project.createdAt,
+          bindingSetId: document?.aiBindingSetId ?? null,
+        };
       }),
     );
     return c.json({

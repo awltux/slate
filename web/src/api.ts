@@ -13,6 +13,8 @@ export interface ProjectSummary {
   id: string;
   name: string;
   createdAt: string;
+  /** The model profile this project runs on; null means the host default. */
+  bindingSetId: string | null;
 }
 
 export interface Warning {
@@ -224,4 +226,17 @@ export async function runGlobalOp<T>(name: string, input: unknown): Promise<{ da
     throw new ApiError(payload.error?.code ?? "error", payload.error?.message ?? "the operation failed");
   }
   return { data: payload.data, version: payload.version ?? 0 };
+}
+
+export interface BindingSetOption {
+  id: string;
+  name: string;
+  description: string;
+  isDefault: boolean;
+}
+
+/** The profiles a project can run on. Names only - choosing one does not require seeing the endpoints. */
+export async function listBindingSets(projectId: string): Promise<BindingSetOption[]> {
+  const result = await runOp<{ sets: BindingSetOption[] }>(projectId, "ai.bindingsets", {});
+  return result.data.sets;
 }

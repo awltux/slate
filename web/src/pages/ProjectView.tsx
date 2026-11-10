@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, type PresenceUser, type ProjectSummary, pingPresence, runOp, subscribe } from "../api.js";
+import {
+  ApiError,
+  type BindingSetOption,
+  type PresenceUser,
+  type ProjectSummary,
+  listBindingSets,
+  pingPresence,
+  runOp,
+  subscribe,
+} from "../api.js";
 import { CutPage } from "./Cut.js";
 import { Finish } from "./Finish.js";
 import { Library } from "./Library.js";
@@ -75,11 +84,40 @@ export function ProjectView({
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [others, setOthers] = useState<PresenceUser[]>([]);
+  const [sets, setSets] = useState<BindingSetOption[]>([]);
+  const [binding, setBinding] = useState(project.bindingSetId ?? "");
   const nameInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDraft(project.name);
   }, [project.name]);
+
+  useEffect(() => {
+    setBinding(project.bindingSetId ?? "");
+  }, [project.bindingSetId]);
+
+  // Which model profile this film runs on: the project's own choice, or the host default.
+  useEffect(() => {
+    let cancelled = false;
+    void listBindingSets(project.id)
+      .then((options) => {
+        if (!cancelled) setSets(options);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  async function chooseBinding(value: string) {
+    setBinding(value);
+    try {
+      await runOp(project.id, "project.set-bindings", { bindingSetId: value || null });
+      await onRenamed();
+    } catch (caught) {
+      setRenameError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+    }
+  }
 
   // Presence is a notice, not a lock: it tells you who else is in the room, and the conflict check still decides writes.
   useEffect(() => {
@@ -164,6 +202,27 @@ export function ProjectView({
           </h1>
         )}
         {renameError ? <p className="error">{renameError}</p> : null}
+        {sets.length > 0 && canRename ? (
+          <div className="row" style={{ gap: "0.4rem", marginTop: "0.4rem" }}>
+            <label htmlFor="model-profile" className="muted" style={{ fontSize: 12 }}>
+              Models
+            </label>
+            <select
+              id="model-profile"
+              aria-label="Model profile"
+              value={binding}
+              onChange={(event) => void chooseBinding(event.target.value)}
+            >
+              <option value="">host default</option>
+              {sets.map((set) => (
+                <option key={set.id} value={set.id}>
+                  {set.name}
+                  {set.isDefault ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <p className="muted" style={{ margin: 0 }}>
           {project.id}
           {others.length > 0 ? (
