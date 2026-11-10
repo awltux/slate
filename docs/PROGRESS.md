@@ -20,6 +20,18 @@ four surfaces exist.
 | 13 | Model profiles per project | `pnpm gate:13` | **done** | [profiles](../artifacts/13/binding-sets.png) · [project](../artifacts/13/project-binding.png) · [report](../artifacts/13/report.json) |
 | 14 | Editable sheets, one reference image | `pnpm gate:14` | **done** | [editor](../artifacts/14/sheet-editor.png) · [published](../artifacts/14/sheet-published.png) · [report](../artifacts/14/report.json) |
 | 15 | Project shape, models and look | `pnpm gate:15` | **done** | [create](../artifacts/15/new-project.png) · [project](../artifacts/15/project-created.png) · [report](../artifacts/15/report.json) |
+| 16 | Deleting a project, guarded | `pnpm gate:16` | **done** | [confirm](../artifacts/16/delete-project.png) · [after](../artifacts/16/projects-after-delete.png) · [report](../artifacts/16/report.json) |
+
+## Slice 16 — what it proves
+
+- **The guard is the typed name, and the operation enforces it.** The gate sends a wrong-case name through the API and
+  is refused with a code — the project stays listed and its folder untouched. A form can be bypassed; this cannot.
+- **Keeping the folder is the default**, so deleting is an unlisting rather than a loss: the gate asserts the project
+  leaves the host list while `project.json` is still on disk.
+- **With the option off the folder goes**, and the gate asserts it is gone rather than trusting the flag.
+- **Only an owner may delete.** An editor's request is refused before the operation runs.
+- **Creation and deletion now own the host index**: a project made from any surface is listed, and deleting unregisters
+  the same way — the HTTP route no longer registers on the side.
 
 ## Slice 15 — what it proves
 

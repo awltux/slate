@@ -2,6 +2,16 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## A project can be deleted, and its name is the guard
+
+- **Only an owner can retire a film**, and only by typing its name. The check is inside the operation, so an API call
+  with the wrong name is refused exactly like a mistyped form — the form is not the guard.
+- **The folder is kept by default.** Deleting removes the project from this host: it leaves the picker and the list,
+  but its media, exports and documents stay on disk, so the decision can still be undone by hand. Turning the option
+  off deletes the folder itself.
+- **Creating a project registers it from the operation**, so a film made from the CLI or MCP is listed beside one made
+  in the browser, and deleting unregisters it the same way.
+
 ## A project is created with its shape, rate, models and look
 
 - **Creating a project asks for the decisions that shape everything after it**: aspect ratio, frame rate, resolution,

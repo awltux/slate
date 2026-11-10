@@ -210,6 +210,6 @@ SLATE_HEADLESS=1 pnpm gate:1   # same slice with no daemon
 
 ## 13. Current work
 
-See `docs/PROGRESS.md`. Slices 1–15 are done, each with its gate and screenshots: boot through to a project created
-with its shape, models and look, and editable sheets shared as one reference image. The next slice comes from the
-backlog at the end of that file, not from this line.
+See `docs/PROGRESS.md`. Slices 1–16 are done, each with its gate and screenshots: boot through to guarded project
+deletion, editable sheets and a project created with its shape, models and look. The next slice comes from the backlog
+at the end of that file, not from this line.
