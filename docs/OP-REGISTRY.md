@@ -15,7 +15,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `ai.endpoint.save` | write | `ai_endpoint_save` | Create or update an endpoint: one capability, one path, its parameters and request template. |
 | `ai.preview` | read | `ai_preview` | Render the request an endpoint would send, without calling it. |
 | `ai.provider.save` | write | `ai_provider_save` | Create or update an AI provider: one host, one auth scheme, one credential. |
-| `ai.remove` | destructive | `ai_remove` | Remove a provider or endpoint, and any binding that pointed at it. |
+| `ai.remove` | destructive | `ai_remove` | Remove a provider or endpoint, its stored key, and any binding that pointed at it. |
 | `blockout.attach` | write | `blockout_attach` | Attach a blockout for a shot: first and last stills, an optional animatic, and the camera. |
 | `capabilities.get` | read | `capabilities_get` | Probe the host toolchain and report the chain that will run each stage, with the reason. |
 | `cut.build` | write | `cut_build` | Build the cut from every shot that has a board or first frame, in scene order. |

@@ -140,6 +140,10 @@ export const aiProviderSave = defineOp({
   touched: () => ["ai"],
   run: async (input, context) => {
     const config = await readAiConfig(context.home);
+    // An id names a provider that already exists; an unknown one is a stale form, not a new connection.
+    if (input.id && !config.providers.some((provider) => provider.id === input.id)) {
+      throw new SlateError("not_found", `no provider ${input.id}`);
+    }
     const id = input.id ?? newId("aip");
     const provider: Provider = {
       id,
@@ -343,15 +347,19 @@ export const aiBindingSetRemove = defineOp({
   },
 });
 
-const RemoveInput = z.object({ id: z.string() }).strict();
-
 export const aiRemove = defineOp({
   name: "ai.remove",
   ownerOnly: true,
   policy: "destructive",
-  summary: "Remove a provider or endpoint, and any binding that pointed at it.",
+  summary: "Remove a provider or endpoint, its stored key, and any binding that pointed at it.",
   input: z.object({ kind: z.enum(["provider", "endpoint"]), id: z.string() }).strict(),
-  output: z.object({ removed: z.string(), bindingsCleared: z.number().int() }).strict(),
+  output: z
+    .object({
+      removed: z.string(),
+      endpointsRemoved: z.number().int(),
+      bindingsCleared: z.number().int(),
+    })
+    .strict(),
   touched: () => ["ai"],
   run: async (input, context) => {
     const config = await readAiConfig(context.home);
@@ -362,6 +370,7 @@ export const aiRemove = defineOp({
       if (doomed) gone.add(endpoint.id);
       return !doomed;
     });
+    const endpointsRemoved = config.endpoints.length - endpoints.length;
     let cleared = 0;
     const bindingSets = config.bindingSets.map((set) => {
       const bindings: Record<string, string[]> = {};
@@ -380,8 +389,21 @@ export const aiRemove = defineOp({
       endpoints,
       bindingSets,
     });
-    void RemoveInput;
-    return { data: { removed: input.id, bindingsCleared: cleared }, version: 0, next: ["ai.catalog"] };
+
+    // A credential outliving the provider it belonged to is a secret nobody owns: remove it with the provider.
+    if (input.kind === "provider") {
+      const keys = await readKeys(context.home);
+      if (keys[input.id] !== undefined) {
+        delete keys[input.id];
+        await writeKeys(context.home, keys);
+      }
+    }
+
+    return {
+      data: { removed: input.id, endpointsRemoved, bindingsCleared: cleared },
+      version: 0,
+      next: ["ai.catalog"],
+    };
   },
 });
 
