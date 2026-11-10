@@ -124,6 +124,35 @@ describe("endpoint connections", () => {
       id: string;
     };
 
+  it("previews with the provider's current auth scheme, not a remembered one", async () => {
+    const providerId = await fal();
+    const endpoint = await addEndpoint(providerId, {
+      name: "FLUX dev",
+      capability: "image",
+      path: "/fal-ai/flux/dev",
+    });
+
+    const headers = async () => {
+      const preview = expectOk(await registry.execute("ai.preview", { endpointId: endpoint.id }, context))
+        .data as { headers: Record<string, string> };
+      return preview.headers;
+    };
+
+    // fal() stores this provider with "Key {{key}}".
+    expect((await headers()).Authorization).toBe("Key ••••");
+
+    expectOk(
+      await saveProvider({
+        id: providerId,
+        name: "fal",
+        kind: "fal",
+        baseUrl: "https://fal.run",
+        authScheme: "Bearer {{key}}",
+      }),
+    );
+    expect((await headers()).Authorization).toBe("Bearer ••••");
+  });
+
   it("edits an endpoint in place instead of minting a second one", async () => {
     const providerId = await fal();
     const endpoint = await addEndpoint(providerId, {
