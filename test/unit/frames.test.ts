@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
+import { readProjectDocument } from "../../src/kernel/workspace/project-doc.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
 import { testContext } from "../helpers/context.js";
 import { fakeFfmpeg } from "../helpers/fake-ffmpeg.js";
@@ -95,6 +96,61 @@ describe("scene library items", () => {
 });
 
 describe("frame.generate", () => {
+  it("takes the revision the plan page sends, so the Frames button is not rejected as invalid input", async () => {
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LANTERN ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "WS", angle: "EYE", movement: "STATIC", durationSec: 4 },
+        context,
+      ),
+    ).data as { shotId: string };
+
+    const project = await readProjectDocument(root);
+    const generated = expectOk(
+      await registry.execute(
+        "frame.generate",
+        { shotId: shot.shotId, role: "first", expectedRevision: project.revision },
+        context,
+      ),
+    );
+    expect(generated.version).toBe(project.revision + 1);
+  });
+
+  it("refuses before it renders when the revision has moved on", async () => {
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LANTERN ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "WS", angle: "EYE", movement: "STATIC", durationSec: 4 },
+        context,
+      ),
+    ).data as { shotId: string };
+
+    const stale = (await readProjectDocument(root)).revision - 1;
+    const refused = await registry.execute(
+      "frame.generate",
+      { shotId: shot.shotId, role: "first", expectedRevision: stale },
+      context,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.error.code).toBe("conflict");
+      expect(refused.error.detail).toMatchObject({ expectedRevision: stale });
+    }
+  });
   it("generates a start and end frame conditioned on the scene's items and records that", async () => {
     const keeper = await sheeted("character", "The keeper");
     const room = await sheeted("location", "Lantern room");

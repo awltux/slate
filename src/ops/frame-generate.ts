@@ -31,6 +31,8 @@ export const frameGenerate = defineOp({
       role: z.enum(["first", "last"]),
       useBlockout: z.boolean().default(true),
       seed: z.number().int().default(0),
+      /** Optimistic concurrency: a shot edited while the button was pressed is not silently overwritten. */
+      expectedRevision: z.number().int().optional(),
     })
     .strict(),
   output: z
@@ -52,6 +54,16 @@ export const frameGenerate = defineOp({
     const { project, production } = await loadDocuments(context);
     const shot = production.shots[input.shotId];
     if (!shot) throw new SlateError("not_found", `no shot ${input.shotId}`);
+
+    // The revision is checked before anything is rendered or billed: spending and then failing to record the frame
+    // would leave a paid asset nobody knows about.
+    if (input.expectedRevision !== undefined && project.revision !== input.expectedRevision) {
+      throw new SlateError(
+        "conflict",
+        `this film is at revision ${project.revision}, not ${input.expectedRevision}`,
+        { detail: { currentRevision: project.revision, expectedRevision: input.expectedRevision } },
+      );
+    }
 
     const size = frameSize(project.settings);
 
@@ -138,6 +150,8 @@ export const frameGenerate = defineOp({
       intent: `frame: ${input.role} for shot ${shot.number} (${attached.length} reference(s))`,
       touched: [`shot:${shot.id}`],
       clock: context.clock,
+      // Checked again at commit time: an edit that landed while the frame was rendering must not be overwritten.
+      expectedRevision: input.expectedRevision,
       mutate: ({ production: target }) => {
         target.assets[asset.id] = asset;
         const local = target.shots[input.shotId];

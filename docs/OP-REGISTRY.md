@@ -976,6 +976,9 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "seed": {
       "type": "integer",
       "default": 0
+    },
+    "expectedRevision": {
+      "type": "integer"
     }
   },
   "required": [
