@@ -7,6 +7,7 @@ import {
   aiEndpointSave,
   aiPreview,
   aiProviderSave,
+  aiReferenceTest,
   aiRemove,
 } from "./ai.js";
 import { capabilitiesGet } from "./capabilities.js";
@@ -83,6 +84,7 @@ export function createRegistry(): OpRegistry {
     aiBindingSetRemove,
     aiRemove,
     aiPreview,
+    aiReferenceTest,
     reviewLink,
     reviewLinks,
     reviewRevoke,

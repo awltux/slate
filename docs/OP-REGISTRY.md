@@ -15,6 +15,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `ai.endpoint.save` | write | `ai_endpoint_save` | Create or update an endpoint: one capability, one path, its parameters and request template. |
 | `ai.preview` | read | `ai_preview` | Render the request an endpoint would send, without calling it. |
 | `ai.provider.save` | write | `ai_provider_save` | Create or update an AI provider: one host, one auth scheme, one credential. |
+| `ai.reference.test` | read | `ai_reference_test` | Upload a tiny test image through a provider's reference transport. |
 | `ai.remove` | destructive | `ai_remove` | Remove a provider or endpoint, its stored key, and any binding that pointed at it. |
 | `blockout.attach` | write | `blockout_attach` | Attach a blockout for a shot: first and last stills, an optional animatic, and the camera. |
 | `capabilities.get` | read | `capabilities_get` | Probe the host toolchain and report the chain that will run each stage, with the reason. |
@@ -325,6 +326,18 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
         "upscale"
       ]
     },
+    "reference": {
+      "type": "object",
+      "properties": {
+        "assetId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "assetId"
+      ],
+      "additionalProperties": false
+    },
     "values": {
       "type": "object",
       "properties": {
@@ -406,11 +419,93 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     },
     "apiKey": {
       "type": "string"
+    },
+    "reference": {
+      "type": "object",
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": [
+            "inline",
+            "upload"
+          ],
+          "default": "inline"
+        },
+        "maxInlineBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 1500000
+        },
+        "upload": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "PATCH",
+                    "DELETE"
+                  ],
+                  "default": "POST"
+                },
+                "body": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "default": {}
+                },
+                "uploadUrlPath": {
+                  "type": "string",
+                  "default": "upload_url"
+                },
+                "fileUrlPath": {
+                  "type": "string",
+                  "default": "file_url"
+                }
+              },
+              "required": [
+                "url"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": [
     "name",
     "baseUrl"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.reference.test`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "providerId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "providerId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

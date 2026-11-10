@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { type Endpoint, type Provider, readResult, renderRequest } from "../../src/kernel/ai/declaration.js";
+import {
+  DEFAULT_REFERENCE_POLICY,
+  type Endpoint,
+  type Provider,
+  readResult,
+  renderRequest,
+} from "../../src/kernel/ai/declaration.js";
 
 const fal: Provider = {
   id: "aip_fal",
@@ -7,6 +13,7 @@ const fal: Provider = {
   kind: "fal",
   baseUrl: "https://fal.run",
   auth: { header: "Authorization", scheme: "Key {{key}}" },
+  reference: DEFAULT_REFERENCE_POLICY,
   notes: "",
 };
 

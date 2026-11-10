@@ -32,6 +32,42 @@ export const ParamSpecSchema = z
 
 export type ParamSpec = z.infer<typeof ParamSpecSchema>;
 
+/** How a local reference reaches a provider that fetches URLs instead of accepting bytes. */
+export const ReferenceTransportSchema = z.enum(["inline", "upload"]);
+export type ReferenceTransport = z.infer<typeof ReferenceTransportSchema>;
+
+/**
+ * A provider's file API, declared like everything else: an absolute URL, a body template for the initiate call, and
+ * where the presigned upload url and the public file url sit in the response. fal's is
+ * `POST https://rest.alpha.fal.ai/storage/upload/initiate` → `{ upload_url, file_url }`, then a PUT of the bytes.
+ */
+export const ReferenceUploadSchema = z
+  .object({
+    url: z.string().url(),
+    method: HttpMethodSchema.default("POST"),
+    /** Body template for the initiate call. Interpolates `{{contentType}}`, `{{bytes}}` and `{{fileName}}`. */
+    body: z.record(z.string(), z.unknown()).default({}),
+    uploadUrlPath: z.string().default("upload_url"),
+    fileUrlPath: z.string().default("file_url"),
+  })
+  .strict();
+
+/**
+ * What to do with a reference image. Inline is the default because it needs no second service and no public URL; an
+ * image too large to inline goes through the provider's own upload, or the call is refused rather than silently sent
+ * without the reference it claims to have.
+ */
+export const ReferencePolicySchema = z
+  .object({
+    transport: ReferenceTransportSchema.default("inline"),
+    maxInlineBytes: z.number().int().positive().default(1_500_000),
+    upload: ReferenceUploadSchema.nullable().default(null),
+  })
+  .strict();
+
+/** The policy a provider has when it declares nothing: inline, and a refusal rather than a silent omission. */
+export const DEFAULT_REFERENCE_POLICY = ReferencePolicySchema.parse({});
+
 /** A provider is one host, one auth scheme and one credential. `keyRef` names an entry in the keys file. */
 export const ProviderSchema = z
   .object({
@@ -47,6 +83,7 @@ export const ProviderSchema = z
         scheme: z.string().default("Bearer {{key}}"),
       })
       .strict(),
+    reference: ReferencePolicySchema.default({}),
     notes: z.string().default(""),
   })
   .strict();

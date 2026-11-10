@@ -1,10 +1,16 @@
 import { join } from "node:path";
 import { fixedClock } from "../../src/domain/clock.js";
+import type { HttpPort } from "../../src/kernel/ai/reference.js";
 import type { RunProbe, ServiceState } from "../../src/kernel/catalog/probe.js";
 import type { ServiceId } from "../../src/kernel/catalog/services.js";
 import type { OpContext } from "../../src/ops/types.js";
 
 const missingRun: RunProbe = async () => ({ code: null, stdout: "", stderr: "ENOENT", failedToStart: true });
+
+/** No test may reach the network by accident: a call that was not given a fake has to say so out loud. */
+const offlineHttp: HttpPort = async (input) => {
+  throw new Error(`unexpected network call to ${input.url}: pass an http transport to the test context`);
+};
 
 function absent(id: ServiceId): ServiceState {
   return {
@@ -28,6 +34,7 @@ export function testContext(
     tool?: (id: ServiceId) => Promise<ServiceState>;
     home?: string;
     privileged?: boolean;
+    http?: HttpPort;
   } = {},
 ): OpContext {
   return {
@@ -39,5 +46,6 @@ export function testContext(
     run: options.run ?? missingRun,
     vendorDir: join("C:", "slate", "vendor"),
     tool: options.tool ?? (async (id: ServiceId) => absent(id)),
+    http: options.http ?? offlineHttp,
   };
 }

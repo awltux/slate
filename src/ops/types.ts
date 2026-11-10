@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { Clock } from "../domain/clock.js";
 import type { Warning } from "../domain/result.js";
+import type { HttpPort } from "../kernel/ai/reference.js";
 import type { RunProbe, ServiceState } from "../kernel/catalog/probe.js";
 import type { ServiceId } from "../kernel/catalog/services.js";
 
@@ -26,6 +27,11 @@ export interface OpContext {
    * may have found the tool in a discovered install folder instead.
    */
   tool: (id: ServiceId) => Promise<ServiceState>;
+  /**
+   * The network, as a port: operations that call a provider use this rather than global fetch, so every test stays
+   * offline. Defaults to the real transport when a context does not supply one.
+   */
+  http?: HttpPort;
 }
 
 export interface OpOutcome<T> {

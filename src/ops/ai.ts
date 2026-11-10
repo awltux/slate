@@ -1,19 +1,45 @@
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import { newId } from "../domain/ids.js";
 import { SlateError } from "../domain/result.js";
 import {
   type AiConfig,
   CapabilitySchema,
+  DEFAULT_REFERENCE_POLICY,
   type Endpoint,
   HttpMethodSchema,
   ParamSpecSchema,
   type Provider,
+  ReferencePolicySchema,
   type RenderedRequest,
   renderRequest,
 } from "../kernel/ai/declaration.js";
+import { type ReferencePlan, httpPort, planReference, stageReference } from "../kernel/ai/reference.js";
 import { readAiConfig, readKeys, resolveBinding, writeAiConfig, writeKeys } from "../kernel/ai/store.js";
+import { assetFile } from "../kernel/production/assets.js";
+import { readProductionDocument } from "../kernel/workspace/production-doc.js";
 import { readProjectDocument } from "../kernel/workspace/project-doc.js";
 import { defineOp } from "./registry.js";
+
+const ReferenceViewSchema = z
+  .object({
+    transport: z.string(),
+    maxInlineBytes: z.number().int(),
+    /** The declared file API, or null when this provider takes none beyond the inline limit. */
+    upload: z
+      .object({
+        url: z.string(),
+        method: z.string(),
+        body: z.record(z.string(), z.unknown()),
+        uploadUrlPath: z.string(),
+        fileUrlPath: z.string(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
 
 const ProviderViewSchema = z
   .object({
@@ -26,6 +52,7 @@ const ProviderViewSchema = z
     hasKey: z.boolean(),
     notes: z.string(),
     endpointCount: z.number().int(),
+    reference: ReferenceViewSchema,
   })
   .strict();
 
@@ -88,6 +115,19 @@ export const aiCatalog = defineOp({
           hasKey: Boolean(keys[provider.id]),
           notes: provider.notes,
           endpointCount: config.endpoints.filter((endpoint) => endpoint.providerId === provider.id).length,
+          reference: {
+            transport: provider.reference.transport,
+            maxInlineBytes: provider.reference.maxInlineBytes,
+            upload: provider.reference.upload
+              ? {
+                  url: provider.reference.upload.url,
+                  method: provider.reference.upload.method,
+                  body: provider.reference.upload.body,
+                  uploadUrlPath: provider.reference.upload.uploadUrlPath,
+                  fileUrlPath: provider.reference.upload.fileUrlPath,
+                }
+              : null,
+          },
         })),
         endpoints: config.endpoints.map((endpoint) => ({
           id: endpoint.id,
@@ -134,6 +174,8 @@ export const aiProviderSave = defineOp({
       notes: z.string().default(""),
       /** Optional new secret. Omit to keep the existing one; send "" to clear it. */
       apiKey: z.string().optional(),
+      /** How references reach this provider. Omitted keeps whatever is stored, or the inline default. */
+      reference: ReferencePolicySchema.optional(),
     })
     .strict(),
   output: z.object({ id: z.string(), hasKey: z.boolean() }).strict(),
@@ -145,12 +187,14 @@ export const aiProviderSave = defineOp({
       throw new SlateError("not_found", `no provider ${input.id}`);
     }
     const id = input.id ?? newId("aip");
+    const existing = config.providers.find((entry) => entry.id === id);
     const provider: Provider = {
       id,
       name: input.name,
       kind: input.kind,
       baseUrl: input.baseUrl,
       auth: { header: input.authHeader, scheme: input.authScheme },
+      reference: input.reference ?? existing?.reference ?? DEFAULT_REFERENCE_POLICY,
       notes: input.notes,
     };
 
@@ -425,6 +469,8 @@ export const aiPreview = defineOp({
     .object({
       endpointId: z.string().optional(),
       capability: CapabilitySchema.optional(),
+      /** A local asset named as the reference, so the preview can say how it would actually be sent. */
+      reference: z.object({ assetId: z.string() }).strict().optional(),
       values: z
         .object({
           prompt: z.string().default("a lighthouse keeper at night"),
@@ -456,6 +502,17 @@ export const aiPreview = defineOp({
       /** The profile that chose this endpoint, so a preview says which model the project actually runs on. */
       bindingSetId: z.string().nullable(),
       bindingSetName: z.string().nullable(),
+      /** What would happen to a local reference, when one was named: inlined, uploaded, or refused. */
+      reference: z
+        .object({
+          assetId: z.string(),
+          bytes: z.number().int(),
+          rung: z.string(),
+          maxInlineBytes: z.number().int(),
+          reason: z.string(),
+        })
+        .strict()
+        .nullable(),
     })
     .strict(),
   run: async (input, context) => {
@@ -488,10 +545,30 @@ export const aiPreview = defineOp({
       )
       .map((param) => param.key);
 
+    // A reference is the one thing a preview cannot just render: a local file is not a URL, and whether it can be sent
+    // depends on its size and the provider's transport. So it is planned, not faked - the bytes are not moved here.
+    let reference: { assetId: string; plan: ReferencePlan } | null = null;
+    if (input.reference) {
+      const production = await readProductionDocument(context.root).catch(() => null);
+      const asset = production?.assets[input.reference.assetId];
+      if (!production || !asset) {
+        throw new SlateError("not_found", `no asset ${input.reference.assetId} in this project`);
+      }
+      const stats = await stat(assetFile(context.root, asset)).catch(() => null);
+      if (!stats) throw new SlateError("media_missing", `the file for ${asset.id} is missing`);
+      reference = {
+        assetId: asset.id,
+        plan: planReference({ bytes: stats.size, provider }),
+      };
+    }
+
     let request: RenderedRequest;
     try {
       // A placeholder key is used so the rendered header shows its shape without revealing the real secret.
-      request = renderRequest(provider, endpoint, input.values, keys[provider.id] ? "••••" : null);
+      const values = reference
+        ? { ...input.values, image: `<reference:${reference.assetId}>` }
+        : input.values;
+      request = renderRequest(provider, endpoint, values, keys[provider.id] ? "••••" : null);
     } catch (error) {
       throw new SlateError(
         "invalid_input",
@@ -511,10 +588,90 @@ export const aiPreview = defineOp({
         missing,
         bindingSetId: resolution.bindingSetId,
         bindingSetName: resolution.bindingSetName,
+        reference: reference
+          ? {
+              assetId: reference.assetId,
+              bytes: reference.plan.bytes,
+              rung: reference.plan.rung,
+              maxInlineBytes: reference.plan.maxInlineBytes,
+              reason: reference.plan.reason,
+            }
+          : null,
       },
       version: 0,
       via: resolution.via,
+      warnings:
+        reference && reference.plan.rung === "none"
+          ? [{ code: "reference_too_large", message: reference.plan.reason }]
+          : [],
       next: ["ai.bindingsets"],
     };
+  },
+});
+
+/**
+ * The one operation that moves bytes to a provider outside a generation call. It uploads a tiny image through the
+ * declared transport, so an operator can prove the file API and the credential work before a shot depends on them -
+ * and so the upload path is reachable and tested rather than latent until generation exists.
+ */
+export const aiReferenceTest = defineOp({
+  name: "ai.reference.test",
+  ownerOnly: true,
+  policy: "read",
+  summary: "Upload a tiny test image through a provider's reference transport.",
+  input: z.object({ providerId: z.string() }).strict(),
+  output: z
+    .object({ provider: z.string(), via: z.string(), bytes: z.number().int(), fileUrl: z.string() })
+    .strict(),
+  run: async (input, context) => {
+    const config = await readAiConfig(context.home);
+    const provider = config.providers.find((entry) => entry.id === input.providerId);
+    if (!provider) throw new SlateError("not_found", `no provider ${input.providerId}`);
+    if (!provider.reference.upload) {
+      throw new SlateError("invalid_input", `${provider.name} declares no upload endpoint`);
+    }
+
+    const ffmpeg = await context.tool("ffmpeg");
+    if (!ffmpeg.binary) {
+      throw new SlateError("capability_missing", "FFmpeg is needed to make the test image");
+    }
+
+    const work = await mkdtemp(join(tmpdir(), "slate-reference-"));
+    const file = join(work, "reference.png");
+    try {
+      const rendered = await context.run([
+        ffmpeg.binary,
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=0x202020:s=64x64",
+        "-frames:v",
+        "1",
+        file,
+      ]);
+      if (rendered.code !== 0) {
+        throw new SlateError("service_unavailable", "FFmpeg failed to make the test image", {
+          retryable: true,
+        });
+      }
+
+      // Forced through the upload rung: the point of the test is the file API, not the inline limit.
+      const keys = await readKeys(context.home);
+      const staged = await stageReference({
+        file,
+        provider: { ...provider, reference: { ...provider.reference, maxInlineBytes: 0 } },
+        http: context.http ?? httpPort,
+        key: keys[provider.id] ?? null,
+      });
+
+      return {
+        data: { provider: provider.name, via: staged.via, bytes: staged.bytes, fileUrl: staged.value },
+        version: 0,
+        next: ["ai.preview"],
+      };
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
   },
 });
