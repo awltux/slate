@@ -13,9 +13,10 @@ User-visible changes per slice. Internal refactors are not listed.
 
 ## Setup — AI connections
 
-- **A Setup tab, for the owner only.** Declare any number of AI providers and, within each, any number of endpoints —
-  one per model and capability. Nothing about a provider is hard-coded: fal's one key with a route per model and an
-  OpenAI-compatible host with one route and many models are both just data.
+- **A Setup tab, for the owner only.** Declare any number of AI providers and, each hidden underneath its provider, the
+  endpoints — one per model and capability. Nothing about a provider is hard-coded: fal's one key with a route per model
+  and an OpenAI-compatible host with one route and many models are both just data.
+- **Every REST method**: GET and DELETE send their values as a query string, POST, PUT and PATCH send a body.
 - **Parameters are declared once** and placed by a body template (`"num_images": "{{param:num_images}}"`), so each API's
   unique shape is expressible without a new adapter. Parameters keep their declared types — `4`, not `"4"`.
 - **Preview proves a connection without spending anything**: it renders the exact request, with the key masked, and
