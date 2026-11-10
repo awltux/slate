@@ -2461,6 +2461,22 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.screenshot({ path: join(artifactDir, "project-export.png"), fullPage: true });
       steps.push("ui: the export offers a copy through the browser's save dialog, named after the archive");
 
+      // Advanced: the host writes straight into a folder, in one move, and no browser copy is offered for it.
+      await page.click("summary:has-text('Advanced')");
+      await page.fill('input[aria-label="Export destination folder"]', join(gateHome, "exports-advanced"));
+      await page.click('button:has-text("Export there")');
+      await page.waitForSelector("text=written to the folder you gave", { timeout: 120_000 });
+      assert(
+        (await page.locator('a[aria-label="Save a copy of the archive"]').count()) === 0,
+        "an archive written to a folder must not offer a browser copy",
+      );
+      assert(
+        existsSync(join(gateHome, "exports-advanced")),
+        "the archive must be written into the folder that was given",
+      );
+      await page.screenshot({ path: join(artifactDir, "project-export-advanced.png"), fullPage: true });
+      steps.push("ui: advanced writes straight to a folder, and says why that suits a large project");
+
       await instance.close();
       return;
     }
