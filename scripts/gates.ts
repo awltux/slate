@@ -1375,6 +1375,33 @@ async function gate11(steps: string[]): Promise<void> {
   assert(!serialized.includes("gate-secret-key"), "the catalog must never return the key itself");
   steps.push("catalog: says a key exists, never returns it");
 
+  // Editing is the same operation as creating: the id names the provider, and a blank key keeps the one already stored.
+  const edited = await fetch(`${base}/api/op/ai.provider.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      id: provider.data.id,
+      name: "fal",
+      kind: "fal",
+      baseUrl: "https://fal-prod.run",
+      authHeader: "Authorization",
+      authScheme: "Key {{key}}",
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data: { id: string; hasKey: boolean } }>);
+  assert(edited.ok && edited.data.id === provider.data.id, "editing must keep the same provider");
+  assert(edited.data.hasKey === true, "editing without a new key must keep the stored one");
+
+  const afterEdit = await fetch(`${base}/api/op/ai.preview`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ capability: "image" }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data: { url: string } }>);
+  assert(
+    afterEdit.data.url === "https://fal-prod.run/fal-ai/flux/dev",
+    `the endpoint must follow the provider's new host, got ${afterEdit.data.url}`,
+  );
+  steps.push("edit: the host moved, the endpoint followed, the key stayed");
+
   // An editor may not read or change host setup.
   const editor = await loginAs("editor", "gate-editor-123");
   const refused = await fetch(`${base}/api/op/ai.catalog`, {
@@ -1895,6 +1922,42 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.waitForSelector("text=POST /fal-ai/flux/dev", { timeout: 20_000 });
       await page.screenshot({ path: join(artifactDir, "setup.png"), fullPage: true });
       steps.push("ui: providers hide their endpoints, and opening one shows the call");
+
+      // Edit opens on the stored values, so the base URL the API changed is what the form shows.
+      await page.click('button[aria-label="Edit fal"]');
+      await page.waitForSelector('input[aria-label="Edit base URL"]', { timeout: 20_000 });
+      const prefilled = await page.inputValue('input[aria-label="Edit base URL"]');
+      assert(
+        prefilled === "https://fal-prod.run",
+        `the edit form must open on the stored host, got ${prefilled}`,
+      );
+      await page.fill('input[aria-label="Edit provider name"]', "fal prod");
+      await page.screenshot({ path: join(artifactDir, "setup-edit.png"), fullPage: true });
+      await page.click('button:has-text("Save provider")');
+      await page.waitForSelector("text=fal prod", { timeout: 20_000 });
+      await page.waitForSelector('button[aria-label="Edit fal prod"]', { timeout: 20_000 });
+      steps.push("ui: a provider is edited from a form that opens on what is stored");
+
+      // Delete asks first, and says what else goes with the provider.
+      await page.click('button[aria-label="Delete fal prod"]');
+      await page.waitForSelector("text=go for good", { timeout: 20_000 });
+      const warning = await page.locator("text=go for good").first().textContent();
+      assert(
+        Boolean(warning?.includes("1 endpoint") && warning?.includes("1 profile binding")),
+        `the confirmation must name what goes with the provider, got: ${warning}`,
+      );
+      await page.screenshot({ path: join(artifactDir, "setup-delete.png"), fullPage: true });
+      await page.click('button:has-text("Delete it")');
+      await page.waitForSelector("text=No provider yet", { timeout: 20_000 });
+      const notice = await page.locator("text=fal prod deleted").first().textContent();
+      assert(
+        Boolean(notice?.includes("1 endpoint") && notice?.includes("1 profile binding")),
+        `the notice must report what went with the provider, got: ${notice}`,
+      );
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: join(artifactDir, "setup-deleted.png"), fullPage: true });
+      steps.push("ui: deleting a provider names its endpoints and bindings, then reports them gone");
+
       await instance.close();
       return;
     }
