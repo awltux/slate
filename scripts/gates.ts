@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -2215,6 +2215,127 @@ async function gate17(steps: string[]): Promise<void> {
   });
 }
 
+async function gate18(steps: string[]): Promise<void> {
+  await signIn();
+
+  // 7-Zip is a host dependency; the gate says so plainly rather than failing on a machine that has no archiver.
+  const sevenzip = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("7z");
+  assert(Boolean(sevenzip.binary), "gate 18 needs 7-Zip: install it, or set SLATE_7Z_PATH");
+  const binary = sevenzip.binary as string;
+
+  projectId = await newProject("The Last Light", 20);
+
+  // Something worth archiving: a scene, a shot and a generated frame with its media.
+  const keeper = await op<{ entityId: string }>(projectId, "entity.create", {
+    kind: "location",
+    name: "Lantern room",
+    description: "Salt-eaten iron, one lamp.",
+  });
+  await op(projectId, "entity.update", {
+    entityId: keeper.data.entityId,
+    prompt: "lantern room, night, amber practical",
+  });
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LANTERN ROOM", timeOfDay: "NIGHT" },
+  });
+  const shot = await op<{ shotId: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "WS",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 4,
+  });
+  await op(projectId, "scene.set-entities", {
+    sceneId: scene.data.sceneId,
+    entityIds: [keeper.data.entityId],
+  });
+  const frame = await op<{ assetId: string }>(projectId, "frame.generate", {
+    shotId: shot.data.shotId,
+    role: "first",
+  });
+
+  const exported = await op<{
+    archiveName: string;
+    bytes: number;
+    sha256: string;
+    revision: number;
+    counts: { assets: number; shots: number };
+  }>(projectId, "project.export", {});
+  assert(exported.data.bytes > 0, "the archive must have bytes");
+  assert(exported.data.sha256.startsWith("sha256:"), "the archive must be hashed");
+  assert(exported.data.counts.assets > 0, "the manifest must count the assets the film has");
+  assert(exported.data.counts.shots === 1, "the manifest must count the shots the film has");
+
+  const archive = join(gateHome, "exports", exported.data.archiveName);
+  assert(existsSync(archive), `the archive must be on disk at ${exported.data.archiveName}`);
+  steps.push("export: one archive on disk, hashed, with the film's contents counted");
+
+  // The metadata travels inside the archive, so a person can open it and see what it is.
+  const unpacked = await mkdtemp(join(tmpdir(), "slate-gate18-manifest-"));
+  const listing = await runCommand([binary, "x", archive, `-o${unpacked}`, "-bd", "-y"]);
+  assert(listing.code === 0, "the archive must open");
+  // The archive holds one top-level folder: the project folder, named as it was on the host that made it.
+  const [root] = (await readdir(unpacked)).filter((entry) => !entry.startsWith("."));
+  const manifestRaw = await readFile(
+    join(unpacked, root ?? "missing", ".slate", "export-manifest.json"),
+    "utf8",
+  ).catch(() => "null");
+  const manifest = JSON.parse(manifestRaw) as {
+    project?: { id: string; name: string };
+    counts?: { shots: number };
+  } | null;
+  assert(manifest?.project?.id === projectId, "the manifest must name the project it came from");
+  assert(manifest?.project?.name === "The Last Light", "the manifest must carry the film's name");
+  assert(manifest?.counts?.shots === 1, "the manifest must carry the counts");
+  await rm(unpacked, { recursive: true, force: true });
+  steps.push("manifest: the archive says which film it is, without opening the documents");
+
+  // The project is deleted outright, then restored from the archive.
+  await op(projectId, "project.delete", { confirmName: "The Last Light", keepAssets: false });
+  const listedAfterDelete = await fetch(`${base}/api/projects`, { headers: { cookie } })
+    .then((response) => response.json() as Promise<{ data: { projects: Array<{ id: string }> } }>)
+    .then((payload) => payload.data.projects.map((project) => project.id));
+  assert(!listedAfterDelete.includes(projectId), "the deleted project must leave the host");
+
+  const imported = await fetch(`${base}/api/op/project.import`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ archive }),
+  }).then(
+    (response) =>
+      response.json() as Promise<{
+        ok: boolean;
+        data: { projectId: string; name: string; revision: number; files: number };
+      }>,
+  );
+  assert(imported.ok, "the archive must import");
+  assert(imported.data.projectId === projectId, "the film must come back as itself, not as a copy");
+  assert(imported.data.name === "The Last Light", "the name must come back");
+  assert(imported.data.files > 0, "the import must report what it unpacked");
+  steps.push("import: the film returns with its own id, name and revision");
+
+  // Its media still serves, and it is usable again.
+  const served = await fetch(`${base}/p/${projectId}/media/${frame.data.assetId}`, { headers: { cookie } });
+  assert(served.status === 200, `the restored frame must still serve, got ${served.status}`);
+  const brief = await op<{ project: { id: string; name: string } }>(projectId, "session.brief");
+  assert(brief.data.project.name === "The Last Light", "the restored project must be usable");
+  steps.push("restore: the frame it kept is still served and the project is usable");
+
+  // Importing over a project that is already here is refused: a backup must not overwrite newer work.
+  const clash = await fetch(`${base}/api/op/project.import`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ archive }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; error?: { code: string } }>);
+  assert(clash.ok === false, "a second import of the same film must be refused");
+  assert(clash.error?.code === "conflict", `the refusal must be a conflict, got ${clash.error?.code}`);
+  steps.push("conflict: an archive cannot be imported over the project it would replace");
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -2295,6 +2416,26 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 18) {
+      // A host with no project can still restore one, so the import panel lives on the projects page.
+      await page.waitForSelector("text=Import a project", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "project-import.png"), fullPage: true });
+
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.waitForSelector('button[aria-label="Export this project"]', { timeout: 20_000 });
+      await page.click('button[aria-label="Export this project"]');
+      await page.waitForSelector('input[aria-label="Export destination folder"]', { timeout: 20_000 });
+      await page.click('button.primary:has-text("Export")');
+      await page.waitForSelector("text=.7z", { timeout: 120_000 });
+      const notice = await page.locator("text=.7z").first().textContent();
+      assert(Boolean(notice?.includes("revision")), `the export must report the archive, got: ${notice}`);
+      await page.screenshot({ path: join(artifactDir, "project-export.png"), fullPage: true });
+      steps.push("ui: a project exports from its header, and the projects page offers an import");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 17) {
       await page.click('header [role="tab"]:has-text("Setup")');
@@ -2812,6 +2953,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 15) await gate15(steps);
     else if (gateNumber === 16) await gate16(steps);
     else if (gateNumber === 17) await gate17(steps);
+    else if (gateNumber === 18) await gate18(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);
