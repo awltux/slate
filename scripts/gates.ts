@@ -2254,6 +2254,10 @@ async function gate19(steps: string[]): Promise<void> {
     "the snapshot must not live in a project",
   );
   steps.push("cache: one snapshot in the host home, not one per project");
+
+  // A film to prove two things with: its own tab strip no longer claims health, and choosing it from a host page
+  // actually takes you to it.
+  projectId = await newProject("Health host check");
 }
 
 async function gate18(steps: string[]): Promise<void> {
@@ -2485,6 +2489,21 @@ async function browserFlow(steps: string[]): Promise<void> {
       const after = await page.locator("text=/^Checked /").first().textContent();
       assert(Boolean(before) && Boolean(after), "the panel must say when it was checked");
       steps.push("ui: probing again refreshes the host snapshot in place");
+
+      // Picking a film from a host page must go to it - and a film's own tabs must not claim health any more.
+      await page.selectOption('select[aria-label="Project"]', { label: "Health host check" });
+      await page.waitForSelector('main [role="tab"]', { timeout: 20_000 });
+      const projectTabs = await page.locator('main [role="tab"]').allTextContents();
+      assert(
+        !projectTabs.includes("Health"),
+        `a project must not have its own health tab, got: ${projectTabs.join(", ")}`,
+      );
+      steps.push("ui: choosing a film leaves the host page, and the film has no health tab of its own");
+
+      // Health still answers with a film open: it is host state, not a mode.
+      await page.click('header [role="tab"]:has-text("Health")');
+      await page.waitForSelector("text=How this host will run", { timeout: 30_000 });
+      steps.push("ui: health answers with a project open as well");
 
       await instance.close();
       return;

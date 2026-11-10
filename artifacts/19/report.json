@@ -1,11 +1,13 @@
 {
   "gate": 19,
   "status": "passed",
-  "base": "http://127.0.0.1:56390",
+  "base": "http://127.0.0.1:51012",
   "steps": [
     "api: the host toolchain answers with no project open",
     "cache: one snapshot in the host home, not one per project",
     "ui: health is a top-level page and lists every tool with no project open",
-    "ui: probing again refreshes the host snapshot in place"
+    "ui: probing again refreshes the host snapshot in place",
+    "ui: choosing a film leaves the host page, and the film has no health tab of its own",
+    "ui: health answers with a project open as well"
   ]
 }
