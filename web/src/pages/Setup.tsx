@@ -35,6 +35,8 @@ interface EndpointView {
   params: unknown[];
   body: Record<string, unknown>;
   resultPath: string;
+  /** What the provider charges for one call, used to price a batch. */
+  unitPriceUsd: number;
   /** Named values the response carries, so an upload endpoint can promise a place to PUT and a url to use. */
   response: Record<string, { path: string; type: string; description: string }>;
   timeoutMs: number;
@@ -974,6 +976,8 @@ function EndpointForm({
   );
   const [params, setParams] = useState(endpoint ? JSON.stringify(endpoint.params ?? [], null, 2) : "[]");
   const [resultPath, setResultPath] = useState(endpoint?.resultPath ?? "");
+  /** What the provider charges for one call; a batch is priced from it. */
+  const [unitPrice, setUnitPrice] = useState(String(endpoint?.unitPriceUsd ?? 0));
   const [response, setResponse] = useState(
     endpoint ? JSON.stringify(endpoint.response ?? {}, null, 2) : "{}",
   );
@@ -1001,6 +1005,7 @@ function EndpointForm({
             body: parsedBody,
             resultPath,
             response: parsedResponse,
+            unitPriceUsd: Number(unitPrice) || 0,
           };
           if (endpoint) values.id = endpoint.id;
           void onSubmit(values);
@@ -1084,6 +1089,14 @@ function EndpointForm({
           aria-label="Result path"
           style={{ flex: 1, marginTop: 18 }}
         />
+        <input
+          value={unitPrice}
+          onChange={(event) => setUnitPrice(event.target.value)}
+          aria-label="Price per call in dollars"
+          inputMode="decimal"
+          title="What the provider charges for one call. Generations are priced from it, so the budget means something."
+          style={{ width: 90, marginTop: 18 }}
+        />
       </div>
       <p className="muted" style={{ margin: 0, fontSize: 12 }}>
         An upload endpoint is an ordinary endpoint with the upload capability: its body template gets{" "}
@@ -1108,6 +1121,8 @@ function EndpointForm({
                   path: string;
                   body: Record<string, unknown>;
                   resultPath: string;
+                  /** What the provider charges for one call, used to price a batch. */
+                  unitPriceUsd: number;
                   response: Record<string, unknown>;
                   params: unknown[];
                 };

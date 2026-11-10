@@ -120,7 +120,11 @@ describe("project settings at creation", () => {
     ).data as { entityId: string };
     // Only a published sheet can be shared, so the style gets one view before it is pushed.
     const styleCandidates = expectOk(
-      await registry.execute("entity.generate", { entityId: style.entityId, count: 1 }, sourceContext),
+      await registry.execute(
+        "entity.generate",
+        { allowLocal: true, entityId: style.entityId, count: 1 },
+        sourceContext,
+      ),
     ).data as { candidates: Array<{ assetId: string }> };
     expectOk(
       await registry.execute(
@@ -176,7 +180,11 @@ describe("project settings at creation", () => {
       ),
     ).data as { entityId: string };
     const propCandidates = expectOk(
-      await registry.execute("entity.generate", { entityId: prop.entityId, count: 1 }, sourceContext),
+      await registry.execute(
+        "entity.generate",
+        { allowLocal: true, entityId: prop.entityId, count: 1 },
+        sourceContext,
+      ),
     ).data as { candidates: Array<{ assetId: string }> };
     expectOk(
       await registry.execute(
@@ -238,7 +246,11 @@ describe("the settings reach the pixels", () => {
     ).data as { shotId: string };
 
     const frame = expectOk(
-      await registry.execute("frame.generate", { shotId: shot.shotId, role: "first" }, context),
+      await registry.execute(
+        "frame.generate",
+        { allowLocal: true, shotId: shot.shotId, role: "first" },
+        context,
+      ),
     ).data as { width: number; height: number };
     expect(frame.width).toBe(1080);
     expect(frame.height).toBe(1920);
@@ -272,7 +284,13 @@ describe("the settings reach the pixels", () => {
         context,
       ),
     ).data as { shotId: string };
-    expectOk(await registry.execute("frame.generate", { shotId: shot.shotId, role: "first" }, context));
+    expectOk(
+      await registry.execute(
+        "frame.generate",
+        { allowLocal: true, shotId: shot.shotId, role: "first" },
+        context,
+      ),
+    );
     expectOk(await registry.execute("cut.build", {}, context));
 
     const rendered = expectOk(await registry.execute("cut.render", {}, context)).data as {

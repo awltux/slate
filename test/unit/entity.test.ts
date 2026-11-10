@@ -45,8 +45,9 @@ async function defineCharacter(description = "A weathered lighthouse keeper in h
 }
 
 async function generate(entityId: string, count = 6, variantId: string | null = null) {
-  return expectOk(await registry.execute("entity.generate", { entityId, count, variantId }, context))
-    .data as {
+  return expectOk(
+    await registry.execute("entity.generate", { allowLocal: true, entityId, count, variantId }, context),
+  ).data as {
     candidates: Array<{ id: string; assetId: string }>;
     spentUsd: number;
     remainingUsd: number;
@@ -77,7 +78,7 @@ describe("defining an entity", () => {
       await registry.execute("entity.create", { kind: "prop", name: "The lantern" }, context),
     ).data as { entityId: string };
     const failure = expectFail(
-      await registry.execute("entity.generate", { entityId: entity.entityId }, context),
+      await registry.execute("entity.generate", { allowLocal: true, entityId: entity.entityId }, context),
     );
     expect(failure.error.code).toBe("readiness_failed");
   });
@@ -259,7 +260,13 @@ describe("the shape of a sheet image", () => {
       tool: ffmpeg.tool,
     });
 
-    expectOk(await registry.execute("entity.generate", { entityId: created.entityId, count: 1 }, recording));
+    expectOk(
+      await registry.execute(
+        "entity.generate",
+        { allowLocal: true, entityId: created.entityId, count: 1 },
+        recording,
+      ),
+    );
 
     // The film is 16:9 at 1080p, so a sheet image is 1920x1080: a square reference teaches a square picture.
     const render = calls.find((argv) => argv.some((arg) => arg.includes("1920x1080")));
@@ -291,7 +298,13 @@ describe("the shape of a sheet image", () => {
       tool: ffmpeg.tool,
     });
 
-    expectOk(await registry.execute("entity.generate", { entityId: created.entityId, count: 1 }, recording));
+    expectOk(
+      await registry.execute(
+        "entity.generate",
+        { allowLocal: true, entityId: created.entityId, count: 1 },
+        recording,
+      ),
+    );
     expect(calls.some((argv) => argv.some((arg) => arg.includes("1080x1920")))).toBe(true);
   });
 });
@@ -338,7 +351,11 @@ describe("bodies", () => {
     expect(angles.angles).toEqual(["front", "three-quarter-left", "profile-left", "back"]);
 
     const generated = expectOk(
-      await registry.execute("entity.generate", { entityId: body.entityId, count: 1 }, context),
+      await registry.execute(
+        "entity.generate",
+        { allowLocal: true, entityId: body.entityId, count: 1 },
+        context,
+      ),
     ).data as { prompt: string };
     expect(generated.prompt).toContain("headless mannequin");
     expect(generated.prompt).toContain("The keeper");
@@ -417,7 +434,11 @@ describe("costumes", () => {
       tool: ffmpeg.tool,
     });
     const generated = expectOk(
-      await registry.execute("entity.generate", { entityId: costume.entityId, count: 1 }, recording),
+      await registry.execute(
+        "entity.generate",
+        { allowLocal: true, entityId: costume.entityId, count: 1 },
+        recording,
+      ),
     ).data as { prompt: string };
 
     // The prompt the images were made from carries the garment, the body it is cut for, and that there is no head.

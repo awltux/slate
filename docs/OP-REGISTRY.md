@@ -31,7 +31,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `entity.angles` | read | project | `entity_angles` | The views a sheet must cover: head rotations for a character, poses for a costume or a body. |
 | `entity.create` | write | project | `entity_create` | Define a character, location, prop or style in the library. |
 | `entity.delete` | destructive | project | `entity_delete` | Delete an entity that nothing references. |
-| `entity.generate` | spend | project | `entity_generate` | Generate candidate images from an entity's prompt (or a variant's), priced per image. |
+| `entity.generate` | spend | project | `entity_generate` | Generate candidate images from an entity's prompt (or a variant's), through the bound image endpoint. |
 | `entity.list` | read | project | `entity_list` | The library: entities with their sheets, variants and candidates. |
 | `entity.update` | write | project | `entity_update` | Set an entity's description, its generation prompt, or the style sheet it uses. |
 | `estimate.create` | read | project | `estimate_create` | Price a batch of takes for the given tier before anything is submitted. |
@@ -372,6 +372,11 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
         "additionalProperties": false
       },
       "default": {}
+    },
+    "unitPriceUsd": {
+      "type": "number",
+      "minimum": 0,
+      "default": 0
     },
     "timeoutMs": {
       "type": "integer",
@@ -916,6 +921,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "seed": {
       "type": "integer",
       "default": 0
+    },
+    "allowLocal": {
+      "type": "boolean",
+      "default": false
     }
   },
   "required": [
@@ -1089,6 +1098,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "minimum": 1,
       "maximum": 4,
       "default": 1
+    },
+    "allowLocal": {
+      "type": "boolean",
+      "default": false
     },
     "useBlockout": {
       "type": "boolean",

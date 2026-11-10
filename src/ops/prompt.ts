@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { SlateError } from "../domain/result.js";
+import { callEndpoint, readValue } from "../kernel/ai/call.js";
 import { type HttpPort, httpPort } from "../kernel/ai/reference.js";
+import { readAiConfig, readKeys, resolveBinding } from "../kernel/ai/store.js";
 import { readConfig } from "../kernel/config.js";
 import { readGlobalLibrary } from "../kernel/library/store.js";
 import { resolveTypePrompt } from "../kernel/library/type-prompts.js";
@@ -21,6 +23,69 @@ const CAMERA_AND_LIGHT: Record<string, string[]> = {
  * fallback: a model, when one is configured, writes something better — but the operation must work with no key at all,
  * and it must be deterministic when it does, or a sheet cannot be reproduced.
  */
+/**
+ * Ask whatever writes prompts on this host, preferring the endpoint the profile binds over the ad-hoc llm block in the
+ * host config. The order matters: the endpoint is the thing a person configured in Setup, with its own body, key and
+ * result path, and an llm block nobody can reach from the interface should not win over it.
+ */
+async function askTextModel(input: {
+  kind: "character" | "location" | "prop" | "style" | "costume" | "body";
+  system: string;
+  user: string;
+  project: { aiBindingSetId?: string | null; systemPrompts: Record<string, string> };
+  home: string;
+  http: HttpPort;
+}): Promise<{ prompt: string; via: string } | null> {
+  const ai = await readAiConfig(input.home);
+  const resolution = resolveBinding(ai, "text", input.project.aiBindingSetId ?? null);
+  if (resolution) {
+    const provider = ai.providers.find((entry) => entry.id === resolution.endpoint.providerId);
+    if (provider) {
+      const keys = await readKeys(input.home);
+      try {
+        const call = await callEndpoint({
+          provider,
+          endpoint: resolution.endpoint,
+          apiKey: keys[provider.id] ?? null,
+          http: input.http,
+          // The words the model needs travel as values, so an OpenAI-shaped template and a bespoke one both work.
+          values: { prompt: input.user, params: { system: input.system } },
+        });
+        const value = resolution.endpoint.resultPath ? readValue(call, resolution.endpoint) : call.parsed;
+        if (typeof value === "string" && value.trim() !== "") {
+          return { prompt: value.trim(), via: `model:${resolution.endpoint.name}` };
+        }
+        throw new SlateError(
+          "provider_error",
+          `${resolution.endpoint.name} answered but nothing at "${resolution.endpoint.resultPath}" was text`,
+          { detail: { endpointId: resolution.endpoint.id, resultPath: resolution.endpoint.resultPath } },
+        );
+      } catch (error) {
+        // A broken text endpoint must not silently become a local prompt the person believes a model wrote: the caller
+        // gets the failure, and can choose the local path by clearing the binding.
+        if (error instanceof SlateError) throw error;
+        throw new SlateError("provider_error", `${resolution.endpoint.name} could not be reached`, {
+          detail: { endpointId: resolution.endpoint.id },
+        });
+      }
+    }
+  }
+
+  const config = await readConfig(input.home);
+  if (!config.llm) return null;
+  const written = await askModel(
+    input.http,
+    {
+      baseUrl: config.llm.baseUrl,
+      model: config.llm.model,
+      apiKey: process.env[config.llm.apiKeyEnv] ?? null,
+    },
+    input.system,
+    input.user,
+  );
+  return written ? { prompt: written, via: `model:${config.llm.model}` } : null;
+}
+
 export function composePrompt(input: {
   kind: string;
   name: string;
@@ -129,17 +194,8 @@ export const promptExpand = defineOp({
     const styleEntity: Entity | null = styleId ? (production.entities[styleId] ?? null) : null;
     const style = styleEntity ? { name: styleEntity.name, description: styleEntity.description } : null;
 
-    const config = await readConfig(context.home);
-    const model = config.llm
-      ? {
-          baseUrl: config.llm.baseUrl,
-          model: config.llm.model,
-          apiKey: process.env[config.llm.apiKeyEnv] ?? null,
-        }
-      : null;
-
     let result: ModelResult;
-    if (model) {
+    {
       // The instructions belong to the library type, not to this file: a character and a location are not written the
       // same way, and a project may have its own words for either.
       const system = resolveTypePrompt({
@@ -157,15 +213,15 @@ export const promptExpand = defineOp({
         .filter(Boolean)
         .join("\n");
 
-      const written = await askModel(context.http ?? httpPort, model, system, user);
-      result = written
-        ? { prompt: written, via: `model:${model.model}` }
-        : {
-            prompt: composePrompt({ kind: entity.kind, name: entity.name, description, style, variant }),
-            via: "local",
-          };
-    } else {
-      result = {
+      const written = await askTextModel({
+        kind: entity.kind,
+        system,
+        user,
+        project: { aiBindingSetId: project.aiBindingSetId, systemPrompts: project.systemPrompts },
+        home: context.home,
+        http: context.http ?? httpPort,
+      });
+      result = written ?? {
         prompt: composePrompt({ kind: entity.kind, name: entity.name, description, style, variant }),
         via: "local",
       };
@@ -242,14 +298,11 @@ export const promptExpandText = defineOp({
     const styleEntity: Entity | null = styleId ? (production.entities[styleId] ?? null) : null;
     const style = styleEntity ? { name: styleEntity.name, description: styleEntity.description } : null;
 
-    const config = await readConfig(context.home);
-    const model = config.llm
-      ? {
-          baseUrl: config.llm.baseUrl,
-          model: config.llm.model,
-          apiKey: process.env[config.llm.apiKeyEnv] ?? null,
-        }
-      : null;
+    const system = resolveTypePrompt({
+      kind: input.kind,
+      project: project.systemPrompts,
+      global: (await readGlobalLibrary(context.home)).systemPrompts,
+    }).prompt;
 
     const local = composePrompt({
       kind: "location",
@@ -259,41 +312,33 @@ export const promptExpandText = defineOp({
       variant: null,
     });
 
-    if (!model) {
-      return {
-        data: { prompt: local, via: "local", styleId: styleEntity?.id ?? null },
-        version: project.revision,
-        warnings: [
-          {
-            code: "no_model",
-            message: "no text model is configured, so the prompt was composed locally from your words",
-          },
-        ],
-      };
-    }
-
-    const system = resolveTypePrompt({
-      kind: input.kind,
-      project: project.systemPrompts,
-      global: (await readGlobalLibrary(context.home)).systemPrompts,
-    }).prompt;
     const user = [
       `description: ${input.description}`,
       style ? `style sheet: ${style.name} - ${style.description}` : "no style sheet",
     ].join("\n");
 
-    const written = await askModel(context.http ?? httpPort, model, system, user);
+    // The catalog's text endpoint wins: it is the thing a person configured. The llm block in the host config is the
+    // fallback, and composing locally is the last rung - each of them named in `via`.
+    const written = await askTextModel({
+      kind: input.kind,
+      system,
+      user,
+      project: { aiBindingSetId: project.aiBindingSetId, systemPrompts: project.systemPrompts },
+      home: context.home,
+      http: context.http ?? httpPort,
+    });
+
     return {
       data: written
-        ? { prompt: written, via: `model:${model.model}`, styleId: styleEntity?.id ?? null }
+        ? { prompt: written.prompt, via: written.via, styleId: styleEntity?.id ?? null }
         : { prompt: local, via: "local", styleId: styleEntity?.id ?? null },
       version: project.revision,
       warnings: written
         ? []
         : [
             {
-              code: "model_failed",
-              message: "the text model did not answer, so the prompt was composed locally",
+              code: "no_model",
+              message: "no text model is configured, so the prompt was composed locally from your words",
             },
           ],
     };

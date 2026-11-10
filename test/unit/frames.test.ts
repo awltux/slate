@@ -38,7 +38,11 @@ async function sheeted(kind: "location" | "character", name: string) {
   ).data as { entityId: string };
   await registry.execute("entity.update", { entityId: entity.entityId, prompt: `${name} prompt` }, context);
   const generated = expectOk(
-    await registry.execute("entity.generate", { entityId: entity.entityId, count: 1 }, context),
+    await registry.execute(
+      "entity.generate",
+      { allowLocal: true, entityId: entity.entityId, count: 1 },
+      context,
+    ),
   ).data as { candidates: Array<{ id: string; assetId: string }> };
   await registry.execute(
     "sheet.edit",
@@ -116,7 +120,7 @@ describe("frame.generate", () => {
     const generated = expectOk(
       await registry.execute(
         "frame.generate",
-        { shotId: shot.shotId, role: "first", expectedRevision: project.revision },
+        { allowLocal: true, shotId: shot.shotId, role: "first", expectedRevision: project.revision },
         context,
       ),
     );
@@ -142,7 +146,7 @@ describe("frame.generate", () => {
     const stale = (await readProjectDocument(root)).revision - 1;
     const refused = await registry.execute(
       "frame.generate",
-      { shotId: shot.shotId, role: "first", expectedRevision: stale },
+      { allowLocal: true, shotId: shot.shotId, role: "first", expectedRevision: stale },
       context,
     );
     expect(refused.ok).toBe(false);
@@ -180,13 +184,21 @@ describe("frame.generate", () => {
     ).data as { shotId: string };
 
     const first = expectOk(
-      await registry.execute("frame.generate", { shotId: shot.shotId, role: "first" }, context),
+      await registry.execute(
+        "frame.generate",
+        { allowLocal: true, shotId: shot.shotId, role: "first" },
+        context,
+      ),
     ).data as { assetId: string; entityIds: string[]; spentUsd: number };
     expect(first.entityIds.sort()).toEqual([keeper, room].sort());
     expect(first.spentUsd).toBeCloseTo(0.05, 2);
 
     const last = expectOk(
-      await registry.execute("frame.generate", { shotId: shot.shotId, role: "last" }, context),
+      await registry.execute(
+        "frame.generate",
+        { allowLocal: true, shotId: shot.shotId, role: "last" },
+        context,
+      ),
     ).data as { assetId: string };
 
     const view = expectOk(await registry.execute("shot.get", { shotId: shot.shotId }, context)).data as {
@@ -226,7 +238,7 @@ describe("frame.generate", () => {
     const generated = expectOk(
       await registry.execute(
         "frame.generate",
-        { shotId: shot.shotId, role: "first", useBlockout: false },
+        { allowLocal: true, shotId: shot.shotId, role: "first", useBlockout: false },
         context,
       ),
     ).data as { assetId: string; blockoutAssetId: string | null };
@@ -257,11 +269,13 @@ describe("an end frame conditioned on the start frame", () => {
 
   it("gives the generator the start frame, by default", async () => {
     const shotId = await shotWithSheets();
-    const first = expectOk(await registry.execute("frame.generate", { shotId, role: "first" }, context))
-      .data as { assetId: string };
+    const first = expectOk(
+      await registry.execute("frame.generate", { allowLocal: true, shotId, role: "first" }, context),
+    ).data as { assetId: string };
 
-    const last = expectOk(await registry.execute("frame.generate", { shotId, role: "last" }, context))
-      .data as { referenceAssetIds: string[]; startFrameAssetId?: string };
+    const last = expectOk(
+      await registry.execute("frame.generate", { allowLocal: true, shotId, role: "last" }, context),
+    ).data as { referenceAssetIds: string[]; startFrameAssetId?: string };
 
     // The start frame is in the reference set, which is what a model would actually be shown.
     expect(last.referenceAssetIds).toContain(first.assetId);
@@ -275,11 +289,16 @@ describe("an end frame conditioned on the start frame", () => {
 
   it("leaves it out when the person unticks the box", async () => {
     const shotId = await shotWithSheets();
-    const first = expectOk(await registry.execute("frame.generate", { shotId, role: "first" }, context))
-      .data as { assetId: string };
+    const first = expectOk(
+      await registry.execute("frame.generate", { allowLocal: true, shotId, role: "first" }, context),
+    ).data as { assetId: string };
 
     const last = expectOk(
-      await registry.execute("frame.generate", { shotId, role: "last", useStartFrame: false }, context),
+      await registry.execute(
+        "frame.generate",
+        { allowLocal: true, shotId, role: "last", useStartFrame: false },
+        context,
+      ),
     ).data as { referenceAssetIds: string[] };
 
     expect(last.referenceAssetIds).not.toContain(first.assetId);
@@ -287,7 +306,9 @@ describe("an end frame conditioned on the start frame", () => {
 
   it("says so when there is no start frame to reference", async () => {
     const shotId = await shotWithSheets();
-    const result = expectOk(await registry.execute("frame.generate", { shotId, role: "last" }, context));
+    const result = expectOk(
+      await registry.execute("frame.generate", { allowLocal: true, shotId, role: "last" }, context),
+    );
     expect(result.warnings.map((warning) => warning.code)).toContain("no_start_frame");
   });
 });
@@ -311,7 +332,13 @@ describe("keeping a frame from the images that were made", () => {
     const generated = expectOk(
       await registry.execute(
         "frame.generate",
-        { shotId: shot.shotId, role: "first", count, prompt: "a lighthouse keeper at night" },
+        {
+          allowLocal: true,
+          shotId: shot.shotId,
+          role: "first",
+          count,
+          prompt: "a lighthouse keeper at night",
+        },
         context,
       ),
     ).data as { assetId: string; assetIds: string[] };

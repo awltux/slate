@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -46,6 +47,17 @@ let csrf = "";
 let gateHome = "";
 /** The archive gate 18 leaves on disk for its browser phase to import, and the name it was written under. */
 let gate18Archive = "";
+
+/** Gate 24's model: what it was asked, and how many times its image was fetched. */
+const gate24Bodies: Array<{ prompt?: string; seed?: number }> = [];
+/** The project gate 24 generated into, so its browser phase can open the same film. */
+let gate24Project = "";
+let gate24Assets = 0;
+/** One-pixel PNG: real bytes, so the download-and-ingest path is exercised rather than stubbed. */
+const gate24Png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
 
 /** What gate 23's loopback model was asked to generate, so the rendered body can be asserted. */
 const gateModelBodies: Array<{ prompt?: string; image_size?: string; seed?: number }> = [];
@@ -2247,6 +2259,118 @@ async function hostOp<T>(name: string, input: unknown = {}): Promise<Envelope<T>
   return payload;
 }
 
+async function gate24(steps: string[]): Promise<void> {
+  await signIn();
+  const projectId = await newProject("Made by a model", 50);
+  gate24Project = projectId;
+
+  // A model on its own server: the app's router ends in an SPA fallback, which would answer a fixture url with HTML.
+  const asked: Array<{ prompt?: string; seed?: number }> = [];
+  let served = 0;
+  const fixture = createServer((request, response) => {
+    if (request.method === "POST" && request.url === "/gate-model") {
+      let raw = "";
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        const body = JSON.parse(raw || "{}") as { prompt?: string; seed?: number };
+        asked.push({ prompt: body.prompt, seed: body.seed });
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ images: [{ url: `${fixtureBase}/gate-asset` }] }));
+      });
+      return;
+    }
+    if (request.method === "GET" && request.url === "/gate-asset") {
+      served += 1;
+      response.setHeader("content-type", "image/png");
+      response.end(gate24Png);
+      return;
+    }
+    response.statusCode = 404;
+    response.end();
+  });
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  const fixtureBase = `http://127.0.0.1:${(fixture.address() as AddressInfo).port}`;
+
+  try {
+    // What a person would configure in Setup, through the same operations.
+    const provider = await hostOp<{ id: string }>("ai.provider.save", {
+      name: "gate fal",
+      baseUrl: fixtureBase,
+      testPath: "/gate-model",
+      testMethod: "POST",
+      apiKey: "gate-key",
+    });
+    const endpoint = await hostOp<{ id: string }>("ai.endpoint.save", {
+      providerId: provider.data.id,
+      name: "gate flux",
+      capability: "image",
+      method: "POST",
+      path: "/gate-model",
+      body: { prompt: "{{prompt}}", seed: "{{param:seed}}" },
+      params: [{ key: "seed", type: "integer", required: false, default: 0 }],
+      resultPath: "images[0].url",
+      unitPriceUsd: 0.004,
+    });
+    const set = await hostOp<{ id: string }>("ai.bindingset.save", {
+      name: "gate profile",
+      bindings: { image: [endpoint.data.id] },
+    });
+    await hostOp("ai.bindingset.use", { id: set.data.id });
+
+    // The library item, and a generation that must go through the model.
+    const created = await op<{ entityId: string }>(projectId, "entity.create", {
+      kind: "character",
+      name: "The keeper",
+      description: "salt in his beard",
+    });
+    await op(projectId, "entity.update", {
+      entityId: created.data.entityId,
+      description: "salt in his beard, a lantern in one hand",
+      prompt: "a lighthouse keeper at night, amber light",
+    });
+
+    const generated = await op<{
+      via: string;
+      candidates: Array<{ assetId: string }>;
+      unitPriceUsd: number;
+      spentUsd: number;
+    }>(projectId, "entity.generate", { entityId: created.data.entityId, count: 2 });
+
+    assert(
+      generated.data.via === "model:gate flux",
+      `the sheet must come from the endpoint, got ${generated.data.via}`,
+    );
+    assert(generated.data.candidates.length === 2, "two candidates were asked for");
+    assert(
+      Math.abs(generated.data.unitPriceUsd - 0.004) < 1e-9,
+      `the endpoint's price must be used, got ${generated.data.unitPriceUsd}`,
+    );
+    assert(asked.length === 2, `the model must be called once per candidate, called ${asked.length}`);
+    assert(
+      Boolean(asked[0]?.prompt?.includes("lighthouse keeper")),
+      "the prompt the person wrote must be what the model was asked",
+    );
+    // Distinct seeds, or two candidates would be one picture paid for twice.
+    assert(asked[0]?.seed !== asked[1]?.seed, `candidates must differ, both used seed ${asked[0]?.seed}`);
+    assert(served === 2, `both results must be fetched, fetched ${served}`);
+    steps.push("model: the sheet came from the bound endpoint, priced by it, one call per candidate");
+
+    // The images are real assets of the film, not records of a download that never happened.
+    const view = await op<{ entities: Array<{ id: string; candidates: unknown[] }> }>(
+      projectId,
+      "entity.list",
+      {},
+    );
+    const item = view.data.entities.find((entry) => entry.id === created.data.entityId);
+    assert((item?.candidates.length ?? 0) === 2, "both candidates must be recorded on the item");
+    steps.push("assets: both candidates are real assets in the film");
+  } finally {
+    fixture.close();
+  }
+}
+
 async function gate23(steps: string[]): Promise<void> {
   await signIn();
 
@@ -2864,6 +2988,22 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 24) {
+      await page.selectOption('select[aria-label="Project"]', gate24Project);
+      await page.waitForSelector('main [role="tab"]', { timeout: 20_000 });
+      await page.click('main [role="tab"]:has-text("Library")');
+      await page.waitForSelector("text=The keeper", { timeout: 30_000 });
+
+      // The item exists and its sheet has the two candidates the model made.
+      const images = await page.locator('img[alt*="The keeper"]').count();
+      assert(images >= 2, `the library must show the generated candidates, found ${images}`);
+      await page.screenshot({ path: join(artifactDir, "library-by-model.png"), fullPage: true });
+      steps.push("ui: the generated images appear in the Library item they belong to");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 23) {
       await page.click('header [role="tab"]:has-text("Setup")');
@@ -3695,8 +3835,20 @@ async function main(): Promise<number> {
 
   // Gate 17 uploads a reference back to a loopback fake, so the two-step file API is proved over real HTTP without
   // leaving the machine. The routes record what they were sent, so the gate can assert the typed body and the bytes.
+  if (gateNumber === 24) {
+    // A model that validates its body, then names an image url on this same server.
+    app.post("/gate-model", async (c) => {
+      const body = (await c.req.json().catch(() => null)) as { prompt?: string; seed?: number } | null;
+      if (!body?.prompt) return c.json({ detail: [{ msg: "prompt is required" }] }, 422);
+      gate24Bodies.push({ prompt: body.prompt, seed: body.seed });
+      return c.json({ images: [{ url: `${base}/gate-asset` }] });
+    });
+    app.get("/gate-asset", (c) => {
+      gate24Assets += 1;
+      return c.body(gate24Png, 200, { "content-type": "image/png" });
+    });
+  }
   if (gateNumber === 23) {
-    app.get("/gate-ping", (c) => c.json({ ok: true }));
     // A POST-only route: the case every generation endpoint presents, and the reason the method is declared.
     app.post("/gate-infer", async (c) => {
       const body = await c.req.json().catch(() => null);
@@ -3762,6 +3914,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 21) await gate21(steps);
     else if (gateNumber === 22) await gate22(steps);
     else if (gateNumber === 23) await gate23(steps);
+    else if (gateNumber === 24) await gate24(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

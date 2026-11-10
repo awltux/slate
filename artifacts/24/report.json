@@ -1,0 +1,10 @@
+{
+  "gate": 24,
+  "status": "passed",
+  "base": "http://127.0.0.1:58869",
+  "steps": [
+    "model: the sheet came from the bound endpoint, priced by it, one call per candidate",
+    "assets: both candidates are real assets in the film",
+    "ui: the generated images appear in the Library item they belong to"
+  ]
+}

@@ -66,6 +66,7 @@ const EndpointViewSchema = z
     body: z.record(z.string(), z.unknown()),
     resultPath: z.string(),
     response: z.record(z.string(), z.object({ path: z.string(), type: z.string(), description: z.string() })),
+    unitPriceUsd: z.number(),
     timeoutMs: z.number().int(),
   })
   .strict();
@@ -342,6 +343,7 @@ export const aiCatalog = defineOp({
           body: endpoint.body,
           resultPath: endpoint.resultPath,
           response: endpoint.response,
+          unitPriceUsd: endpoint.unitPriceUsd,
           timeoutMs: endpoint.timeoutMs,
         })),
         bindingSets: config.bindingSets.map((set) => ({
@@ -446,6 +448,8 @@ export const aiEndpointSave = defineOp({
       resultPath: z.string().default(""),
       /** Named values the response carries, so an upload endpoint can promise a place to PUT and a url to use. */
       response: z.record(z.string(), ResponseFieldSchema).default({}),
+      /** What the provider charges for one call; a batch is priced from it. 0 means unpriced. */
+      unitPriceUsd: z.number().min(0).default(0),
       timeoutMs: z.number().int().min(1000).max(3_600_000).default(120_000),
     })
     .strict(),
@@ -472,6 +476,7 @@ export const aiEndpointSave = defineOp({
       body: input.body,
       resultPath: input.resultPath,
       response: input.response,
+      unitPriceUsd: input.unitPriceUsd,
       timeoutMs: input.timeoutMs,
     };
     await writeAiConfig(context.home, {

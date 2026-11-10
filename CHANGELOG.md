@@ -2,6 +2,20 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Library items are made by the model you configured
+
+- **Generate candidates now calls the bound image endpoint** and ingests what comes back: one request per candidate,
+  downloaded as bytes, stored as an asset of the film. Before this, Setup had no effect on a sheet at all — the images
+  were flat colours painted by FFmpeg.
+- **Expand asks the bound text endpoint**, falling back to the host's `llm` block and only then to composing locally. Each
+  rung is named in `via`, so a prompt that no model wrote is never presented as if one had.
+- **Drawing locally is a choice, not a default.** With nothing bound, generation refuses with `capability_missing` and the
+  screen offers "draw locally" in words. A sheet that silently came from a colour swatch is worse than a refusal.
+- **Endpoints can be priced** (`unitPriceUsd`), and a batch is priced from it, so the budget ceiling means something
+  against a real model. With no price declared, the old placeholder applies.
+- **References are sent as pictures**: a costume's body sheet, a shot's blockout and start frame reach the model through
+  the endpoint's own `{{image}}` tokens, staged by the existing reference transport.
+
 ## An endpoint test sends the endpoint's own body
 
 - **Pressing Test on an endpoint now renders its configured body** and sends it, instead of sending nothing: a POST-only

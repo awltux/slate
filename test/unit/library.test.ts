@@ -51,7 +51,11 @@ async function keeperWithSheet(context: OpContext) {
   ).data as { entityId: string };
   await registry.execute("entity.update", { entityId: entity.entityId, prompt: "keeper v1" }, context);
   const generated = expectOk(
-    await registry.execute("entity.generate", { entityId: entity.entityId, count: 1 }, context),
+    await registry.execute(
+      "entity.generate",
+      { allowLocal: true, entityId: entity.entityId, count: 1 },
+      context,
+    ),
   ).data as { candidates: Array<{ id: string; assetId: string }> };
   await registry.execute(
     "sheet.edit",

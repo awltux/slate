@@ -27,6 +27,30 @@ four surfaces exist.
 | 20 | One place for the project's configuration | `pnpm gate:20` | **done** | [config](../artifacts/20/project-config.png) · [report](../artifacts/20/report.json) |
 | 21 | Uploads are an endpoint; endpoints declare responses | `pnpm gate:21` | **done** | [upload endpoint](../artifacts/21/upload-endpoint.png) · [report](../artifacts/21/report.json) |
 | 22 | Each library type has instructions, in three layers | `pnpm gate:22` | **done** | [film's copy](../artifacts/22/type-prompts.png) · [report](../artifacts/22/type-prompts-host.png) |
+| 23 | Test a provider and each endpoint, from the interface | `pnpm gate:23` | **done** | [provider test](../artifacts/23/provider-test.png) · [report](../artifacts/23/report.json) |
+| 24 | Library items are made by the model the profile binds | `pnpm gate:24` | **done** | [generated item](../artifacts/24/library-by-model.png) · [report](../artifacts/24/report.json) |
+
+## Slice 24 — what it proves
+
+- **The sheet comes from the endpoint.** Gate 24 stands up its own model server, saves a provider and an image
+  endpoint, binds them in a profile, and generates a character's sheet. It asserts the images came from that endpoint,
+  that the price recorded is the endpoint's, that the model was called once per candidate with distinct seeds, and that
+  both results were fetched as bytes and stored as assets of the film.
+- **Nothing is drawn behind a person's back.** With no image endpoint bound, generation returns
+  `capability_missing` and the interface offers the local renderer as a sentence with a button, not as a silent
+  fallback. The same is true for a frame.
+- **Expand prefers the configured text endpoint** over the `llm` block nobody can reach from the interface, and says
+  which rung ran in `via`.
+
+## Slice 23 — what it proves
+
+- **A provider and each of its endpoints can be tested** from Setup. The test is a reachability check by default, with
+  a declared path and method, and it reports the request it sent, the code it got and the body that came back, with the
+  credential masked.
+- **An endpoint test sends the endpoint's own body**, rendered with sample values, and reports whether the declared
+  `resultPath` was actually present — the difference between a 200 and a working model.
+- **A queue host is recorded, testable and refused where it would mislead**, because Slate cannot yet follow a request
+  id.
 
 ## Slice 22 — what it proves
 

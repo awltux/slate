@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { z } from "zod";
 import { newId } from "../domain/ids.js";
 import { SlateError } from "../domain/result.js";
+import { httpPort } from "../kernel/ai/reference.js";
+import { generateImages } from "../kernel/ai/render-images.js";
+import { readAiConfig, readKeys, resolveBinding } from "../kernel/ai/store.js";
 import { renderStill } from "../kernel/catalog/fake-gateway.js";
 import { appendLedger, readLedger, remainingUsd } from "../kernel/ledger/ledger.js";
-import { ingestAsset } from "../kernel/production/assets.js";
+import { assetFile, ingestAsset } from "../kernel/production/assets.js";
 import { sheetReference } from "../kernel/production/entities.js";
 import { frameSize } from "../kernel/production/format.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
@@ -38,6 +41,8 @@ export const frameGenerate = defineOp({
       useStartFrame: z.boolean().default(true),
       /** How many images to make. More than one leaves a choice; the first is used until another is kept. */
       count: z.number().int().min(1).max(4).default(1),
+      /** Draw with the local renderer when no image endpoint is bound. Off by default, and reported when used. */
+      allowLocal: z.boolean().default(false),
       useBlockout: z.boolean().default(true),
       seed: z.number().int().default(0),
       /** Optimistic concurrency: a shot edited while the button was pressed is not silently overwritten. */
@@ -60,6 +65,9 @@ export const frameGenerate = defineOp({
       height: z.number().int(),
       spentUsd: z.number(),
       remainingUsd: z.number(),
+      /** "model:<endpoint>" or "local". */
+      via: z.string(),
+      endpointId: z.string().nullable(),
     })
     .strict(),
   touched: (input) => [`shot:${input.shotId}`, "ledger"],
@@ -121,11 +129,28 @@ export const frameGenerate = defineOp({
       variant: null,
     });
 
-    const ffmpeg = await context.tool("ffmpeg");
-    if (!ffmpeg.binary)
-      throw new SlateError("capability_missing", "FFmpeg is not available to render a frame");
+    // What will make this frame: the bound image endpoint, or - only when asked - the local renderer.
+    const aiConfig = await readAiConfig(context.home);
+    const resolution = resolveBinding(aiConfig, "image", project.aiBindingSetId ?? null);
+    const endpoint = resolution?.endpoint ?? null;
+    if (!endpoint && !input.allowLocal) {
+      throw new SlateError(
+        "capability_missing",
+        "no image model is bound: add an image endpoint to a profile in Setup, or draw locally on purpose",
+        { detail: { capability: "image", allowLocal: false } },
+      );
+    }
+    const via = endpoint ? `model:${endpoint.name}` : "local";
 
-    const cost = FRAME_PRICE_USD;
+    // A model renders the frame; only the local path needs FFmpeg, so only the local path asks for it.
+    const ffmpeg = endpoint ? { binary: null as string | null } : await context.tool("ffmpeg");
+    if (!endpoint && !ffmpeg.binary) {
+      throw new SlateError("capability_missing", "FFmpeg is not available to render a frame");
+    }
+
+    const cost =
+      Math.round((endpoint && endpoint.unitPriceUsd > 0 ? endpoint.unitPriceUsd : FRAME_PRICE_USD) * 100) /
+      100;
     const paths = projectPaths(context.root);
     const remaining = remainingUsd(project.budget.ceilingUsd, await readLedger(paths));
     if (cost > remaining) {
@@ -148,24 +173,59 @@ export const frameGenerate = defineOp({
     const work = await mkdtemp(join(tmpdir(), "slate-frame-"));
     const made: Array<Awaited<ReturnType<typeof ingestAsset>>> = [];
     try {
-      for (let index = 0; index < input.count; index += 1) {
-        const outputFile = join(work, `${input.role}-${index}.png`);
-        await renderStill(
-          {
-            binary: ffmpeg.binary,
-            prompt,
-            // Distinct seeds per candidate: the same seed twice would spend money to return the same picture.
-            index: input.seed + (input.role === "last" ? 1 : 0) + index,
-            width: size.width,
-            height: size.height,
-            outputFile,
-          },
-          context.run,
-        );
-        // The asset must be copied out while the temp file still exists.
-        made.push(
-          await ingestAsset(context.root, { kind: "frame", sourcePath: outputFile, clock: context.clock }),
-        );
+      if (endpoint) {
+        const provider = aiConfig.providers.find((entry) => entry.id === endpoint.providerId);
+        if (!provider) throw new SlateError("not_found", `endpoint ${endpoint.id} has no provider`);
+        const keys = await readKeys(context.home);
+        const upload =
+          aiConfig.endpoints.find(
+            (entry) => entry.providerId === endpoint.providerId && entry.capability === "upload",
+          ) ?? null;
+        // The references are pictures, so they are handed over as pictures: the sheets, the blockout and the start frame.
+        const references = referenceAssetIds
+          .map((id) => production.assets[id] ?? null)
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+          .map((entry) => assetFile(context.root, entry));
+
+        const files = await generateImages({
+          provider,
+          endpoint,
+          prompt,
+          count: input.count,
+          seed: input.seed + (input.role === "last" ? 1 : 0),
+          width: size.width,
+          height: size.height,
+          references,
+          upload,
+          http: context.http ?? httpPort,
+          key: keys[provider.id] ?? null,
+        });
+
+        for (const file of files) {
+          made.push(
+            await ingestAsset(context.root, { kind: "frame", sourcePath: file.file, clock: context.clock }),
+          );
+        }
+      } else {
+        for (let index = 0; index < input.count; index += 1) {
+          const outputFile = join(work, `${input.role}-${index}.png`);
+          await renderStill(
+            {
+              binary: ffmpeg.binary ?? "",
+              prompt,
+              // Distinct seeds per candidate: the same seed twice would spend money to return the same picture.
+              index: input.seed + (input.role === "last" ? 1 : 0) + index,
+              width: size.width,
+              height: size.height,
+              outputFile,
+            },
+            context.run,
+          );
+          // The asset must be copied out while the temp file still exists.
+          made.push(
+            await ingestAsset(context.root, { kind: "frame", sourcePath: outputFile, clock: context.clock }),
+          );
+        }
       }
     } finally {
       await rm(work, { recursive: true, force: true });
@@ -186,7 +246,7 @@ export const frameGenerate = defineOp({
       referenceAssetIds,
       /** The words the person wrote, so a frame can say what was asked for and not only what it was made from. */
       prompt: input.prompt.trim(),
-      via: "local",
+      via,
       at: context.clock.now(),
     };
 
@@ -235,6 +295,8 @@ export const frameGenerate = defineOp({
         referenceAssetIds,
         width: size.width,
         height: size.height,
+        via,
+        endpointId: endpoint?.id ?? null,
         spentUsd: cost,
         remainingUsd: remainingUsd(project.budget.ceilingUsd, await readLedger(paths)),
       },

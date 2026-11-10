@@ -136,6 +136,11 @@ export const EndpointSchema = z
     resultPath: z.string().default(""),
     /** The other named values the response carries, so a caller does not have to guess at the provider's shape. */
     response: z.record(z.string(), ResponseFieldSchema).default({}),
+    /**
+     * What one call to this endpoint costs in dollars, as the provider publishes it. A batch is priced by multiplying
+     * this, so the budget ceiling means something against a real model instead of one number for every model.
+     */
+    unitPriceUsd: z.number().min(0).default(0),
   })
   .strict();
 
@@ -284,6 +289,8 @@ export function readResult(response: unknown, path: string): unknown {
     const [, key, indexes] = match;
     if (key) cursor = (cursor as Record<string, unknown>)[key];
     for (const index of (indexes ?? "").match(/\d+/g) ?? []) {
+      // A missing key before an index is the ordinary "wrong shape" case, not a crash: images[0] of nothing is nothing.
+      if (cursor === null || cursor === undefined) return undefined;
       cursor = (cursor as unknown[])[Number(index)];
     }
   }

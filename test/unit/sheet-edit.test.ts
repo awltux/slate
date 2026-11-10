@@ -42,7 +42,9 @@ const entity = async (): Promise<EntityRow> => {
 };
 
 const generate = async (count: number) => {
-  const data = expectOk(await registry.execute("entity.generate", { entityId, count }, context)).data as {
+  const data = expectOk(
+    await registry.execute("entity.generate", { allowLocal: true, entityId, count }, context),
+  ).data as {
     candidates: Array<{ id: string; assetId: string }>;
   };
   return data.candidates;

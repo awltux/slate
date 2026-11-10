@@ -76,6 +76,8 @@ export function FrameDialog({
   }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** No image model bound: the offer is to draw locally, on purpose. */
+  const [needsLocal, setNeedsLocal] = useState(false);
 
   const current = role === "first" ? frames.first : frames.last;
 
@@ -98,9 +100,10 @@ export function FrameDialog({
     }
   }
 
-  async function generate() {
+  async function generate(allowLocal = false) {
     setBusy(true);
     setError(null);
+    setNeedsLocal(false);
     try {
       const result = await runOp<{ assetId: string; assetIds: string[]; role: string }>(
         projectId,
@@ -113,12 +116,15 @@ export function FrameDialog({
           useStartFrame,
           entityIds: picked,
           count,
+          allowLocal,
           expectedRevision: revision,
         },
       );
       setMade({ assetIds: result.data.assetIds, role: result.data.role });
       await onDone();
     } catch (caught) {
+      // No image model bound: offer the local renderer explicitly rather than drawing without saying so.
+      if (caught instanceof ApiError && caught.code === "capability_missing") setNeedsLocal(true);
       setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
     } finally {
       setBusy(false);
@@ -401,6 +407,15 @@ export function FrameDialog({
           Close
         </button>
       </div>
+      {needsLocal ? (
+        <p className="muted" style={{ fontSize: 12 }}>
+          No image model is bound to this film. Add one in <strong>Setup</strong>, or{" "}
+          <button type="button" className="link-button" onClick={() => void generate(true)} disabled={busy}>
+            draw this frame locally
+          </button>{" "}
+          (a flat colour — layout only).
+        </p>
+      ) : null}
     </section>
   );
 }

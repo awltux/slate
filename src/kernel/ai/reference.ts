@@ -15,7 +15,12 @@ export type HttpPort = (input: {
   method: string;
   headers?: Record<string, string>;
   body?: string | Uint8Array;
-}) => Promise<{ status: number; body: string }>;
+  /**
+   * What to do with the answer. "text" is the default and is right for JSON; "bytes" is for a generated image or clip,
+   * whose body cannot survive being read as a string.
+   */
+  as?: "text" | "bytes";
+}) => Promise<{ status: number; body: string; bytes?: Uint8Array }>;
 
 /** The real transport. Anything that calls a model goes through `OpContext.http`, which defaults to this. */
 export const httpPort: HttpPort = async (input) => {
@@ -25,6 +30,9 @@ export const httpPort: HttpPort = async (input) => {
     body: input.body as unknown as BodyInit | undefined,
     signal: AbortSignal.timeout(60_000),
   });
+  if (input.as === "bytes") {
+    return { status: response.status, body: "", bytes: new Uint8Array(await response.arrayBuffer()) };
+  }
   return { status: response.status, body: await response.text() };
 };
 

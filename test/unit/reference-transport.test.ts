@@ -40,6 +40,7 @@ const uploadEndpoint: Endpoint = {
     [UPLOAD_RESPONSE.uploadUrl]: { path: "upload_url", type: "string", description: "" },
     [UPLOAD_RESPONSE.fileUrl]: { path: "file_url", type: "string", description: "" },
   },
+  unitPriceUsd: 0,
   timeoutMs: 120_000,
 };
 

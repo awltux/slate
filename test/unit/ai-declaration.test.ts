@@ -27,6 +27,7 @@ const flux: Endpoint = {
   capability: "image",
   method: "POST",
   path: "/fal-ai/flux/dev",
+  unitPriceUsd: 0,
   timeoutMs: 120_000,
   params: [
     {

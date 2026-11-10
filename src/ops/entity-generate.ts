@@ -5,9 +5,12 @@ import { z } from "zod";
 import { hashValue } from "../domain/canonical.js";
 import { newId } from "../domain/ids.js";
 import { SlateError } from "../domain/result.js";
+import { httpPort } from "../kernel/ai/reference.js";
+import { generateImages } from "../kernel/ai/render-images.js";
+import { readAiConfig, readKeys, resolveBinding } from "../kernel/ai/store.js";
 import { renderStill } from "../kernel/catalog/fake-gateway.js";
 import { appendLedger, readLedger, remainingUsd } from "../kernel/ledger/ledger.js";
-import { type Asset, ingestAsset } from "../kernel/production/assets.js";
+import { type Asset, assetFile, ingestAsset } from "../kernel/production/assets.js";
 import { draftSheet } from "../kernel/production/entities.js";
 import { frameSize } from "../kernel/production/format.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
@@ -15,22 +18,33 @@ import { projectPaths } from "../kernel/workspace/paths.js";
 import { loadDocuments } from "./documents.js";
 import { defineOp } from "./registry.js";
 
-const IMAGE_PRICE_USD = 0.02;
+/** The price used when the bound endpoint does not declare one: a placeholder, not a claim about any model. */
+const UNPRICED_IMAGE_USD = 0.02;
 
 /**
  * Generate candidate images for an entity or one of its variants, from the stored prompt, with the style sheet applied.
  * The batch is priced and reserved before rendering; choosing among candidates is a separate, free decision.
+ *
+ * The images come from the image endpoint bound to the project's profile. The local renderer is only used when the
+ * caller asks for it (`allowLocal`), because a sheet that silently came from a colour swatch instead of the model you
+ * configured is the worst possible outcome: it looks like work.
  */
 export const entityGenerate = defineOp({
   name: "entity.generate",
   policy: "spend",
-  summary: "Generate candidate images from an entity's prompt (or a variant's), priced per image.",
+  summary:
+    "Generate candidate images from an entity's prompt (or a variant's), through the bound image endpoint.",
   input: z
     .object({
       entityId: z.string(),
       count: z.number().int().min(1).max(8).default(4),
       variantId: z.string().nullable().default(null),
       seed: z.number().int().default(0),
+      /**
+       * Draw with the local renderer when no image endpoint is bound. Off by default: a refusal that says what is missing
+       * is better than pictures that are not from the model.
+       */
+      allowLocal: z.boolean().default(false),
     })
     .strict(),
   output: z
@@ -45,6 +59,11 @@ export const entityGenerate = defineOp({
       remainingUsd: z.number(),
       promptUsed: z.string(),
       styleId: z.string().nullable(),
+      /** What made these images: "model:<endpoint>" or "local". Never silent. */
+      via: z.string(),
+      endpointId: z.string().nullable(),
+      /** The price per image that was reserved, from the endpoint when it declares one. */
+      unitPriceUsd: z.number(),
     })
     .strict(),
   touched: (input) => [`entity:${input.entityId}`, "ledger"],
@@ -108,7 +127,22 @@ export const entityGenerate = defineOp({
     // The entity's own style, else the film's default look: a style chosen at creation applies to every entry.
     const styleId = entity.styleId ?? project.settings.defaultStyleId;
     const style = styleId ? (before.entities[styleId] ?? null) : null;
-    const cost = Math.round(input.count * IMAGE_PRICE_USD * 100) / 100;
+
+    // What will make these images: the bound image endpoint, or - only when the caller says so - the local renderer.
+    const aiConfig = await readAiConfig(context.home);
+    const resolution = resolveBinding(aiConfig, "image", project.aiBindingSetId ?? null);
+    const endpoint = resolution?.endpoint ?? null;
+    if (!endpoint && !input.allowLocal) {
+      throw new SlateError(
+        "capability_missing",
+        "no image model is bound: add an image endpoint to a profile in Setup, or draw locally on purpose",
+        { detail: { capability: "image", allowLocal: false } },
+      );
+    }
+    const unitPriceUsd = endpoint && endpoint.unitPriceUsd > 0 ? endpoint.unitPriceUsd : UNPRICED_IMAGE_USD;
+    const via = endpoint ? `model:${endpoint.name}` : "local";
+
+    const cost = Math.round(input.count * unitPriceUsd * 100) / 100;
     const paths = projectPaths(context.root);
     const remaining = remainingUsd(project.budget.ceilingUsd, await readLedger(paths));
     if (cost > remaining) {
@@ -118,10 +152,11 @@ export const entityGenerate = defineOp({
       );
     }
 
-    const ffmpeg = await context.tool("ffmpeg");
-    if (!ffmpeg.binary)
+    // The local renderer needs FFmpeg; a model does not, so that requirement is only asked of the local path.
+    const ffmpeg = endpoint ? { binary: null as string | null } : await context.tool("ffmpeg");
+    if (!endpoint && !ffmpeg.binary) {
       throw new SlateError("capability_missing", "FFmpeg is not available to render candidates");
-    const binary = ffmpeg.binary;
+    }
 
     await appendLedger(paths, {
       at: context.clock.now(),
@@ -130,7 +165,7 @@ export const entityGenerate = defineOp({
       usd: cost,
       estimateId: null,
       jobId: null,
-      note: `${input.count} sheet candidate(s) for ${entity.name}`,
+      note: `${input.count} sheet candidate(s) for ${entity.name} via ${via}`,
     });
 
     const promptHash = hashValue({ prompt, styleId: style?.id ?? null, seed: input.seed });
@@ -138,18 +173,62 @@ export const entityGenerate = defineOp({
     const work = await mkdtemp(join(tmpdir(), "slate-candidate-"));
 
     try {
-      for (let index = 0; index < input.count; index += 1) {
-        const outputFile = join(work, `candidate-${index}.png`);
-        await renderStill(
-          { binary, prompt, index: index + input.seed, width: size.width, height: size.height, outputFile },
-          context.run,
-        );
-        const asset = await ingestAsset(context.root, {
-          kind: "sheet",
-          sourcePath: outputFile,
-          clock: context.clock,
+      if (endpoint) {
+        const provider = aiConfig.providers.find((entry) => entry.id === endpoint.providerId);
+        if (!provider) throw new SlateError("not_found", `endpoint ${endpoint.id} has no provider`);
+        const keys = await readKeys(context.home);
+        const upload =
+          aiConfig.endpoints.find(
+            (entry) => entry.providerId === endpoint.providerId && entry.capability === "upload",
+          ) ?? null;
+        // The body reference is a picture the model should see, not a sentence it should read.
+        const composite = bodyFor?.identity?.compositeAssetId ?? null;
+        const compositeAsset = composite ? (before.assets[composite] ?? null) : null;
+        const references = compositeAsset ? [assetFile(context.root, compositeAsset)] : [];
+
+        const files = await generateImages({
+          provider,
+          endpoint,
+          prompt,
+          count: input.count,
+          seed: input.seed,
+          width: size.width,
+          height: size.height,
+          references,
+          upload,
+          http: context.http ?? httpPort,
+          key: keys[provider.id] ?? null,
         });
-        created.push({ id: newId("cnd"), asset, variantId: variant?.id ?? null });
+
+        for (const file of files) {
+          const asset = await ingestAsset(context.root, {
+            kind: "sheet",
+            sourcePath: file.file,
+            clock: context.clock,
+          });
+          created.push({ id: newId("cnd"), asset, variantId: variant?.id ?? null });
+        }
+      } else {
+        for (let index = 0; index < input.count; index += 1) {
+          const outputFile = join(work, `candidate-${index}.png`);
+          await renderStill(
+            {
+              binary: ffmpeg.binary ?? "",
+              prompt,
+              index: index + input.seed,
+              width: size.width,
+              height: size.height,
+              outputFile,
+            },
+            context.run,
+          );
+          const asset = await ingestAsset(context.root, {
+            kind: "sheet",
+            sourcePath: outputFile,
+            clock: context.clock,
+          });
+          created.push({ id: newId("cnd"), asset, variantId: variant?.id ?? null });
+        }
       }
     } finally {
       await rm(work, { recursive: true, force: true });
@@ -158,7 +237,7 @@ export const entityGenerate = defineOp({
     const result = await commitDocuments({
       root: context.root,
       actor: context.actor,
-      intent: `generate ${created.length} candidate(s) for ${entity.name}${variant ? ` / ${variant.name}` : ""}`,
+      intent: `generate ${created.length} candidate(s) for ${entity.name}${variant ? ` / ${variant.name}` : ""} via ${via}`,
       touched: [`entity:${entity.id}`],
       clock: context.clock,
       mutate: ({ production }) => {
@@ -201,6 +280,9 @@ export const entityGenerate = defineOp({
           variantId: item.variantId,
         })),
         prompt,
+        via,
+        endpointId: endpoint?.id ?? null,
+        unitPriceUsd,
         spentUsd: cost,
         remainingUsd: remainingUsd(project.budget.ceilingUsd, await readLedger(paths)),
         promptUsed: prompt,
@@ -208,7 +290,7 @@ export const entityGenerate = defineOp({
       },
       version: result.project.revision,
       commit: result.commit.id,
-      via: "fake",
+      via,
       next: ["sheet.edit", "sheet.publish"],
     };
   },

@@ -377,6 +377,8 @@ function EntityCard({
   const [count, setCount] = useState("4");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** No image model is bound: the offer is to draw locally, said out loud rather than done quietly. */
+  const [needsLocal, setNeedsLocal] = useState(false);
 
   useEffect(() => {
     setPrompt(entity.prompt);
@@ -431,8 +433,21 @@ function EntityCard({
     );
   }
 
-  async function generate() {
-    await run(() => runOp(projectId, "entity.generate", { entityId: entity.id, count: Number(count) || 4 }));
+  async function generate(allowLocal = false) {
+    setNeedsLocal(false);
+    await run(async () => {
+      try {
+        await runOp(projectId, "entity.generate", {
+          entityId: entity.id,
+          count: Number(count) || 4,
+          allowLocal,
+        });
+      } catch (caught) {
+        // No image model bound: say so, and offer the local renderer as a deliberate choice rather than drawing anyway.
+        if (caught instanceof ApiError && caught.code === "capability_missing") setNeedsLocal(true);
+        throw caught;
+      }
+    });
   }
 
   /** One dropdown per item: a rotation, disabled to keep it out of the reference image, or delete on publish. */
@@ -593,6 +608,16 @@ function EntityCard({
             {busy ? "Working…" : "Generate candidates"}
           </button>
         </div>
+        {needsLocal ? (
+          <p className="muted" style={{ fontSize: 12 }}>
+            No image model is bound to this film, so nothing was generated. Add one in <strong>Setup</strong>,
+            or{" "}
+            <button type="button" className="link-button" onClick={() => void generate(true)} disabled={busy}>
+              draw these locally
+            </button>{" "}
+            (flat colour swatches — useful for layout, not for a sheet).
+          </p>
+        ) : null}
       </div>
 
       {entity.compositeAssetId ? (
