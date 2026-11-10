@@ -2,6 +2,18 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Costumes are a kind of library item
+
+- **A costume is clothes cut for one character.** It is created with the character it is worn by — the chooser appears
+  only for a costume, and "Define entry" waits for a body. A location or a prop is refused as a body; a costume with no
+  body is refused outright.
+- **Its reference sheet is a headless mannequin** in that character's build: the prompt is the garment's description,
+  "worn on a headless mannequin with the build of <character>: <their body description>", and "full body, no head, no
+  face" — so the sheet is about the garment and does not compete with the character's own face sheet.
+- **A costume sheet covers poses, not head rotations**: front, three-quarter, profile, back. `entity.angles` and
+  `missingAngles` now answer per kind.
+- **The generated prompt is returned by `entity.generate`**, so what a sheet was made from can be read back rather than
+  inferred.
 ## Sheet images are made at the film's shape
 
 - **A library item's sheet is rendered at the project's aspect ratio**, not a fixed square. A square reference teaches the

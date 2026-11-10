@@ -41,7 +41,7 @@ export const GlobalVariantSchema = z
 export const GlobalItemSchema = z
   .object({
     id: z.string().startsWith("lib_"),
-    kind: z.enum(["character", "location", "prop", "style"]),
+    kind: z.enum(["character", "location", "prop", "style", "costume"]),
     name: z.string(),
     description: z.string(),
     prompt: z.string(),

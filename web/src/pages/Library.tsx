@@ -89,6 +89,9 @@ export function Library({ projectId }: { projectId: string }) {
   const [kind, setKind] = useState("character");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  /** A costume is clothes on a body, so the body is chosen when the garment is made. */
+  const [wornBy, setWornBy] = useState("");
+  const characters = (entities ?? []).filter((item) => item.kind === "character");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -128,7 +131,12 @@ export function Library({ projectId }: { projectId: string }) {
     setBusy(true);
     setError(null);
     try {
-      await runOp(projectId, "entity.create", { kind, name, description });
+      await runOp(projectId, "entity.create", {
+        kind,
+        name,
+        description,
+        wornBy: kind === "costume" ? wornBy || null : null,
+      });
       setName("");
       setDescription("");
       await load();
@@ -171,6 +179,7 @@ export function Library({ projectId }: { projectId: string }) {
             <option value="location">location</option>
             <option value="prop">prop</option>
             <option value="style">style</option>
+            <option value="costume">costume</option>
           </select>
           <input
             value={name}
@@ -179,7 +188,26 @@ export function Library({ projectId }: { projectId: string }) {
             aria-label="Entity name"
             style={{ flex: 1 }}
           />
-          <button className="primary" type="submit" disabled={busy || name.trim() === ""}>
+          {kind === "costume" ? (
+            <select
+              value={wornBy}
+              onChange={(event) => setWornBy(event.target.value)}
+              aria-label="Costume worn by"
+              style={{ minWidth: 200 }}
+            >
+              <option value="">worn by which character?</option>
+              {characters.map((character) => (
+                <option key={character.id} value={character.id}>
+                  {character.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <button
+            className="primary"
+            type="submit"
+            disabled={busy || name.trim() === "" || (kind === "costume" && wornBy === "")}
+          >
             {busy ? "Creating…" : "Define entry"}
           </button>
         </div>

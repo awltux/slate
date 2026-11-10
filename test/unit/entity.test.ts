@@ -295,3 +295,85 @@ describe("the shape of a sheet image", () => {
     expect(calls.some((argv) => argv.some((arg) => arg.includes("1080x1920")))).toBe(true);
   });
 });
+
+describe("costumes", () => {
+  it("refuses a costume without the character it is cut for", async () => {
+    const refused = await registry.execute(
+      "entity.create",
+      { kind: "costume", name: "Sunday coat", description: "wool, salt-stained" },
+      context,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.error.code).toBe("invalid_input");
+      expect(refused.error.message).toContain("character");
+    }
+  });
+
+  it("refuses a body that is not a character", async () => {
+    const room = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "location", name: "Lantern room", description: "salt-eaten iron" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const refused = await registry.execute(
+      "entity.create",
+      { kind: "costume", name: "Sunday coat", wornBy: room.entityId },
+      context,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toContain("not a character");
+  });
+
+  it("makes a headless mannequin on the character's body, and asks for poses", async () => {
+    const keeper = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "tall, stooped, salt-eaten hands" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const costume = expectOk(
+      await registry.execute(
+        "entity.create",
+        {
+          kind: "costume",
+          name: "Sunday coat",
+          description: "heavy wool coat, collar turned up",
+          wornBy: keeper.entityId,
+        },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    // The poses a costume sheet covers, not a character's head rotations.
+    const angles = expectOk(await registry.execute("entity.angles", { kind: "costume" }, context)).data as {
+      angles: string[];
+    };
+    expect(angles.angles).toEqual(["front", "three-quarter-left", "profile-left", "back"]);
+
+    const calls: string[][] = [];
+    const ffmpeg = fakeFfmpeg();
+    const recording = testContext(root, {
+      home,
+      run: async (argv) => {
+        calls.push(argv);
+        return ffmpeg.run(argv);
+      },
+      tool: ffmpeg.tool,
+    });
+    const generated = expectOk(
+      await registry.execute("entity.generate", { entityId: costume.entityId, count: 1 }, recording),
+    ).data as { prompt: string };
+
+    // The prompt the images were made from carries the garment, the body it is cut for, and that there is no head.
+    // The prompt is built from the garment description, and names the body it is cut for.
+    expect(generated.prompt).toContain("headless mannequin");
+    expect(generated.prompt).toContain("The keeper");
+    expect(generated.prompt.toLowerCase()).toContain("no head");
+  });
+});

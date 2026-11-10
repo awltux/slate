@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-export const EntityKindSchema = z.enum(["character", "location", "prop", "style"]);
+export const EntityKindSchema = z.enum(["character", "location", "prop", "style", "costume"]);
+
+/** The four turns a costume's mannequin sheet must cover: full body, no head. */
+export const COSTUME_POSES = ["front", "three-quarter-left", "profile-left", "back"] as const;
 
 /** The six rotations a character's headshot sheet must cover. */
 export const HEADSHOT_ANGLES = [
@@ -130,6 +133,11 @@ export const EntitySchema = z
     aliases: z.array(z.string()),
     /** A style sheet applied to this entity's generations; null means the project default. */
     styleId: z.string().startsWith("ent_").nullable(),
+    /**
+     * For a costume: the character whose build it is cut for. The costume's sheet is made on that body, so the two cannot
+     * drift into a garment that fits nobody.
+     */
+    wornBy: z.string().startsWith("ent_").nullable().default(null),
     /** Set when this entity is a clone of a global library item; null means it was authored here. */
     libraryId: z.string().startsWith("lib_").nullable().default(null),
     /** The global version this clone was last pushed from or to; null when never linked. */
@@ -148,6 +156,8 @@ export const EntitySchema = z
 
 export type Entity = z.infer<typeof EntitySchema>;
 
+export type EntityKind = z.infer<typeof EntityKindSchema>;
+
 /** The items that go into the reference image: everything not disabled or deleted. */
 export function activeItems(sheet: SheetVersion | null): SheetImage[] {
   return sheet ? sheet.images.filter((image) => image.status === "active") : [];
@@ -163,15 +173,16 @@ export function sheetReference(sheet: SheetVersion | null): string | null {
 }
 
 /** Whether a character's identity sheet covers all six head rotations. */
-export function missingAngles(sheet: SheetVersion | null): string[] {
-  if (!sheet) return [...HEADSHOT_ANGLES];
+export function missingAngles(sheet: SheetVersion | null, kind: EntityKind = "character"): string[] {
+  const required = kind === "costume" ? [...COSTUME_POSES] : [...HEADSHOT_ANGLES];
+  if (!sheet) return required;
   // A disabled view still belongs to the sheet; a deleted one is on its way out, so it covers nothing.
   const covered = new Set(
     sheet.images
       .filter((image) => image.role !== null && image.status !== "deleted")
       .map((image) => image.role as string),
   );
-  return HEADSHOT_ANGLES.filter((angle) => !covered.has(angle));
+  return required.filter((angle) => !covered.has(angle));
 }
 
 /** A fresh draft of a sheet: the next version, holding the published items exactly as they stood. */

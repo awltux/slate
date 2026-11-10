@@ -39,6 +39,8 @@ export const entityGenerate = defineOp({
       candidates: z.array(
         z.object({ id: z.string(), assetId: z.string(), variantId: z.string().nullable() }).strict(),
       ),
+      /** The exact text the images were generated from: a costume's prompt names its body, and this proves it. */
+      prompt: z.string(),
       spentUsd: z.number(),
       remainingUsd: z.number(),
       promptUsed: z.string(),
@@ -57,7 +59,20 @@ export const entityGenerate = defineOp({
     const variant = input.variantId ? entity.variants.find((item) => item.id === input.variantId) : null;
     if (input.variantId && !variant) throw new SlateError("not_found", `no variant ${input.variantId}`);
 
-    const prompt = (variant?.prompt || entity.prompt || entity.description).trim();
+    // A costume is shown on the body it is cut for, without a head: the sheet is about the garment, and a face would
+    // compete with the character's own sheet.
+    const wornBy =
+      entity.kind === "costume" && entity.wornBy ? (before.entities[entity.wornBy] ?? null) : null;
+    const written = (variant?.prompt || entity.prompt || entity.description).trim();
+    const prompt = wornBy
+      ? [
+          written,
+          `worn on a headless mannequin with the build of ${wornBy.name}: ${wornBy.description}`,
+          "full body, garment only, no head, no face",
+        ]
+          .filter(Boolean)
+          .join(". ")
+      : written;
     if (prompt === "") {
       throw new SlateError("readiness_failed", "this entity has no prompt yet", {
         detail: {
@@ -161,6 +176,7 @@ export const entityGenerate = defineOp({
           assetId: item.asset.id,
           variantId: item.variantId,
         })),
+        prompt,
         spentUsd: cost,
         remainingUsd: remainingUsd(project.budget.ceilingUsd, await readLedger(paths)),
         promptUsed: prompt,
