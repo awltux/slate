@@ -72,6 +72,8 @@ export function Setup() {
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [editingEndpoint, setEditingEndpoint] = useState<string | null>(null);
+  const [confirmDeleteEndpoint, setConfirmDeleteEndpoint] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -128,6 +130,23 @@ export function Setup() {
       const endpoints = result.data.endpointsRemoved;
       const bindings = result.data.bindingsCleared;
       if (endpoints > 0) parts.push(`${endpoints} endpoint${endpoints === 1 ? "" : "s"} went with it`);
+      if (bindings > 0) parts.push(`${bindings} profile binding${bindings === 1 ? "" : "s"} cleared`);
+      setNotice(`${parts.join(" — ")}.`);
+    });
+  }
+
+  /** Deleting a model is smaller than deleting a host: the provider and its key stay, only this call and its bindings go. */
+  async function deleteEndpoint(endpoint: EndpointView) {
+    await run(async () => {
+      const result = await runGlobalOp<{ endpointsRemoved: number; bindingsCleared: number }>("ai.remove", {
+        kind: "endpoint",
+        id: endpoint.id,
+      });
+      setConfirmDeleteEndpoint(null);
+      setEditingEndpoint((current) => (current === endpoint.id ? null : current));
+
+      const parts = [`${endpoint.name} deleted`];
+      const bindings = result.data.bindingsCleared;
       if (bindings > 0) parts.push(`${bindings} profile binding${bindings === 1 ? "" : "s"} cleared`);
       setNotice(`${parts.join(" — ")}.`);
     });
@@ -305,20 +324,75 @@ export function Setup() {
                             {endpoint.resultPath || "—"}
                           </td>
                           <td>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() =>
-                                void run(async () => {
-                                  const result = await runGlobalOp<Preview>("ai.preview", {
-                                    endpointId: endpoint.id,
-                                  });
-                                  setPreview(result.data);
-                                })
-                              }
-                            >
-                              Preview
-                            </button>
+                            <div className="row" style={{ gap: "0.25rem", flexWrap: "nowrap" }}>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void run(async () => {
+                                    const result = await runGlobalOp<Preview>("ai.preview", {
+                                      endpointId: endpoint.id,
+                                    });
+                                    setPreview(result.data);
+                                  })
+                                }
+                              >
+                                Preview
+                              </button>
+                              {confirmDeleteEndpoint === endpoint.id ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="primary"
+                                    disabled={busy}
+                                    aria-label={`Confirm deleting ${endpoint.name}`}
+                                    onClick={() => void deleteEndpoint(endpoint)}
+                                  >
+                                    Delete
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    aria-label={`Keep ${endpoint.name}`}
+                                    onClick={() => setConfirmDeleteEndpoint(null)}
+                                  >
+                                    Keep
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    aria-label={`Edit ${endpoint.name}`}
+                                    onClick={() => {
+                                      setAddingFor(null);
+                                      setPreview(null);
+                                      setEditingEndpoint((current) =>
+                                        current === endpoint.id ? null : endpoint.id,
+                                      );
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    aria-label={`Delete ${endpoint.name}`}
+                                    title={
+                                      catalog.bindingSets.some((set) =>
+                                        Object.values(set.bindings).flat().includes(endpoint.id),
+                                      )
+                                        ? "Deleting this model also clears the profile binding that names it"
+                                        : "Delete this model"
+                                    }
+                                    onClick={() => setConfirmDeleteEndpoint(endpoint.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -326,11 +400,33 @@ export function Setup() {
                   </table>
                 )}
 
+                {editingEndpoint && endpoints.some((entry) => entry.id === editingEndpoint) ? (
+                  <div className="stack" style={{ gap: "0.3rem" }}>
+                    <strong style={{ fontSize: 14 }}>
+                      Editing {endpoints.find((entry) => entry.id === editingEndpoint)?.name}
+                    </strong>
+                    <EndpointForm
+                      key={editingEndpoint}
+                      busy={busy}
+                      providerId={provider.id}
+                      endpoint={endpoints.find((entry) => entry.id === editingEndpoint)}
+                      onSubmit={async (values) => {
+                        await run(() => runGlobalOp("ai.endpoint.save", values));
+                        setEditingEndpoint(null);
+                      }}
+                      onCancel={() => setEditingEndpoint(null)}
+                    />
+                  </div>
+                ) : null}
+
                 <div className="row">
                   <button
                     type="button"
                     className="primary"
-                    onClick={() => setAddingFor(addingFor === provider.id ? null : provider.id)}
+                    onClick={() => {
+                      setEditingEndpoint(null);
+                      setAddingFor(addingFor === provider.id ? null : provider.id);
+                    }}
                     disabled={busy}
                   >
                     {addingFor === provider.id ? "Close" : "Add endpoint"}
@@ -638,19 +734,27 @@ function ProviderForm({
 function EndpointForm({
   busy,
   providerId,
+  endpoint,
   onSubmit,
+  onCancel,
 }: {
   busy: boolean;
   providerId: string;
+  /** Present when editing: the form starts from the stored call and keeps its id. */
+  endpoint?: EndpointView;
   onSubmit: (values: unknown) => Promise<void>;
+  onCancel?: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [capability, setCapability] = useState("image");
-  const [method, setMethod] = useState("POST");
-  const [path, setPath] = useState("/");
-  const [body, setBody] = useState('{\n  "prompt": "{{prompt}}"\n}');
-  const [params, setParams] = useState("[]");
-  const [resultPath, setResultPath] = useState("");
+  const editing = Boolean(endpoint);
+  const [name, setName] = useState(endpoint?.name ?? "");
+  const [capability, setCapability] = useState(endpoint?.capability ?? "image");
+  const [method, setMethod] = useState(endpoint?.method ?? "POST");
+  const [path, setPath] = useState(endpoint?.path ?? "/");
+  const [body, setBody] = useState(
+    endpoint ? JSON.stringify(endpoint.body ?? {}, null, 2) : '{\n  "prompt": "{{prompt}}"\n}',
+  );
+  const [params, setParams] = useState(endpoint ? JSON.stringify(endpoint.params ?? [], null, 2) : "[]");
+  const [resultPath, setResultPath] = useState(endpoint?.resultPath ?? "");
   const [formError, setFormError] = useState<string | null>(null);
 
   return (
@@ -663,7 +767,7 @@ function EndpointForm({
           const parsedBody = JSON.parse(body) as Record<string, unknown>;
           const parsedParams = JSON.parse(params) as unknown[];
           setFormError(null);
-          void onSubmit({
+          const values: Record<string, unknown> = {
             providerId,
             name,
             capability,
@@ -672,8 +776,10 @@ function EndpointForm({
             params: parsedParams,
             body: parsedBody,
             resultPath,
-          });
-          setName("");
+          };
+          if (endpoint) values.id = endpoint.id;
+          void onSubmit(values);
+          if (!editing) setName("");
         } catch {
           setFormError("body and params must be valid JSON");
         }
@@ -740,6 +846,11 @@ function EndpointForm({
           aria-label="Result path"
           style={{ flex: 1 }}
         />
+        {onCancel ? (
+          <button type="button" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+        ) : null}
         <button className="primary" type="submit" disabled={busy || name === ""}>
           Save endpoint
         </button>
