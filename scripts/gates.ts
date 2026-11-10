@@ -879,8 +879,8 @@ async function gate7(steps: string[]): Promise<void> {
 
   const linked = await op<{ location: { entityId: string; coverAssetId: string | null } | null }>(
     projectId,
-    "scene.set-location",
-    { sceneId: scene.data.sceneId, entityId: lighthouse.data.entityId },
+    "scene.set-entities",
+    { sceneId: scene.data.sceneId, entityIds: [lighthouse.data.entityId] },
   );
   assert(linked.data.location?.entityId === lighthouse.data.entityId, "the scene must link the location");
   assert(
@@ -1357,6 +1357,119 @@ async function gate11(steps: string[]): Promise<void> {
   steps.push("permission: an editor cannot open setup at all");
 }
 
+async function gate12(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("The Last Light", 10);
+
+  const ffmpeg = await createToolResolver({
+    run: (argv) => runCommand(argv),
+    vendorDir: vendorDir(),
+    now: () => systemClock.now(),
+  })("ffmpeg");
+  assert(Boolean(ffmpeg.binary), "gate 12 needs FFmpeg");
+  const binary = ffmpeg.binary as string;
+
+  const sheeted = async (kind: "character" | "location", name: string) => {
+    const entity = await op<{ entityId: string }>(projectId, "entity.create", {
+      kind,
+      name,
+      description: `${name} in the lantern room`,
+    });
+    await op(projectId, "entity.update", {
+      entityId: entity.data.entityId,
+      prompt: `${name}, night, amber light`,
+    });
+    const generated = await op<{ candidates: Array<{ id: string }> }>(projectId, "entity.generate", {
+      entityId: entity.data.entityId,
+      count: 1,
+    });
+    await op(projectId, "sheet.select", {
+      entityId: entity.data.entityId,
+      images: [
+        { role: kind === "character" ? "front" : "lighting", candidateId: generated.data.candidates[0]?.id },
+      ],
+    });
+    return entity.data.entityId;
+  };
+
+  const keeper = await sheeted("character", "The keeper");
+  const room = await sheeted("location", "Lantern room");
+  steps.push("library: a keeper and a lantern room, both with sheets");
+
+  const scene = await op<{ sceneId: string }>(projectId, "scene.create", {
+    heading: { intExt: "INT", location: "LIGHTHOUSE LANTERN ROOM", timeOfDay: "NIGHT" },
+    synopsis: "He turns the wick down.",
+  });
+  const attached = await op<{ entityIds: string[]; location: { name: string } | null }>(
+    projectId,
+    "scene.set-entities",
+    { sceneId: scene.data.sceneId, entityIds: [keeper, room] },
+  );
+  assert(attached.data.entityIds.length === 2, "both library items must attach to the scene");
+  assert(attached.data.location?.name === "Lantern room", "the location must be the scene backdrop");
+  steps.push("scene: keeper and lantern room attached");
+
+  const shot = await op<{ shotId: string; number: string }>(projectId, "shot.create", {
+    sceneId: scene.data.sceneId,
+    size: "MCU",
+    angle: "EYE",
+    movement: "STATIC",
+    durationSec: 5,
+    description: "Elias turns the wick down.",
+  });
+
+  const first = await op<{ assetId: string; entityIds: string[] }>(projectId, "frame.generate", {
+    shotId: shot.data.shotId,
+    role: "first",
+  });
+  const last = await op<{ assetId: string }>(projectId, "frame.generate", {
+    shotId: shot.data.shotId,
+    role: "last",
+  });
+  assert(first.data.entityIds.length === 2, "the frame must record both references");
+  assert(first.data.assetId !== last.data.assetId, "start and end must be different images");
+  steps.push("frames: start and end generated from the scene's library items");
+
+  const view = await op<{
+    shot: { frames: { first?: string; last?: string; firstSource?: { entityIds: string[] } } };
+  }>(projectId, "shot.get", { shotId: shot.data.shotId });
+  assert(view.data.shot.frames.first === first.data.assetId, "the start frame must be on the shot");
+  assert(view.data.shot.frames.last === last.data.assetId, "the end frame must be on the shot");
+  assert(
+    view.data.shot.frames.firstSource?.entityIds.length === 2,
+    "the frame must record what conditioned it",
+  );
+  steps.push("provenance: each frame names the library items behind it");
+
+  // The shoot: an approved estimate, then a take generated between the two frames.
+  const estimate = await op<{ estimateId: string; usd: number }>(projectId, "estimate.create", {
+    shotIds: [shot.data.shotId],
+    tier: "draft",
+  });
+  const approval = await op<{ token: string }>(projectId, "spend.approve", {
+    estimateId: estimate.data.estimateId,
+  });
+  const take = await op<{ takeIds: string[] }>(projectId, "take.generate", {
+    token: approval.data.token,
+    seed: 7,
+  });
+  assert(take.data.takeIds.length === 1, "one take must be generated");
+  steps.push("take: rendered from an approved estimate");
+
+  const takes = await op<{
+    takes: Array<{ fromFrameId: string | null; toFrameId: string | null; durationSec: number }>;
+  }>(projectId, "take.list", { shotId: shot.data.shotId });
+  const recorded = takes.data.takes[0];
+  assert(recorded?.fromFrameId === first.data.assetId, "the take must record the frame it starts from");
+  assert(recorded?.toFrameId === last.data.assetId, "the take must record the frame it ends on");
+  assert(Math.abs((recorded?.durationSec ?? 0) - 5) < 0.2, "the take must last the shot's duration");
+  steps.push("shoot: the clip runs from the start frame to the end frame, and says so");
+
+  const mediaUrl = `${base}/p/${projectId}/media/${takes.data.takes[0] ? "" : ""}`;
+  void mediaUrl;
+  void binary;
+}
+
 async function gate8(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("The Last Light");
@@ -1436,6 +1549,33 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 12) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.waitForSelector('role=tab[name="Plan"]', { timeout: 20_000 });
+      await page.click('role=tab[name="Plan"]');
+      await page.waitForSelector("text=The plan", { timeout: 20_000 });
+      await page.waitForTimeout(800);
+
+      // The first scene opens by default; its shots and frames must be visible.
+      await page.waitForSelector("text=Start / end", { timeout: 20_000 });
+      await page.waitForSelector("img", { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "plan-expanded.png"), fullPage: true });
+      steps.push("ui: the open scene shows its items, its shots and their frames");
+
+      // Collapsing it must leave only the heading.
+      const expanded = await page.locator("text=Start / end").count();
+      assert(expanded === 1, "the open scene must show its shot table");
+      await page.click('button[aria-label^="Collapse scene"]');
+      await page.waitForFunction(() => !document.body.innerText.includes("Start / end"), null, {
+        timeout: 20_000,
+      });
+      await page.screenshot({ path: join(artifactDir, "plan-collapsed.png"), fullPage: true });
+      steps.push("ui: a collapsed scene is a single heading row");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 11) {
       await page.click('header [role="tab"]:has-text("Setup")');
@@ -1653,6 +1793,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 9) await gate9(steps);
     else if (gateNumber === 10) await gate10(steps);
     else if (gateNumber === 11) await gate11(steps);
+    else if (gateNumber === 12) await gate12(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

@@ -1,0 +1,15 @@
+{
+  "gate": 12,
+  "status": "passed",
+  "base": "http://127.0.0.1:54006",
+  "steps": [
+    "library: a keeper and a lantern room, both with sheets",
+    "scene: keeper and lantern room attached",
+    "frames: start and end generated from the scene's library items",
+    "provenance: each frame names the library items behind it",
+    "take: rendered from an approved estimate",
+    "shoot: the clip runs from the start frame to the end frame, and says so",
+    "ui: the open scene shows its items, its shots and their frames",
+    "ui: a collapsed scene is a single heading row"
+  ]
+}

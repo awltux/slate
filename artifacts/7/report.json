@@ -1,9 +1,9 @@
 {
   "gate": 7,
   "status": "passed",
-  "base": "http://127.0.0.1:61343",
+  "base": "http://127.0.0.1:57710",
   "steps": [
-    "project: prj_c313ebf6e2b24162b78bd5d961adbd33",
+    "project: prj_64f4d1a6d7754770bd48c30679623417",
     "library: a character and a style sheet",
     "prompt: expanded from the description via local, with the style applied",
     "candidates: 6 options for $0.12, style recorded",
