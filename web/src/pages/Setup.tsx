@@ -254,6 +254,21 @@ export function Setup() {
                   .join("\n")}
               </pre>
             </div>
+            <div>
+              <span className="muted" style={{ fontSize: 12 }}>
+                verdict
+              </span>
+              <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                {testDetail.resultPathFound === true
+                  ? "the answer contained the value the endpoint declares"
+                  : testDetail.resultPathFound === false
+                    ? "the host answered, but the declared result path was not in the answer"
+                    : "no result path was checked (a provider test, or nothing came back)"}
+                {testDetail.chargesPossible
+                  ? " · this was a real generation request, so the provider may bill for it"
+                  : ""}
+              </p>
+            </div>
           </div>
         </details>
       ) : null}
@@ -440,7 +455,7 @@ export function Setup() {
                               disabled={busy}
                               aria-label={`Test endpoint ${endpoint.name}`}
                               onClick={() => void testTarget(endpoint.name, { endpointId: endpoint.id })}
-                              title="Send one GET to this path and report what it answers; nothing is generated"
+                              title="Send this endpoint's configured request with sample values. A generating model may bill for it."
                             >
                               Test
                             </button>

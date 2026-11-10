@@ -383,3 +383,88 @@ describe("the method a test uses", () => {
     expect(data.request.body).toBe("");
   });
 });
+
+describe("testing an endpoint", () => {
+  it("sends the endpoint's own body, rendered from its template", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal", baseUrl: "https://fal.run", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "FLUX schnell",
+          capability: "image",
+          method: "POST",
+          path: "/fal-ai/flux/schnell",
+          body: { prompt: "{{prompt}}", image_size: "landscape_16_9", seed: "{{param:seed}}" },
+          params: [{ key: "seed", type: "number", required: false, default: 7 }],
+          resultPath: "images[0].url",
+        },
+        context,
+      ),
+    ).data as { id: string };
+
+    let sent: string | undefined;
+    const port: HttpPort = async (input) => {
+      sent = typeof input.body === "string" ? input.body : undefined;
+      return { status: 200, body: JSON.stringify({ images: [{ url: "https://fal.example/out.png" }] }) };
+    };
+
+    const data = expectOk(
+      await registry.execute("ai.test", { endpointId: endpoint.id }, testContext(root, { home, http: port })),
+    ).data as {
+      request: { method: string; body: string };
+      resultPathFound: boolean | null;
+      chargesPossible: boolean;
+      response: { status: number };
+    };
+
+    expect(data.request.method).toBe("POST");
+    const body = JSON.parse(sent ?? "{}") as { prompt: string; image_size: string; seed: number };
+    // The template's tokens are filled with sample values, and the parameter default is honoured.
+    expect(body.prompt).toContain("lighthouse keeper");
+    expect(body.image_size).toBe("landscape_16_9");
+    expect(body.seed).toBe(7);
+    expect(data.chargesPossible).toBe(true);
+    expect(data.resultPathFound).toBe(true);
+  });
+
+  it("says when a 200 does not contain the result path it declares", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal", baseUrl: "https://fal.run", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "odd model",
+          capability: "image",
+          method: "POST",
+          path: "/odd",
+          resultPath: "images[0].url",
+        },
+        context,
+      ),
+    ).data as { id: string };
+
+    const port: HttpPort = async () => ({ status: 200, body: JSON.stringify({ output: "elsewhere" }) });
+    const data = expectOk(
+      await registry.execute("ai.test", { endpointId: endpoint.id }, testContext(root, { home, http: port })),
+    ).data as { status: number; resultPathFound: boolean | null };
+
+    expect(data.status).toBe(200);
+    // A green 200 with the wrong shape is the failure this field exists to catch.
+    expect(data.resultPathFound).toBe(false);
+  });
+});

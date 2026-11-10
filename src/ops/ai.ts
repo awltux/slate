@@ -101,6 +101,10 @@ export const aiTest = defineOp({
       /** What the host answered, or null when it did not answer at all. */
       status: z.number().int().nullable(),
       reachable: z.boolean(),
+      /** Whether the endpoint's resultPath named a value in the answer: the difference between 200 and working. */
+      resultPathFound: z.boolean().nullable(),
+      /** Whether sending this request could be charged for. */
+      chargesPossible: z.boolean(),
       /** What was actually sent, for debug: the credential is masked, never echoed back. */
       request: z
         .object({
@@ -156,9 +160,42 @@ export const aiTest = defineOp({
       shownHeaders[header] = apiKey ? value.replace(apiKey, "***") : value;
     }
 
-    // A POST test sends an empty object on purpose: it exercises routing and the key without describing a job.
-    const method = provider.testMethod ?? "GET";
-    const sentBody = method === "POST" ? "{}" : "";
+    // An endpoint test sends the endpoint's own body - its template rendered with sample values - because the question
+    // is whether this model answers, and only the real body asks it. A provider test sends nothing (a GET) or an empty
+    // object: it asks whether the host is there.
+    let method: "GET" | "POST" | string = provider.testMethod ?? "GET";
+    let sentBody = method === "POST" ? "{}" : "";
+    let renderedBody: unknown = null;
+    let resultPathFound: boolean | null = null;
+    let chargesPossible = false;
+
+    if (endpoint) {
+      const keysForRender = await readKeys(context.home);
+      try {
+        const request = renderRequest(
+          provider,
+          endpoint,
+          {
+            prompt: "a lighthouse keeper at night, amber light",
+            image: "https://example.invalid/reference.png",
+            image2: "https://example.invalid/last.png",
+            seconds: 5,
+            params: {},
+          },
+          keysForRender[provider.id] ?? null,
+        );
+        method = request.method.toUpperCase();
+        renderedBody = request.body ?? null;
+        sentBody = renderedBody === null ? "" : JSON.stringify(renderedBody);
+        // The endpoint's capability decides whether asking it can cost money; every generating one can.
+        chargesPossible = endpoint.capability !== "upload";
+      } catch (error) {
+        throw new SlateError(
+          "invalid_input",
+          `${endpoint.name}'s body template cannot be rendered: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
     const send = context.http ?? httpPort;
     const started = Date.now();
     let status: number | null = null;
@@ -176,6 +213,23 @@ export const aiTest = defineOp({
     const ms = Date.now() - started;
 
     const ok = status !== null && status >= 200 && status < 300;
+    if (endpoint && status !== null && status >= 200 && status < 300 && endpoint.resultPath) {
+      try {
+        const parsed = JSON.parse(body || "{}") as unknown;
+        let cursor: unknown = parsed;
+        for (const part of endpoint.resultPath.replace(/\[(\d+)\]/g, ".$1").split(".")) {
+          if (cursor === null || typeof cursor !== "object") {
+            cursor = undefined;
+            break;
+          }
+          cursor = (cursor as Record<string, unknown>)[part];
+        }
+        resultPathFound = typeof cursor === "string" && cursor.length > 0;
+      } catch {
+        resultPathFound = false;
+      }
+    }
+
     const auth: "accepted" | "refused" | "unknown" =
       status === null
         ? "unknown"
@@ -206,6 +260,10 @@ export const aiTest = defineOp({
         status,
         reachable: status !== null,
         request: { method, url, headers: shownHeaders, body: sentBody },
+        /** For an endpoint test: whether the result path named a real value in the answer. */
+        resultPathFound,
+        /** A test that sends a generating body may be billed; it says so rather than surprising anyone. */
+        chargesPossible,
         response: { status, body: status === null ? "" : body, error: failure },
         auth,
         ms,

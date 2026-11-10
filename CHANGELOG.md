@@ -2,6 +2,17 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## An endpoint test sends the endpoint's own body
+
+- **Pressing Test on an endpoint now renders its configured body** and sends it, instead of sending nothing: a POST-only
+  model that is told nothing can only complain about a missing prompt. Sample values fill the tokens — the prompt, the
+  image placeholders, and each parameter's declared default.
+- **The verdict says whether the answer was usable.** A 200 whose body does not contain the endpoint's declared
+  `resultPath` is the failure a status code hides, so the panel reports *the answer contained the value the endpoint
+  declares*, or says it did not.
+- **It says when a test could be billed.** An endpoint test is a real generation request; the panel states that, and the
+  button's tooltip does too, so the charge is never a surprise.
+
 ## A test declares its method, not just its path
 
 - **Providers carry a test method**: GET for a host with a readable path, POST for the generation hosts that answer

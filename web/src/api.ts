@@ -422,6 +422,10 @@ export interface ConnectionTest {
   message: string;
   /** What was sent; the credential is masked, never echoed back. */
   request: { method: string; url: string; headers: Record<string, string>; body: string };
+  /** For an endpoint test: whether the declared resultPath named a real value in the answer. */
+  resultPathFound: boolean | null;
+  /** Whether sending this request could be charged for. */
+  chargesPossible: boolean;
   /** What came back, and the transport's words when nothing did. */
   response: { status: number | null; body: string; error: string | null };
 }

@@ -1,12 +1,13 @@
 {
   "gate": 23,
   "status": "passed",
-  "base": "http://127.0.0.1:60209",
+  "base": "http://127.0.0.1:51417",
   "steps": [
     "test: a provider that answers 200 is reported reachable, key accepted",
     "test: each endpoint is checked on its own path",
     "test: a result carries the url, the request, the code and the response body",
     "method: a POST-only host is tested with a POST and an empty body, and its answer is reported",
+    "endpoint: the configured body is rendered with sample values, and the result path is checked",
     "mode: a queue host is recorded, can be tested, and is not mistaken for a sync one",
     "test: an unreachable host is reported with a reason, not thrown",
     "ui: the form saves the test method it shows, and Test sends it",

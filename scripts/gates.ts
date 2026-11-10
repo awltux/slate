@@ -47,6 +47,9 @@ let gateHome = "";
 /** The archive gate 18 leaves on disk for its browser phase to import, and the name it was written under. */
 let gate18Archive = "";
 
+/** What gate 23's loopback model was asked to generate, so the rendered body can be asserted. */
+const gateModelBodies: Array<{ prompt?: string; image_size?: string; seed?: number }> = [];
+
 /** What gate 17's loopback upload fake was sent, so the two-step file API can be asserted rather than assumed. */
 const uploads: { initiate: Array<{ contentType: unknown; fileSize: unknown }>; put: number[] } = {
   initiate: [],
@@ -2280,7 +2283,8 @@ async function gate23(steps: string[]): Promise<void> {
     name: "gate image endpoint",
     capability: "image",
     method: "POST",
-    path: "/gate-ping",
+    path: "/gate-model",
+    body: { prompt: "{{prompt}}" },
     resultPath: "images[0].url",
   });
   const endpointTest = await hostOp<{ target: string; url: string; status: number | null }>("ai.test", {
@@ -2288,7 +2292,7 @@ async function gate23(steps: string[]): Promise<void> {
   });
   assert(endpointTest.data.target === "endpoint", "an endpoint test must say what it tested");
   assert(
-    endpointTest.data.url.endsWith("/gate-ping"),
+    endpointTest.data.url.endsWith("/gate-model"),
     `the endpoint's path must be the url, got ${endpointTest.data.url}`,
   );
   assert(endpointTest.data.status === 200, "the endpoint's own path must answer");
@@ -2310,14 +2314,18 @@ async function gate23(steps: string[]): Promise<void> {
     request: { method: string; url: string; headers: Record<string, string>; body: string };
     response: { status: number | null; body: string; error: string | null };
   }>("ai.test", { endpointId: endpoint.data.id });
-  assert(detail.data.request.url.endsWith("/gate-ping"), "the url tested must be reported");
-  assert(detail.data.request.method === "GET", "the method sent must be reported");
-  assert(detail.data.request.body === "", "a test must send no body, and must say so");
+  assert(detail.data.request.url.endsWith("/gate-model"), "the url tested must be reported");
+  assert(detail.data.request.method === "POST", "an endpoint test uses the endpoint's method");
+  assert(detail.data.request.body.length > 0, "an endpoint test sends its configured body");
   assert(
     JSON.stringify(detail.data).includes("gate-key") === false,
     "the report must never echo the credential",
   );
   assert(detail.data.request.headers.Authorization === "Bearer ***", "the key must be masked in the report");
+  assert(
+    detail.data.request.body.includes("lighthouse keeper"),
+    "the body reported must be the rendered one, not an empty object",
+  );
   assert(detail.data.response.status === 200, "the response code must be reported");
 
   // A host that answers badly: the code and the body are what a person reads.
@@ -2377,6 +2385,47 @@ async function gate23(steps: string[]): Promise<void> {
     "the host's complaint must be reported, because it is what tells you the call reached the model",
   );
   steps.push("method: a POST-only host is tested with a POST and an empty body, and its answer is reported");
+  // An endpoint test asks the model, with the body the endpoint is configured to send.
+  const model = await hostOp<{ id: string }>("ai.provider.save", {
+    name: "gate model",
+    baseUrl: base,
+    testPath: "/gate-model",
+    testMethod: "POST",
+    apiKey: "gate-key",
+  });
+  const modelEndpoint = await hostOp<{ id: string }>("ai.endpoint.save", {
+    providerId: model.data.id,
+    name: "gate flux",
+    capability: "image",
+    method: "POST",
+    path: "/gate-model",
+    body: { prompt: "{{prompt}}", image_size: "{{param:size}}", seed: "{{param:seed}}" },
+    params: [
+      { key: "size", type: "string", required: false, default: "landscape_16_9" },
+      { key: "seed", type: "number", required: false, default: 7 },
+    ],
+    resultPath: "images[0].url",
+  });
+  const modelTest = await hostOp<{
+    request: { method: string; body: string };
+    status: number | null;
+    resultPathFound: boolean | null;
+    chargesPossible: boolean;
+  }>("ai.test", { endpointId: modelEndpoint.data.id });
+
+  assert(modelTest.data.request.method === "POST", "an endpoint test uses the endpoint's method");
+  const sentBody = JSON.parse(modelTest.data.request.body || "{}") as {
+    prompt?: string;
+    image_size?: string;
+    seed?: number;
+  };
+  assert(Boolean(sentBody.prompt), "the template's prompt token must be filled with a sample value");
+  assert(sentBody.image_size === "landscape_16_9", "a parameter's default must be used for its token");
+  assert(sentBody.seed === 7, "a numeric parameter's default must reach the body");
+  assert(modelTest.data.status === 200, `the model must answer, got ${modelTest.data.status}`);
+  assert(modelTest.data.resultPathFound === true, "the declared result path must be found in the answer");
+  assert(modelTest.data.chargesPossible, "a generation test must say it could be billed");
+  steps.push("endpoint: the configured body is rendered with sample values, and the result path is checked");
 
   steps.push("mode: a queue host is recorded, can be tested, and is not mistaken for a sync one");
 
@@ -3654,6 +3703,13 @@ async function main(): Promise<number> {
       return body === null
         ? c.json({ detail: [{ msg: "body must be JSON" }] }, 400)
         : c.json({ detail: [{ msg: "prompt is required" }] }, 422);
+    });
+    // A model that answers: it validates the body it was sent and returns the shape an endpoint declares.
+    app.post("/gate-model", async (c) => {
+      const body = (await c.req.json().catch(() => null)) as { prompt?: string } | null;
+      if (!body?.prompt) return c.json({ detail: [{ msg: "prompt is required" }] }, 422);
+      gateModelBodies.push(body);
+      return c.json({ images: [{ url: "https://fal.example/gate-out.png" }] });
     });
     // A model that was never activated: the shape of failure a person actually has to read.
     app.get("/gate-bad", (c) => c.json({ error: { message: "model not activated" } }, 500));
