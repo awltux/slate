@@ -1,13 +1,14 @@
 {
   "gate": 18,
   "status": "passed",
-  "base": "http://127.0.0.1:62111",
+  "base": "http://127.0.0.1:49253",
   "steps": [
     "export: one archive on disk, hashed, with the film's contents counted",
     "manifest: the archive says which film it is, without opening the documents",
     "import: the film returns with its own id, name and revision",
     "restore: the frame it kept is still served and the project is usable",
     "conflict: an archive cannot be imported over the project it would replace",
-    "ui: a project exports from its header, and the projects page offers an import"
+    "ui: choosing an archive in the file dialog restores the film, with no path typed",
+    "ui: the export offers a copy through the browser's save dialog, named after the archive"
   ]
 }

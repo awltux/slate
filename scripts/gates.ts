@@ -43,6 +43,9 @@ let gate10Url = "";
 let csrf = "";
 /** The host folder this gate is running against, so a gate can check what a delete left on disk. */
 let gateHome = "";
+/** The archive gate 18 leaves on disk for its browser phase to import, and the name it was written under. */
+let gate18Archive = "";
+
 /** What gate 17's loopback upload fake was sent, so the two-step file API can be asserted rather than assumed. */
 const uploads: { initiate: Array<{ contentType: unknown; fileSize: unknown }>; put: number[] } = {
   initiate: [],
@@ -2271,6 +2274,7 @@ async function gate18(steps: string[]): Promise<void> {
   assert(exported.data.counts.shots === 1, "the manifest must count the shots the film has");
 
   const archive = join(gateHome, "exports", exported.data.archiveName);
+  gate18Archive = archive;
   assert(existsSync(archive), `the archive must be on disk at ${exported.data.archiveName}`);
   steps.push("export: one archive on disk, hashed, with the film's contents counted");
 
@@ -2334,6 +2338,9 @@ async function gate18(steps: string[]): Promise<void> {
   assert(clash.ok === false, "a second import of the same film must be refused");
   assert(clash.error?.code === "conflict", `the refusal must be a conflict, got ${clash.error?.code}`);
   steps.push("conflict: an archive cannot be imported over the project it would replace");
+
+  // Left deleted, so the browser phase restores it through the file dialog itself.
+  await op(projectId, "project.delete", { confirmName: "The Last Light", keepAssets: false });
 }
 
 async function gate8(steps: string[]): Promise<void> {
@@ -2418,20 +2425,41 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
 
     if (gateNumber === 18) {
-      // A host with no project can still restore one, so the import panel lives on the projects page.
+      // A host with no project can still restore one, so the import panel lives on the projects page - and it takes a
+      // file chosen in the browser, so there is no path to type.
       await page.waitForSelector("text=Import a project", { timeout: 20_000 });
-      await page.screenshot({ path: join(artifactDir, "project-import.png"), fullPage: true });
+      const picker = page.locator('input[aria-label="Archive to import"]');
+      assert((await picker.count()) === 1, "the import panel must offer a file picker");
+      assert(
+        (await picker.getAttribute("type")) === "file",
+        "the import must be a file dialog, not a path field",
+      );
 
-      await page.selectOption('select[aria-label="Project"]', projectId);
-      await page.waitForSelector('button[aria-label="Export this project"]', { timeout: 20_000 });
+      await picker.setInputFiles(gate18Archive);
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: join(artifactDir, "project-import.png"), fullPage: true });
+      await page.click('button.primary:has-text("Import")');
+      await page.waitForSelector('h1:has-text("The Last Light")', { timeout: 120_000 });
+      steps.push("ui: choosing an archive in the file dialog restores the film, with no path typed");
+
+      // The archive is written on the host, and a copy leaves through the browser's own save dialog.
       await page.click('button[aria-label="Export this project"]');
-      await page.waitForSelector('input[aria-label="Export destination folder"]', { timeout: 20_000 });
       await page.click('button.primary:has-text("Export")');
-      await page.waitForSelector("text=.7z", { timeout: 120_000 });
+      await page.waitForSelector('a[aria-label="Save a copy of the archive"]', { timeout: 120_000 });
       const notice = await page.locator("text=.7z").first().textContent();
       assert(Boolean(notice?.includes("revision")), `the export must report the archive, got: ${notice}`);
+
+      const downloaded = page.waitForEvent("download");
+      await page.click('a[aria-label="Save a copy of the archive"]');
+      const copy = await downloaded;
+      // The revision in the name is the one this export produced, so it is read from the notice rather than assumed.
+      const reported = /([a-z0-9-]+\.7z)/.exec(notice ?? "")?.[1] ?? "";
+      assert(
+        copy.suggestedFilename() === reported,
+        `the copy must be named after the archive, got ${copy.suggestedFilename()}`,
+      );
       await page.screenshot({ path: join(artifactDir, "project-export.png"), fullPage: true });
-      steps.push("ui: a project exports from its header, and the projects page offers an import");
+      steps.push("ui: the export offers a copy through the browser's save dialog, named after the archive");
 
       await instance.close();
       return;
