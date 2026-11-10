@@ -2,6 +2,18 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## How each library type is written
+
+- **A library type now has instructions, not a hardcoded sentence.** Character, location, prop, style, costume and body
+  each say how a text model should turn your words into a prompt — a character's face must stay readable, a prop is
+  shown alone, a costume is a headless mannequin. **Expand** uses the type's instructions instead of one generic
+  paragraph for everything.
+- **Three layers, one in force**: the film's own copy, then the host's, then the built-in. Every screen says which one
+  applied, so a prompt is never a mystery.
+- **The film's copy lives on the project Library tab**, one line per type with its layer, minimised into a row until you
+  open it. Editing starts from the wording already in force; **Use the global prompt** hands it back.
+- **The host's copy lives on the app Library tab**, behind a single title (*How each type is written (this host)*) that is
+  closed by default. Editing it changes what every film inherits, so it is owner-only and says so.
 ## A body is a library type of its own
 
 - **A body is a mannequin of one character**: a separate entry kind that names the character it belongs to. It has its

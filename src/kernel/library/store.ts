@@ -63,6 +63,8 @@ export const GlobalLibrarySchema = z
     format: z.literal("slate.library"),
     version: z.literal(1),
     items: z.array(GlobalItemSchema),
+    /** The instructions each library type is generated with, as this host sets them. */
+    systemPrompts: z.record(z.string(), z.string()).default({}),
   })
   .strict();
 
@@ -77,18 +79,31 @@ export function libraryPaths(home: string): LibraryPaths {
   return { dir, indexFile: join(dir, "index.json"), assetsDir: join(dir, "assets") };
 }
 
-export async function readGlobalLibrary(home: string): Promise<{ items: GlobalItem[] }> {
+export async function readGlobalLibrary(
+  home: string,
+): Promise<{ items: GlobalItem[]; systemPrompts: Record<string, string> }> {
   const paths = libraryPaths(home);
   const raw = await readFile(paths.indexFile, "utf8").catch(() => null);
-  if (raw === null) return { items: [] };
+  if (raw === null) return { items: [], systemPrompts: {} };
   const parsed = GlobalLibrarySchema.safeParse(JSON.parse(raw));
-  return parsed.success ? { items: parsed.data.items } : { items: [] };
+  return parsed.success
+    ? { items: parsed.data.items, systemPrompts: parsed.data.systemPrompts }
+    : { items: [], systemPrompts: {} };
 }
 
-export async function writeGlobalLibrary(home: string, items: GlobalItem[]): Promise<void> {
+export async function writeGlobalLibrary(
+  home: string,
+  items: GlobalItem[],
+  systemPrompts: Record<string, string> = {},
+): Promise<void> {
   const paths = libraryPaths(home);
   await mkdir(paths.assetsDir, { recursive: true });
-  const document = { format: "slate.library" as const, version: 1 as const, items };
+  const document = {
+    format: "slate.library" as const,
+    version: 1 as const,
+    items,
+    systemPrompts,
+  };
   await writeFile(paths.indexFile, `${JSON.stringify(document, null, 2)}\n`, "utf8");
 }
 

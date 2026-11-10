@@ -1,0 +1,12 @@
+{
+  "gate": 22,
+  "status": "passed",
+  "base": "http://127.0.0.1:63005",
+  "steps": [
+    "types: six sets of instructions, all on the built-in wording",
+    "copy: a project can override one type, and the layer is reported",
+    "reset: an empty copy inherits the global wording",
+    "ui: the panel is minimised, and one type can be given this film's own wording",
+    "ui: the host's wording is editable, behind a title that is closed by default"
+  ]
+}

@@ -86,6 +86,8 @@ export async function initProject(request: InitProjectRequest): Promise<InitProj
     },
     budget: { currency: "USD", ceilingUsd: request.budgetUsd },
     aiBindingSetId: null,
+    // No overrides at birth: the global library's prompts apply until this film deliberately differs.
+    systemPrompts: {},
     chains: {},
   };
 

@@ -86,6 +86,9 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `take.generate` | spend | project | `take_generate` | Generate takes for an approved estimate. Requires the approval token from spend.approve. |
 | `take.list` | read | project | `take_list` | Takes, optionally for one shot, with which one is selected. |
 | `take.select` | write | project | `take_select` | Choose the take that represents a shot. |
+| `type.prompt.save` | write | project | `type_prompt_save` | Set, or clear, this project's copy of a library type's system prompt. |
+| `type.prompt.save-global` | write | host, owner | `type_prompt_save-global` | Set, or clear, the host's copy of a library type's system prompt. |
+| `type.prompts` | read | host | `type_prompts` | The system prompt for each library type, with which layer set it. |
 | `variant.create` | write | project | `variant_create` | Add a wardrobe item or state variant, with its own description and prompt. |
 | `variant.delete` | destructive | project | `variant_delete` | Delete a wardrobe item or state variant from an entity. |
 | `variant.update` | write | project | `variant_update` | Change a wardrobe item's name, description or prompt. |
@@ -2466,6 +2469,48 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "required": [
     "takeId"
   ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `type.prompt.save`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "kind",
+    "prompt"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `type.prompt.save-global`
+
+```json
+{}
+```
+
+### `type.prompts`
+
+```json
+{
+  "type": "object",
+  "properties": {},
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }

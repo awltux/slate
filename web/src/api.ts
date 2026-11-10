@@ -223,6 +223,24 @@ export interface GlobalLibraryItem {
 }
 
 /** The app-level library, shared by every project on this host. */
+/** Host-level operations live at /api/op, because they belong to the app rather than to a film. */
+export async function runHostOp<T>(name: string, input: unknown = {}): Promise<Envelope<T>> {
+  const response = await fetch(`/api/op/${name}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json", ...(csrfToken ? { "x-slate-csrf": csrfToken } : {}) },
+    body: JSON.stringify(input),
+  });
+  const payload = (await response.json()) as
+    | Envelope<T>
+    | { ok: false; error: { code: string; message: string } };
+  if (!response.ok || !payload.ok) {
+    const error = "error" in payload && payload.error ? payload.error : { code: "http_error", message: "" };
+    throw new ApiError(error.code, error.message);
+  }
+  return payload;
+}
+
 export async function listGlobalLibrary(): Promise<GlobalLibraryItem[]> {
   const response = await fetch("/api/library", { credentials: "same-origin" });
   if (!response.ok) return [];

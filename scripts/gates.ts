@@ -2232,6 +2232,51 @@ async function gate17(steps: string[]): Promise<void> {
   });
 }
 
+async function gate22(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("Type prompts");
+
+  // Every library type has instructions; the built-in is in force until a layer says otherwise.
+  const before = await op<{
+    prompts: Array<{ kind: string; source: string; effective: string; builtIn: string }>;
+  }>(projectId, "type.prompts", {});
+  const kinds = before.data.prompts.map((prompt) => prompt.kind);
+  assert(kinds.length === 6, `six types must be reported, got: ${kinds.join(", ")}`);
+  assert(
+    before.data.prompts.every((prompt) => prompt.effective.length > 40),
+    "every type must have instructions that say something",
+  );
+  assert(
+    before.data.prompts.every((prompt) => prompt.source === "default"),
+    "a new film starts on the built-in wording",
+  );
+  steps.push("types: six sets of instructions, all on the built-in wording");
+
+  // A project copy is one commit, and it says which layer is now in force.
+  const saved = await op<{ source: string; effective: string }>(projectId, "type.prompt.save", {
+    kind: "character",
+    prompt: "PROJECT: this film describes characters in French, plainly.",
+  });
+  assert(saved.data.source === "project", `the project copy must win, got ${saved.data.source}`);
+  const after = await op<{ prompts: Array<{ kind: string; source: string; effective: string }> }>(
+    projectId,
+    "type.prompts",
+    {},
+  );
+  const character = after.data.prompts.find((prompt) => prompt.kind === "character");
+  assert(character?.source === "project", "the project copy must be reported as the source");
+  assert(Boolean(character?.effective.includes("in French")), "the effective text must be the project's");
+  steps.push("copy: a project can override one type, and the layer is reported");
+
+  // Clearing it goes back to inheriting, rather than to an empty instruction.
+  const cleared = await op<{ source: string }>(projectId, "type.prompt.save", {
+    kind: "character",
+    prompt: "",
+  });
+  assert(cleared.data.source !== "project", "clearing must inherit again");
+  steps.push("reset: an empty copy inherits the global wording");
+}
+
 async function gate21(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("Upload endpoint");
@@ -2619,6 +2664,41 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 22) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.waitForSelector('main [role="tab"]', { timeout: 20_000 });
+      await page.click('main [role="tab"]:has-text("Library")');
+      await page.waitForSelector("text=How each type is written", { timeout: 30_000 });
+
+      // Normally minimised: nothing is open until someone opens it.
+      const openCount = await page.locator("details[open]").count();
+      assert(openCount === 0, "the type prompts must start minimised");
+
+      await page.click('summary[aria-label="Prompt for character"]');
+      await page.waitForSelector('button:has-text("Edit for this film")', { timeout: 20_000 });
+      await page.click('button:has-text("Edit for this film")');
+      await page.fill(
+        'textarea[aria-label="Instructions for character"]',
+        "PROJECT: write character prompts in French, plainly, for this film.",
+      );
+      await page.click('button:has-text("Save for this film")');
+      await page.waitForSelector("text=this film's own", { timeout: 30_000 });
+      await page.screenshot({ path: join(artifactDir, "type-prompts.png"), fullPage: true });
+      steps.push("ui: the panel is minimised, and one type can be given this film's own wording");
+
+      steps.push("ui: the host's wording is editable, behind a title that is closed by default");
+      await page.click('header [role="tab"]:has-text("Library")');
+      await page.waitForSelector("text=How each type is written (this host)", { timeout: 30_000 });
+      const globalOpen = await page.locator("details[open]").count();
+      assert(globalOpen === 0, "the host panel must start minimised: a title and nothing else");
+      await page.locator("details summary").first().click();
+      await page.waitForSelector('button:has-text("Edit the host\'s wording")', { timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "type-prompts-host.png"), fullPage: true });
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 21) {
       // The upload endpoint is declared in the UI like any other, and the drafter is reachable from the same form.
@@ -3418,6 +3498,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 19) await gate19(steps);
     else if (gateNumber === 20) await gate20(steps);
     else if (gateNumber === 21) await gate21(steps);
+    else if (gateNumber === 22) await gate22(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

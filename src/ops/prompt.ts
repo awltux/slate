@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { SlateError } from "../domain/result.js";
+import { type HttpPort, httpPort } from "../kernel/ai/reference.js";
 import { readConfig } from "../kernel/config.js";
+import { readGlobalLibrary } from "../kernel/library/store.js";
+import { resolveTypePrompt } from "../kernel/library/type-prompts.js";
 import type { Entity } from "../kernel/production/entities.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { loadDocuments } from "./documents.js";
@@ -47,12 +50,14 @@ interface ModelResult {
 }
 
 async function askModel(
+  http: HttpPort,
   model: { baseUrl: string; model: string; apiKey: string | null },
   system: string,
   user: string,
 ): Promise<string | null> {
   try {
-    const response = await fetch(`${model.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    const response = await http({
+      url: `${model.baseUrl.replace(/\/$/, "")}/chat/completions`,
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -66,10 +71,11 @@ async function askModel(
           { role: "user", content: user },
         ],
       }),
-      signal: AbortSignal.timeout(20_000),
     });
-    if (!response.ok) return null;
-    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    if (response.status < 200 || response.status >= 300) return null;
+    const payload = JSON.parse(response.body) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
     const text = payload.choices?.[0]?.message?.content?.trim();
     return text && text.length > 0 ? text : null;
   } catch {
@@ -134,8 +140,13 @@ export const promptExpand = defineOp({
 
     let result: ModelResult;
     if (model) {
-      const system =
-        "You write image-generation prompts for a film production system. Given a subject description and an optional style sheet, reply with one prompt of at most 60 words: subject, wardrobe or material, setting, framing, lighting, and what to avoid. No preamble, no quotes.";
+      // The instructions belong to the library type, not to this file: a character and a location are not written the
+      // same way, and a project may have its own words for either.
+      const system = resolveTypePrompt({
+        kind: entity.kind,
+        project: project.systemPrompts,
+        global: (await readGlobalLibrary(context.home)).systemPrompts,
+      }).prompt;
       const user = [
         `kind: ${entity.kind}`,
         `name: ${entity.name}`,
@@ -146,7 +157,7 @@ export const promptExpand = defineOp({
         .filter(Boolean)
         .join("\n");
 
-      const written = await askModel(model, system, user);
+      const written = await askModel(context.http ?? httpPort, model, system, user);
       result = written
         ? { prompt: written, via: `model:${model.model}` }
         : {
@@ -218,6 +229,8 @@ export const promptExpandText = defineOp({
       description: z.string().trim().min(1),
       /** The look to apply; null means the film's default. */
       styleId: z.string().nullable().default(null),
+      /** Which library type's instructions apply: a frame is a place, so locations by default. */
+      kind: z.enum(["character", "location", "prop", "style", "costume", "body"]).default("location"),
     })
     .strict(),
   output: z.object({ prompt: z.string(), via: z.string(), styleId: z.string().nullable() }).strict(),
@@ -259,14 +272,17 @@ export const promptExpandText = defineOp({
       };
     }
 
-    const system =
-      "You write image-generation prompts for a film production system. Given a director's sentence and an optional style sheet, reply with one prompt of at most 60 words: subject, wardrobe or material, setting, framing, lighting, and what to avoid. No preamble, no quotes.";
+    const system = resolveTypePrompt({
+      kind: input.kind,
+      project: project.systemPrompts,
+      global: (await readGlobalLibrary(context.home)).systemPrompts,
+    }).prompt;
     const user = [
       `description: ${input.description}`,
       style ? `style sheet: ${style.name} - ${style.description}` : "no style sheet",
     ].join("\n");
 
-    const written = await askModel(model, system, user);
+    const written = await askModel(context.http ?? httpPort, model, system, user);
     return {
       data: written
         ? { prompt: written, via: `model:${model.model}`, styleId: styleEntity?.id ?? null }

@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, type GlobalLibraryItem, importFromLibrary, listGlobalLibrary } from "../api.js";
+import { ApiError, type GlobalLibraryItem, importFromLibrary, listGlobalLibrary, runHostOp } from "../api.js";
+
+interface HostPrompt {
+  kind: string;
+  global: string;
+  builtIn: string;
+  source: "project" | "global" | "default";
+}
 
 function message(caught: unknown): string {
   return caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught);
@@ -22,10 +29,19 @@ export function GlobalLibrary({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [imported, setImported] = useState<string | null>(null);
+  /** The host's own wording for each type, and which one is being edited. */
+  const [hostPrompts, setHostPrompts] = useState<HostPrompt[]>([]);
+  const [editingKind, setEditingKind] = useState<string | null>(null);
+  const [draftPrompt, setDraftPrompt] = useState("");
 
   const load = useCallback(async () => {
     try {
-      setItems(await listGlobalLibrary());
+      const [library, prompts] = await Promise.all([
+        listGlobalLibrary(),
+        runHostOp<{ prompts: HostPrompt[] }>("type.prompts", {}),
+      ]);
+      setItems(library);
+      setHostPrompts(prompts.data.prompts);
     } catch (caught) {
       setError(message(caught));
     }
@@ -34,6 +50,21 @@ export function GlobalLibrary({
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Set the host's wording for one type; an empty box goes back to the built-in. */
+  async function saveHostPrompt(kind: string, prompt: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await runHostOp("type.prompt.save-global", { kind, prompt });
+      setEditingKind(null);
+      await load();
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function importItem(item: GlobalLibraryItem) {
     if (!activeProjectId) return;
@@ -60,6 +91,70 @@ export function GlobalLibrary({
 
   return (
     <div className="stack">
+      <details className="card">
+        <summary style={{ cursor: "pointer" }}>
+          <strong>How each type is written (this host)</strong>
+          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: 12 }}>
+            the instructions every film inherits
+          </span>
+        </summary>
+        <div className="stack" style={{ marginTop: "0.6rem" }}>
+          {hostPrompts.map((entry) => (
+            <div key={entry.kind} style={{ borderTop: "1px solid var(--line)", paddingTop: "0.4rem" }}>
+              <div className="row" style={{ gap: "0.5rem" }}>
+                <span className="chip">{entry.kind}</span>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {entry.global ? "set by this host" : "built-in"}
+                </span>
+                <div className="spacer" />
+                {editingKind === entry.kind ? null : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Start from what is in force, not from an empty box: the usual edit is a small change.
+                      setEditingKind(entry.kind);
+                      setDraftPrompt(entry.global || entry.builtIn);
+                    }}
+                  >
+                    Edit the host's wording
+                  </button>
+                )}
+              </div>
+              {editingKind === entry.kind ? (
+                <div className="stack" style={{ gap: "0.4rem", marginTop: "0.4rem" }}>
+                  <textarea
+                    value={draftPrompt}
+                    onChange={(event) => setDraftPrompt(event.target.value)}
+                    rows={4}
+                    aria-label={`Host instructions for ${entry.kind}`}
+                  />
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => void saveHostPrompt(entry.kind, draftPrompt)}
+                    >
+                      {busy ? "Saving…" : "Save for every film"}
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => void saveHostPrompt(entry.kind, "")}>
+                      Use the built-in wording
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => setEditingKind(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: 13 }}>
+                  {entry.global || entry.builtIn}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </details>
+
       <div className="card">
         <div className="row">
           <h2 style={{ margin: 0 }}>Library</h2>

@@ -9,9 +9,17 @@ import {
   readGlobalLibrary,
   writeGlobalLibrary,
 } from "../kernel/library/store.js";
+import {
+  DEFAULT_SYSTEM_PROMPTS,
+  LIBRARY_KINDS,
+  type LibraryKind,
+  isLibraryKind,
+  resolveTypePrompt,
+} from "../kernel/library/type-prompts.js";
 import { assetFile, ingestAsset } from "../kernel/production/assets.js";
 import type { SheetImage, SheetVersion } from "../kernel/production/entities.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
+import { readProjectDocument } from "../kernel/workspace/project-doc.js";
 import { loadDocuments } from "./documents.js";
 import { defineOp } from "./registry.js";
 
@@ -415,6 +423,153 @@ export const libraryList = defineOp({
       data: { items: items.map(itemView), links },
       version: project.revision,
       next: ["library.push", "library.pull", "library.import"],
+    };
+  },
+});
+
+/**
+ * The instructions each library type is generated with, as the two layers currently read. A person edits the project's
+ * copy; the global one is what every project inherits, and the built-in default backs both.
+ */
+export const typePrompts = defineOp({
+  name: "type.prompts",
+  // Host level as well as project level: the app's Library tab edits the global layer with no project open.
+  hostLevel: true,
+  policy: "read",
+  summary: "The system prompt for each library type, with which layer set it.",
+  input: z.object({}).strict(),
+  output: z
+    .object({
+      prompts: z.array(
+        z
+          .object({
+            kind: z.string(),
+            /** What this film says, or empty when it inherits. */
+            project: z.string(),
+            /** What the host says, or empty when it keeps the built-in. */
+            global: z.string(),
+            /** What will actually be sent. */
+            effective: z.string(),
+            source: z.enum(["project", "global", "default"]),
+            /** The built-in, so a screen can show what would be restored. */
+            builtIn: z.string(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  run: async (_input, context) => {
+    // No project is not an error here: the host's own layer is exactly what that screen is about.
+    const project = await readProjectDocument(context.root).catch(() => null);
+    const ownPrompts = project?.systemPrompts ?? {};
+    const library = await readGlobalLibrary(context.home);
+    return {
+      data: {
+        prompts: LIBRARY_KINDS.map((kind) => {
+          const resolved = resolveTypePrompt({
+            kind,
+            project: ownPrompts,
+            global: library.systemPrompts,
+          });
+          return {
+            kind,
+            project: ownPrompts[kind] ?? "",
+            global: library.systemPrompts[kind] ?? "",
+            effective: resolved.prompt,
+            source: resolved.source,
+            builtIn: DEFAULT_SYSTEM_PROMPTS[kind],
+          };
+        }),
+      },
+      version: project?.revision ?? 0,
+    };
+  },
+});
+
+/**
+ * Set this film's copy of one type's instructions, or clear it to inherit the global one. The copy is normally empty:
+ * a project only stores a deliberate difference, which is why saving nothing is a meaningful act.
+ */
+export const typePromptSave = defineOp({
+  name: "type.prompt.save",
+  policy: "write",
+  summary: "Set, or clear, this project's copy of a library type's system prompt.",
+  input: z
+    .object({
+      kind: z.string(),
+      /** Empty clears the copy and inherits the global prompt. */
+      prompt: z.string(),
+      expectedRevision: z.number().int().optional(),
+    })
+    .strict(),
+  output: z.object({ kind: z.string(), source: z.string(), effective: z.string() }).strict(),
+  touched: () => ["project"],
+  run: async (input, context) => {
+    if (!isLibraryKind(input.kind)) {
+      throw new SlateError("invalid_input", `unknown library type: ${input.kind}`);
+    }
+    const kind: LibraryKind = input.kind;
+
+    const result = await commitDocuments({
+      root: context.root,
+      actor: context.actor,
+      intent:
+        input.prompt.trim() === ""
+          ? `type prompts: ${kind} inherits the global prompt`
+          : `type prompts: ${kind} has its own instructions`,
+      touched: ["project"],
+      clock: context.clock,
+      expectedRevision: input.expectedRevision,
+      mutate: ({ project }) => {
+        if (input.prompt.trim() === "") delete project.systemPrompts[kind];
+        else project.systemPrompts[kind] = input.prompt;
+      },
+    });
+
+    const library = await readGlobalLibrary(context.home);
+    const resolved = resolveTypePrompt({
+      kind,
+      project: result.project.systemPrompts,
+      global: library.systemPrompts,
+    });
+    return {
+      data: { kind, source: resolved.source, effective: resolved.prompt },
+      version: result.project.revision,
+      commit: result.commit.id,
+      next: ["type.prompts"],
+    };
+  },
+});
+
+/**
+ * Set the host's copy of one type's instructions: every project that has not overridden it follows. Owner-only, because
+ * it changes what every film on this machine says to a model.
+ */
+export const typePromptSaveGlobal = defineOp({
+  name: "type.prompt.save-global",
+  ownerOnly: true,
+  hostLevel: true,
+  policy: "write",
+  summary: "Set, or clear, the host's copy of a library type's system prompt.",
+  input: z.object({ kind: z.string(), prompt: z.string() }).strict(),
+  output: z.object({ kind: z.string(), source: z.string() }).strict(),
+  touched: () => ["library"],
+  run: async (input, context) => {
+    if (!isLibraryKind(input.kind)) {
+      throw new SlateError("invalid_input", `unknown library type: ${input.kind}`);
+    }
+    const library = await readGlobalLibrary(context.home);
+    const prompts = { ...library.systemPrompts };
+    if (input.prompt.trim() === "") delete prompts[input.kind];
+    else prompts[input.kind] = input.prompt;
+    await writeGlobalLibrary(context.home, library.items, prompts);
+    return {
+      data: {
+        kind: input.kind,
+        source: input.prompt.trim() === "" ? "default" : "global",
+      },
+      version: 0,
+      next: ["type.prompts"],
     };
   },
 });

@@ -45,6 +45,11 @@ export const ProjectDocumentSchema = z
     budget: BudgetSchema,
     /** Which binding set this project uses; null means the host default. */
     aiBindingSetId: z.string().startsWith("aib_").nullable().default(null),
+    /**
+     * This film's own copy of each library type's instructions. Empty means the global library's, and then the built-in
+     * default - so a project only ever stores a deliberate difference.
+     */
+    systemPrompts: z.record(z.string(), z.string()).default({}),
     chains: z.record(z.array(z.string())),
   })
   .strict();
