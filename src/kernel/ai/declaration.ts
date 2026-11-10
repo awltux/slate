@@ -12,6 +12,10 @@ import { z } from "zod";
 export const CapabilitySchema = z.enum(["text", "image", "video", "audio", "upscale"]);
 export type Capability = z.infer<typeof CapabilitySchema>;
 
+/** Methods an endpoint may use. Bodies go with POST/PUT/PATCH; GET and DELETE carry their values in the query. */
+export const HttpMethodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+export type HttpMethod = z.infer<typeof HttpMethodSchema>;
+
 export const ParamSpecSchema = z
   .object({
     key: z.string().min(1),
@@ -59,7 +63,7 @@ export const EndpointSchema = z
     providerId: z.string().startsWith("aip_"),
     name: z.string().min(1),
     capability: CapabilitySchema,
-    method: z.enum(["POST", "GET"]).default("POST"),
+    method: HttpMethodSchema,
     path: z.string().default("/"),
     /** How long a call may take before it is considered failed. */
     timeoutMs: z.number().int().min(1000).max(3_600_000).default(120_000),
@@ -95,7 +99,7 @@ export interface CallValues {
 }
 
 export interface RenderedRequest {
-  method: "POST" | "GET";
+  method: HttpMethod;
   url: string;
   headers: Record<string, string>;
   body: unknown;
@@ -171,16 +175,17 @@ export function renderRequest(
   }
   const specs = new Map(endpoint.params.map((param) => [param.key, param]));
   const body = renderValue(endpoint.body, merged, specs);
+  const carriesBody = endpoint.method === "POST" || endpoint.method === "PUT" || endpoint.method === "PATCH";
   const query = new URLSearchParams();
-  if (endpoint.method === "GET") {
+  if (!carriesBody) {
     for (const [key, value] of Object.entries((body ?? {}) as Record<string, unknown>)) {
       if (value !== "" && value !== null && value !== undefined) query.set(key, String(value));
     }
   }
   const url = `${provider.baseUrl.replace(/\/$/, "")}${endpoint.path}${
-    endpoint.method === "GET" && query.toString() ? `?${query.toString()}` : ""
+    !carriesBody && query.toString() ? `?${query.toString()}` : ""
   }`;
-  return { method: endpoint.method, url, headers, body: endpoint.method === "GET" ? null : body };
+  return { method: endpoint.method, url, headers, body: carriesBody ? body : null };
 }
 
 /** Read a value out of a response by path: "images[0].url". Empty path returns the response itself. */

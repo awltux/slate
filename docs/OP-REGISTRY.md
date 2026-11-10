@@ -147,8 +147,11 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "method": {
       "type": "string",
       "enum": [
+        "GET",
         "POST",
-        "GET"
+        "PUT",
+        "PATCH",
+        "DELETE"
       ],
       "default": "POST"
     },

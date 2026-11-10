@@ -96,6 +96,29 @@ describe("renderRequest", () => {
     expect(request.body).toBeNull();
   });
 
+  it("sends a body for PUT and PATCH, and a query for DELETE", () => {
+    const put: Endpoint = { ...flux, id: "aie_put", method: "PUT", path: "/fal-ai/flux/dev" };
+    const putRequest = renderRequest(fal, put, values, null);
+    expect(putRequest.method).toBe("PUT");
+    expect((putRequest.body as Record<string, unknown>).prompt).toBe("keeper in the lantern room, night");
+
+    const patch: Endpoint = { ...flux, id: "aie_patch", method: "PATCH", path: "/fal-ai/flux/dev" };
+    expect(renderRequest(fal, patch, values, null).body).not.toBeNull();
+
+    const del: Endpoint = {
+      ...flux,
+      id: "aie_delete",
+      method: "DELETE",
+      path: "/requests",
+      params: [{ key: "id", type: "string", required: true, choices: [], label: "", help: "" }],
+      body: { id: "{{param:id}}" },
+    };
+    const deleteRequest = renderRequest(fal, del, { ...values, params: { id: "req-9" } }, null);
+    expect(deleteRequest.method).toBe("DELETE");
+    expect(deleteRequest.url).toBe("https://fal.run/requests?id=req-9");
+    expect(deleteRequest.body).toBeNull();
+  });
+
   it("refuses to render when a required parameter is missing", () => {
     const strict: Endpoint = {
       ...flux,
