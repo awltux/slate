@@ -29,6 +29,10 @@ export const frameGenerate = defineOp({
     .object({
       shotId: z.string(),
       role: z.enum(["first", "last"]),
+      /** The words the person wrote for this frame. Empty means 'compose it from the shot'. */
+      prompt: z.string().default(""),
+      /** Which assets to condition on. Empty means the scene's own attachments. */
+      entityIds: z.array(z.string()).default([]),
       useBlockout: z.boolean().default(true),
       seed: z.number().int().default(0),
       /** Optimistic concurrency: a shot edited while the button was pressed is not silently overwritten. */
@@ -68,9 +72,14 @@ export const frameGenerate = defineOp({
     const size = frameSize(project.settings);
 
     const scene = production.scenes[shot.sceneId];
-    const attached = (scene?.entityIds ?? [])
-      .map((id) => production.entities[id])
-      .filter((entity): entity is NonNullable<typeof entity> => Boolean(entity));
+    // The dialog can choose a subset of the scene's assets, but only assets that exist: a stale id is a mistake, not a
+    // reference to silently drop.
+    const wanted = input.entityIds.length > 0 ? input.entityIds : (scene?.entityIds ?? []);
+    const attached = wanted.map((id) => {
+      const entity = production.entities[id];
+      if (!entity) throw new SlateError("not_found", `no asset ${id} in this project`);
+      return entity;
+    });
     const blockout = production.blockouts[input.shotId] ?? null;
     const blockoutAssetId = input.useBlockout
       ? input.role === "first"
@@ -79,10 +88,15 @@ export const frameGenerate = defineOp({
       : null;
 
     const subject = attached.map((entity) => `${entity.name}: ${entity.description}`).join("; ");
+    // A prompt from the dialog is the description; the shot's own framing still shapes it, so style rules keep applying.
+    const description =
+      input.prompt.trim() === ""
+        ? `${shot.size} ${shot.angle}, ${shot.description || "the scene"}. ${subject}`.trim()
+        : `${input.prompt.trim()}. ${subject}`.trim();
     const prompt = composePrompt({
       kind: "location",
       name: `Shot ${shot.number}`,
-      description: `${shot.size} ${shot.angle}, ${shot.description || "the scene"}. ${subject}`.trim(),
+      description,
       style: null,
       variant: null,
     });
@@ -140,6 +154,8 @@ export const frameGenerate = defineOp({
       entityIds: attached.map((entity) => entity.id),
       entityPins: Object.fromEntries(attached.map((entity) => [entity.id, entity.identity?.version ?? 0])),
       blockoutAssetId,
+      /** The words the person wrote, so a frame can say what was asked for and not only what it was made from. */
+      prompt: input.prompt.trim(),
       via: "local",
       at: context.clock.now(),
     };

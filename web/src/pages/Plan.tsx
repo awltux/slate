@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, runOp } from "../api.js";
+import { FrameDialog } from "./FrameDialog.js";
 
 interface ShotSummary {
   id: string;
@@ -71,6 +72,7 @@ export function Plan({ projectId }: { projectId: string }) {
   const [vocabulary, setVocabulary] = useState<Vocabulary>(FALLBACK_VOCABULARY);
   const [error, setError] = useState<string | null>(null);
   const [library, setLibrary] = useState<LibraryOption[]>([]);
+  const [frameFor, setFrameFor] = useState<string | null>(null);
   const [openScene, setOpenScene] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [conflict, setConflict] = useState(false);
@@ -154,6 +156,33 @@ export function Plan({ projectId }: { projectId: string }) {
         onCreated={load}
       />
 
+      {frameFor
+        ? (() => {
+            const scene = scenes.find((entry) => entry.shots.some((shot) => shot.id === frameFor));
+            const shot = scene?.shots.find((entry) => entry.id === frameFor);
+            if (!scene || !shot) return null;
+            return (
+              <FrameDialog
+                projectId={projectId}
+                shotId={shot.id}
+                shotNumber={shot.number}
+                basePrompt={`${shot.size} ${shot.angle}, ${shot.description || "the scene"}`}
+                sceneEntities={scene.entities.map((entity) => ({
+                  id: entity.entityId,
+                  name: entity.name,
+                  kind: entity.kind,
+                }))}
+                frames={shot.frames}
+                revision={revision}
+                onDone={async () => {
+                  await load();
+                }}
+                onCancel={() => setFrameFor(null)}
+              />
+            );
+          })()
+        : null}
+
       {scenes.map((scene) => (
         <SceneCard
           key={scene.id}
@@ -166,6 +195,7 @@ export function Plan({ projectId }: { projectId: string }) {
           onToggle={() => setOpenScene(openScene === scene.id ? null : scene.id)}
           onConflict={() => setConflict(true)}
           onChange={load}
+          onFrame={setFrameFor}
         />
       ))}
     </div>
@@ -258,6 +288,7 @@ function SceneCard({
   onToggle,
   onConflict,
   onChange,
+  onFrame,
 }: {
   projectId: string;
   scene: SceneSummary;
@@ -268,6 +299,8 @@ function SceneCard({
   onToggle: () => void;
   onConflict: () => void;
   onChange: () => Promise<void>;
+  /** Open the image creation dialog for a shot. */
+  onFrame: (shotId: string) => void;
 }) {
   const [size, setSize] = useState("MCU");
   const [movement, setMovement] = useState("STATIC");
@@ -278,6 +311,7 @@ function SceneCard({
   const [error, setError] = useState<string | null>(null);
   const [editingScene, setEditingScene] = useState(false);
   const [editingShot, setEditingShot] = useState<string | null>(null);
+  const [frameFor, setFrameFor] = useState<string | null>(null);
 
   async function setEntities(entityIds: string[]) {
     setBusy(true);
@@ -288,30 +322,6 @@ function SceneCard({
         entityIds,
         expectedRevision: revision,
       });
-      await onChange();
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.code === "conflict") onConflict();
-      setError(message(caught));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function generateFrames(shotId: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      // Two frames, two commits: the revision moves after the first, so the second must claim the one it just made.
-      // Holding the page's original revision here would be this gesture conflicting with itself.
-      let expected = revision;
-      for (const role of ["first", "last"] as const) {
-        const generated = await runOp(projectId, "frame.generate", {
-          shotId,
-          role,
-          expectedRevision: expected,
-        });
-        expected = generated.version;
-      }
       await onChange();
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "conflict") onConflict();
@@ -550,8 +560,8 @@ function SceneCard({
                           <button
                             type="button"
                             disabled={busy}
-                            aria-label={`Generate frames for shot ${shot.number}`}
-                            onClick={() => void generateFrames(shot.id)}
+                            aria-label={`Open the frame dialog for shot ${shot.number}`}
+                            onClick={() => onFrame(shot.id)}
                           >
                             Frames
                           </button>

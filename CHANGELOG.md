@@ -2,6 +2,16 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Frames opens an image creation dialog
+
+- **The Frames button now opens a dialog instead of firing blind**: a prompt in words, the scene's assets as a checklist
+  to condition on, and a Start/End switch. It shows the current frame beside the new one, so a frame is replaced on
+  purpose rather than by surprise.
+- **`frame.generate` takes a prompt and a chosen asset set.** A prompt becomes the description the generator works from
+  (the shot's framing and the ticked assets still shape it); a ticked subset replaces the scene's own attachments, and
+  the frame records what was asked for in its provenance.
+- Previously the button composed the prompt from the shot alone and generated both frames silently — which is why it
+  looked like it did nothing, and why it could not be steered.
 ## Exports have a folder of their own
 
 - **Each project remembers where its archives go**, by default `Downloads/slate/exports/<project name>`. Config states

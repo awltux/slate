@@ -3267,15 +3267,25 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.click("text=Add shot");
       await page.waitForSelector("text=1A", { timeout: 15_000 });
 
-      // The Frames button on the plan page: it sends the shot, the role and the revision, and this used to be
-      // rejected as invalid input because frame.generate did not accept a revision at all.
-      await page.click('button[aria-label^="Generate frames for shot"]');
-      await page.waitForFunction(() => !document.body.innerText.includes("invalid_input"), undefined, {
-        timeout: 60_000,
-      });
-      await page.waitForSelector('img[alt^="Start frame for shot"]', { timeout: 120_000 });
+      // The Frames button opens the image creation dialog: a prompt, the assets to condition on, and a role.
+      await page.click('button[aria-label^="Open the frame dialog for shot"]');
+      await page.waitForSelector('section[aria-label^="Frames for shot"]', { timeout: 20_000 });
+      await page.fill(
+        'textarea[aria-label="Frame prompt"]',
+        "Elias trims the wick, amber light, salt on his hands",
+      );
+      await page.click('button:has-text("Generate start frame")');
+      await page.waitForSelector(
+        'section[aria-label^="Frames for shot"] img[alt^="New start frame for shot"]',
+        {
+          timeout: 120_000,
+        },
+      );
+      await page.screenshot({ path: join(artifactDir, "frame-dialog.png"), fullPage: true });
+      await page.click('section[aria-label^="Frames for shot"] button:has-text("Close")');
+      await page.waitForSelector('img[alt^="Start frame for shot"]', { timeout: 60_000 });
       await page.screenshot({ path: join(artifactDir, "plan.png"), fullPage: true });
-      steps.push("ui: wrote the five lines, planned a shot, and generated its frames from the plan page");
+      steps.push("ui: wrote the five lines, planned a shot, and generated a frame from the dialog");
     } else {
       // Health is a host tab: it is reachable from anywhere, with or without a project.
       await page.click('header [role="tab"]:has-text("Health")');

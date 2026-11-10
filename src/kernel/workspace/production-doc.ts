@@ -57,6 +57,8 @@ export const FrameSourceSchema = z
     entityIds: z.array(z.string()).default([]),
     entityPins: z.record(z.string(), z.number().int()).default({}),
     blockoutAssetId: z.string().nullable().default(null),
+    /** What the person asked for, when they wrote it themselves. */
+    prompt: z.string().default(""),
     via: z.string().default("local"),
     at: z.string(),
   })
