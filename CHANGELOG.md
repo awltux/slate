@@ -2,6 +2,13 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## The scene lists resources; the shot shows the pictures
+
+- **No thumbnails on the scene's items.** The scene is a list of what is in it; showing a picture for one kind of item and
+  nothing for the rest was a half-truth.
+- **Each shot has an Items column**: a row of thumbnails for the items that shot is made from — its own selection, or the
+  scene's when it has none. An item with no sheet yet shows its initials rather than a broken image, so the gap is
+  visible instead of silent.
 ## @ names a scene resource in a prompt
 
 - **Typing `@` in a frame prompt offers the scene's resources**, filtered as you keep typing. Arrow keys move, Enter or a

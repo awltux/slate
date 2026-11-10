@@ -21,10 +21,12 @@ let has7z = false;
 /** Resolved once: the resolver probes the whole host on every call, which would make these cases slow for no gain. */
 let sevenzip: Awaited<ReturnType<ReturnType<typeof createToolResolver>>> | null = null;
 const itIf7z = (name: string, body: () => Promise<void>) =>
+  // Archiving a real folder with a real 7-Zip takes seconds, and longer on a busy machine: a five-second default
+  // would report a slow machine as a broken feature.
   it(name, async () => {
     if (!has7z) return;
     await body();
-  });
+  }, 120_000);
 
 let home: string;
 let root: string;

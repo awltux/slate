@@ -13,6 +13,8 @@ interface ShotSummary {
   stale: boolean;
   staleCause: string | null;
   frames: { board?: string; first?: string; last?: string };
+  /** The items this shot is made from: its own selection, or the scene's. */
+  entityIds?: string[];
   readiness: { pass: number; warn: number; fail: number };
 }
 
@@ -435,13 +437,7 @@ function SceneCard({
                 </span>
               ))
             )}
-            {scene.location?.coverAssetId ? (
-              <img
-                src={`/p/${projectId}/media/${scene.location.coverAssetId}`}
-                alt={`Backdrop for scene ${scene.number}`}
-                style={{ width: 96, height: 54, objectFit: "cover", borderRadius: 4, background: "#000" }}
-              />
-            ) : null}
+
             <select
               value=""
               aria-label={`Attach a library item to scene ${scene.number}`}
@@ -476,6 +472,7 @@ function SceneCard({
                   <th style={{ width: 150 }}>Framing</th>
                   <th style={{ width: 70 }}>Time</th>
                   <th>Description</th>
+                  <th style={{ width: 200 }}>Items</th>
                   <th style={{ width: 170 }}>Start / end</th>
                   <th style={{ width: 150 }}>Readiness</th>
                   <th style={{ width: 60 }} />
@@ -520,6 +517,40 @@ function SceneCard({
                             </button>
                           </div>
                         ) : null}
+                      </td>
+                      <td>
+                        <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                          {(shot.entityIds && shot.entityIds.length > 0 ? shot.entityIds : attachedIds).map(
+                            (id) => {
+                              const item = scene.entities.find((entity) => entity.entityId === id);
+                              if (!item) return null;
+                              return item.coverAssetId ? (
+                                <img
+                                  key={id}
+                                  src={`/p/${projectId}/media/${item.coverAssetId}`}
+                                  alt={`${item.name} in shot ${shot.number}`}
+                                  title={item.name}
+                                  style={{
+                                    width: 44,
+                                    height: 44,
+                                    objectFit: "cover",
+                                    borderRadius: 4,
+                                    background: "#000",
+                                  }}
+                                />
+                              ) : (
+                                <span
+                                  key={id}
+                                  className="chip"
+                                  title={`${item.name} (no sheet yet)`}
+                                  style={{ fontSize: 11 }}
+                                >
+                                  {item.name.slice(0, 2).toUpperCase()}
+                                </span>
+                              );
+                            },
+                          )}
+                        </div>
                       </td>
                       <td>
                         <div className="row" style={{ gap: "0.25rem" }}>

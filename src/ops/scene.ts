@@ -33,6 +33,8 @@ export function shotSummary(shot: Shot, production: ProductionDocument) {
     stale: stale !== null,
     staleCause: stale?.cause ?? null,
     frames: shot.frames,
+    /** The items this shot is made from: its own selection, or the scene's when it has none. */
+    entityIds: shot.entityIds,
     readiness: readinessSummary(shotReadiness(shot, production)),
   };
 }

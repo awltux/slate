@@ -46,6 +46,8 @@ export const ShotSummarySchema = z
           .default([]),
       })
       .strict(),
+    /** The items this shot is made from. */
+    entityIds: z.array(z.string()).default([]),
     readiness: ReadinessSummarySchema,
   })
   .strict();
