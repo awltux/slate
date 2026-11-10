@@ -1645,7 +1645,7 @@ async function gate13(steps: string[]): Promise<void> {
 
   const selected = await op<{ bindingSetId: string | null; name: string | null }>(
     projectId,
-    "project.set-bindings",
+    "project.update",
     {
       bindingSetId: finals.data.id,
     },
@@ -1672,7 +1672,7 @@ async function gate13(steps: string[]): Promise<void> {
   const mine = projects.data.projects.find((project) => project.id === projectId);
   assert(mine?.bindingSetId === finals.data.id, "the project list must expose the chosen profile");
 
-  await op(projectId, "project.set-bindings", { bindingSetId: null });
+  await op(projectId, "project.update", { bindingSetId: null });
   const onDefault = await previewOn();
   assert(
     onDefault.data.endpointName === "FLUX schnell" && onDefault.data.bindingSetId === draft.data.id,
@@ -2219,6 +2219,56 @@ async function gate17(steps: string[]): Promise<void> {
   });
 }
 
+async function gate20(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("Config check", 50);
+
+  // The configuration is one document with one writer, so a save is one commit.
+  const before = await op<{ ceilingUsd: number; committedUsd: number; remainingUsd: number }>(
+    projectId,
+    "project.budget",
+  );
+  assert(
+    before.data.ceilingUsd === 50,
+    `the ceiling must be what it was created with, got ${before.data.ceilingUsd}`,
+  );
+  assert(before.data.committedUsd === 0, "a new film has committed nothing");
+
+  const updated = await op<{
+    name: string;
+    revision: number;
+    settings: { frameRate: number; resolutionPixels: number; runtimeSeconds: number; aspectRatio: string };
+    budgetUsd: number;
+  }>(projectId, "project.update", {
+    name: "Config check (final)",
+    frameRate: 30,
+    resolutionPixels: 720,
+    runtimeSeconds: 60,
+    budgetUsd: 40,
+  });
+  assert(updated.data.revision === 1, `a save must be one commit, got revision ${updated.data.revision}`);
+  assert(updated.data.settings.frameRate === 30, "the rate must be stored");
+  assert(updated.data.settings.resolutionPixels === 720, "the resolution must be stored");
+  assert(updated.data.budgetUsd === 40, "the ceiling must be stored");
+
+  // Everything downstream reads the document, so the brief must already see it.
+  const brief = await op<{
+    project: { name: string; settings: { frameRate: number; resolutionPixels: number } };
+  }>(projectId, "session.brief");
+  assert(brief.data.project.settings.frameRate === 30, "the session must see the new rate");
+  assert(brief.data.project.name === "Config check (final)", "the session must see the new name");
+  steps.push("settings: one commit changes name, shape, rate, runtime and budget, and the brief sees it");
+
+  // A ceiling may not fall below what is committed: the guard belongs to the operation, not the form.
+  const refused = await fetch(`${base}/p/${projectId}/api/op/project.update`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ budgetUsd: 1000000, bindingSetId: "aib_missing" }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; error?: { code: string } }>);
+  assert(refused.ok === false, "an unknown model profile must be refused");
+  assert(refused.error?.code === "not_found", `the refusal must be not_found, got ${refused.error?.code}`);
+  steps.push("settings: an unknown model profile is refused by the operation");
+}
 async function gate19(steps: string[]): Promise<void> {
   await signIn();
 
@@ -2436,7 +2486,7 @@ async function gate8(steps: string[]): Promise<void> {
   steps.push("conflict: the second writer is refused, not silently merged");
 
   // Undo: the editor renames the project, then undoes their own change.
-  const renamed = await opAs(editor, projectId, "project.rename", { name: "The Editor's Cut" });
+  const renamed = await opAs(editor, projectId, "project.update", { name: "The Editor's Cut" });
   assert(renamed.ok, "the editor may rename");
 
   const history = await opAs(editor, projectId, "project.history", { limit: 1 });
@@ -2466,6 +2516,38 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
 
+    if (gateNumber === 20) {
+      await page.selectOption('select[aria-label="Project"]', projectId);
+      await page.waitForSelector('main [role="tab"]', { timeout: 20_000 });
+
+      // The tab strip starts with Config, and the summary line states what the film is made at.
+      const tabs = await page.locator('main [role="tab"]').allTextContents();
+      assert(tabs[0] === "Config", `config must be the first tab, got: ${tabs.join(", ")}`);
+
+      await page.click('main [role="tab"]:has-text("Config")');
+      await page.waitForSelector("text=Project configuration", { timeout: 20_000 });
+
+      // Every decision is editable here: rate, shape, resolution, runtime, models, look and budget.
+      await page.waitForSelector('select[aria-label="Frame rate"]', { timeout: 20_000 });
+      await page.selectOption('select[aria-label="Frame rate"]', "25");
+      await page.fill('input[aria-label="Budget ceiling in USD"]', "45");
+      await page.click('button:has-text("Save configuration")');
+      await page.waitForSelector("text=Saved at revision", { timeout: 30_000 });
+      const notice = await page.locator("text=Saved at revision").first().textContent();
+      assert(Boolean(notice?.includes("revision")), `the save must report the revision, got: ${notice}`);
+
+      const summary = await page.locator("main h1 + p, main h1 ~ p").first().textContent();
+      assert(Boolean(summary?.includes("25 fps")), `the header must show the new rate, got: ${summary}`);
+      assert(
+        (await page.locator("text=Delete this project").count()) === 1,
+        "deleting belongs with the configuration",
+      );
+      await page.screenshot({ path: join(artifactDir, "project-config.png"), fullPage: true });
+      steps.push("ui: config is the first tab, edits are saved as one commit, and the header reflects them");
+
+      await instance.close();
+      return;
+    }
     if (gateNumber === 19) {
       // Host health, with no project selected - which is how a fresh host starts.
       const tabs = await page.locator('header [role="tab"]').allTextContents();
@@ -3085,6 +3167,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 17) await gate17(steps);
     else if (gateNumber === 18) await gate18(steps);
     else if (gateNumber === 19) await gate19(steps);
+    else if (gateNumber === 20) await gate20(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

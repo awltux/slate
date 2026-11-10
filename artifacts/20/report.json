@@ -1,0 +1,10 @@
+{
+  "gate": 20,
+  "status": "passed",
+  "base": "http://127.0.0.1:60210",
+  "steps": [
+    "settings: one commit changes name, shape, rate, runtime and budget, and the brief sees it",
+    "settings: an unknown model profile is refused by the operation",
+    "ui: config is the first tab, edits are saved as one commit, and the header reflects them"
+  ]
+}
