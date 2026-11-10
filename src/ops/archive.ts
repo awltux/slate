@@ -12,6 +12,7 @@ import {
 import { readProductionDocument } from "../kernel/workspace/production-doc.js";
 import { readProjectDocument } from "../kernel/workspace/project-doc.js";
 import { readProjects, registerProject, slugify } from "../kernel/workspace/projects.js";
+import { takeChoice } from "./dialog.js";
 import { defineOp } from "./registry.js";
 
 /** Export/import is a host-level capability: it moves a whole folder, so it is the owner's to run. */
@@ -36,6 +37,8 @@ export const projectExport = defineOp({
     .object({
       /** Folder to write into. Absolute, or relative to the Slate home. Defaults to <home>/exports. */
       destination: z.string().min(1).optional(),
+      /** A folder chosen with dialog.pick-folder: an id, so no host path crosses the API. */
+      destinationId: z.string().min(1).optional(),
     })
     .strict(),
   output: z
@@ -72,11 +75,23 @@ export const projectExport = defineOp({
       cutItems: production?.cut.items.length ?? 0,
     };
 
-    const destination = input.destination
-      ? isAbsolute(input.destination)
-        ? input.destination
-        : resolve(context.home, input.destination)
-      : join(context.home, "exports");
+    // A chosen folder arrives as a token, is consumed here, and never appears in the result: the path stays on the host.
+    let chosenPath: string | undefined;
+    if (input.destinationId) {
+      const chosen = await takeChoice(context.home, input.destinationId, context.clock.now());
+      chosenPath = chosen.path;
+    }
+    if (input.destination && chosenPath) {
+      throw new SlateError("invalid_input", "give either a destination or a chosen folder, not both");
+    }
+
+    const destination = chosenPath
+      ? chosenPath
+      : input.destination
+        ? isAbsolute(input.destination)
+          ? input.destination
+          : resolve(context.home, input.destination)
+        : join(context.home, "exports");
     await mkdir(destination, { recursive: true });
 
     const archiveName = `${slugify(project.name)}-${project.id.slice(4, 12)}-r${project.revision}.7z`;

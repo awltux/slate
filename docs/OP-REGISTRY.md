@@ -26,6 +26,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `cut.render` | write | project | `cut_render` | Render the cut to MP4 at the project's shape and rate (FFmpeg concat for now). |
 | `deliver.export` | spend | project | `deliver_export` | Encode the cut into a master with optional audio, run QC, and write a provenance manifest. |
 | `deliver.qc` | read | project | `deliver_qc` | The QC report and manifest from the last delivery. |
+| `dialog.pick-folder` | read | host, owner | `dialog_pick-folder` | Open the host's folder dialog and return a token naming the folder, not its path. |
 | `entity.angles` | read | project | `entity_angles` | The six headshot rotations a character sheet must cover. |
 | `entity.create` | write | project | `entity_create` | Define a character, location, prop or style in the library. |
 | `entity.delete` | destructive | project | `entity_delete` | Delete an entity that nothing references. |
@@ -736,6 +737,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `dialog.pick-folder`
+
+```json
+{}
+```
+
 ### `entity.angles`
 
 ```json
@@ -1360,6 +1367,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "type": "object",
   "properties": {
     "destination": {
+      "type": "string",
+      "minLength": 1
+    },
+    "destinationId": {
       "type": "string",
       "minLength": 1
     }

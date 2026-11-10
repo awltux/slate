@@ -16,6 +16,7 @@ import { projectExport, projectImport } from "./archive.js";
 import { capabilitiesGet } from "./capabilities.js";
 import { cutBuild, cutGet, cutRender } from "./cut.js";
 import { deliverExport, deliverQc } from "./deliver.js";
+import { dialogPickFolder } from "./dialog.js";
 import { entityGenerate } from "./entity-generate.js";
 import {
   entityAngles,
@@ -88,6 +89,7 @@ export function createRegistry(): OpRegistry {
     aiBindingSets,
     aiBindingSetUse,
     agentAccess,
+    dialogPickFolder,
     aiBindingSetRemove,
     aiRemove,
     aiPreview,

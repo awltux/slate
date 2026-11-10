@@ -172,3 +172,48 @@ describe("project archives", () => {
     if (!result.ok) expect(result.error.code).toBe("capability_missing");
   });
 });
+
+describe("export to a chosen folder", () => {
+  itIf7z("writes into the folder the host dialog returned, and consumes the token", async () => {
+    await seedProject();
+    const chosenDir = join(home, "backups");
+    const dialogContext = testContext(root, {
+      home,
+      run: (argv) => runCommand(argv),
+      tool: async (id) =>
+        sevenzip ?? {
+          id,
+          displayName: id,
+          required: false,
+          status: "red" as const,
+          binary: null,
+          source: "none" as const,
+          version: null,
+          detail: "not probed",
+        },
+    });
+    // The dialog is the host's own command; here it answers with a folder so the flow can be proved offline.
+    const picked = { code: 0, stdout: `${chosenDir}\n`, stderr: "", failedToStart: false };
+    const withDialog = {
+      ...dialogContext,
+      run: async (argv: string[]) =>
+        argv[0] === "powershell.exe" || argv[0] === "zenity" || argv[0] === "osascript"
+          ? picked
+          : runCommand(argv),
+    };
+
+    const token = expectOk(await registry.execute("dialog.pick-folder", {}, withDialog)).data as {
+      id: string;
+    };
+    const exported = expectOk(
+      await registry.execute("project.export", { destinationId: token.id }, withDialog),
+    ).data as { archiveName: string };
+
+    expect((await stat(join(chosenDir, exported.archiveName))).isFile()).toBe(true);
+
+    // A token is used once: replaying it would be a path anyone who saw it could reuse.
+    const again = await registry.execute("project.export", { destinationId: token.id }, withDialog);
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.error.code).toBe("not_found");
+  });
+});

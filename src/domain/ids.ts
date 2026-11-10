@@ -10,6 +10,7 @@ export type IdPrefix =
   | "tke"
   | "cut"
   | "ast"
+  | "chz"
   | "job"
   | "est"
   | "set"
