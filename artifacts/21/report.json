@@ -1,0 +1,11 @@
+{
+  "gate": 21,
+  "status": "passed",
+  "base": "http://127.0.0.1:51182",
+  "steps": [
+    "endpoint: the upload is declared as an endpoint, with its response named",
+    "upload: the reference travels through the declared endpoint",
+    "draft: refused with a code and a sentence until a text endpoint is bound",
+    "ui: upload is a capability, the response is declared, and drafting names the missing text model"
+  ]
+}

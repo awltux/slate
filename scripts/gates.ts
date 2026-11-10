@@ -2065,20 +2065,11 @@ async function gate17(steps: string[]): Promise<void> {
     body: JSON.stringify({
       name: "fal",
       kind: "fal",
-      baseUrl: "https://fal.run",
+      // Loopback, so the upload endpoint below resolves to this gate's own fake rather than the internet.
+      baseUrl: base,
       authScheme: "Key {{key}}",
       apiKey: "gate-key",
-      reference: {
-        transport: "upload",
-        maxInlineBytes: 1,
-        upload: {
-          url: `${base}/gate-upload/initiate`,
-          method: "POST",
-          body: { content_type: "{{contentType}}", file_size: "{{bytes}}" },
-          uploadUrlPath: "upload_url",
-          fileUrlPath: "file_url",
-        },
-      },
+      reference: { transport: "upload", maxInlineBytes: 1 },
     }),
   }).then(
     (response) =>
@@ -2088,7 +2079,24 @@ async function gate17(steps: string[]): Promise<void> {
       }>,
   );
   assert(provider.ok, "the provider must accept a declared reference transport");
-  steps.push("setup: a provider declares how references reach it, as data");
+
+  const uploadEndpoint = await fetch(`${base}/api/op/ai.endpoint.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      providerId: provider.data.id,
+      name: "fal storage",
+      capability: "upload",
+      path: "/gate-upload/initiate",
+      body: { content_type: "{{param:contentType}}", file_size: "{{param:bytes}}" },
+      response: {
+        upload_url: { path: "upload_url", type: "string" },
+        file_url: { path: "file_url", type: "string" },
+      },
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data: { id: string } }>);
+  assert(uploadEndpoint.ok, "the upload endpoint must save");
+  steps.push("setup: a provider declares how references reach it, and an endpoint takes the bytes");
 
   const uploaded = await op<{ via: string; bytes: number; fileUrl: string }>(projectId, "ai.reference.test", {
     providerId: provider.data.id,
@@ -2122,9 +2130,9 @@ async function gate17(steps: string[]): Promise<void> {
       id: provider.data.id,
       name: "fal",
       kind: "fal",
-      baseUrl: "https://fal.run",
+      baseUrl: base,
       authScheme: "Key {{key}}",
-      reference: { transport: "inline", maxInlineBytes: 10_000_000, upload: null },
+      reference: { transport: "inline", maxInlineBytes: 10_000_000 },
     }),
   }).then((response) => response.json() as Promise<{ ok: boolean }>);
   assert(inlineProvider.ok, "the provider must accept an inline-only policy");
@@ -2175,9 +2183,9 @@ async function gate17(steps: string[]): Promise<void> {
       id: provider.data.id,
       name: "fal",
       kind: "fal",
-      baseUrl: "https://fal.run",
+      baseUrl: base,
       authScheme: "Key {{key}}",
-      reference: { transport: "inline", maxInlineBytes: 1, upload: null },
+      reference: { transport: "inline", maxInlineBytes: 1 },
     }),
   });
   const refusedPreview = await op<{ reference: { rung: string } | null }>(project, "ai.preview", {
@@ -2194,7 +2202,22 @@ async function gate17(steps: string[]): Promise<void> {
   );
   steps.push("refusal: too large and no upload declared is reported, not dropped");
 
-  // Leave the upload policy in place for the browser, which offers to prove it from the card.
+  // Put the upload endpoint back for the browser, which proves it from the card.
+  await fetch(`${base}/api/op/ai.endpoint.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      providerId: provider.data.id,
+      name: "fal storage",
+      capability: "upload",
+      path: "/gate-upload/initiate",
+      body: { content_type: "{{param:contentType}}", file_size: "{{param:bytes}}" },
+      response: {
+        upload_url: { path: "upload_url", type: "string" },
+        file_url: { path: "file_url", type: "string" },
+      },
+    }),
+  });
   await fetch(`${base}/api/op/ai.provider.save`, {
     method: "POST",
     headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
@@ -2202,23 +2225,97 @@ async function gate17(steps: string[]): Promise<void> {
       id: provider.data.id,
       name: "fal",
       kind: "fal",
-      baseUrl: "https://fal.run",
+      baseUrl: base,
       authScheme: "Key {{key}}",
-      reference: {
-        transport: "upload",
-        maxInlineBytes: 1_500_000,
-        upload: {
-          url: `${base}/gate-upload/initiate`,
-          method: "POST",
-          body: { content_type: "{{contentType}}", file_size: "{{bytes}}" },
-          uploadUrlPath: "upload_url",
-          fileUrlPath: "file_url",
-        },
-      },
+      reference: { transport: "upload", maxInlineBytes: 1_500_000 },
     }),
   });
 }
 
+async function gate21(steps: string[]): Promise<void> {
+  await signIn();
+  projectId = await newProject("Upload endpoint");
+
+  // The upload is an endpoint the operator declares: a method, a path, a body and the values it returns.
+  const provider = await fetch(`${base}/api/op/ai.provider.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      name: "fal",
+      kind: "fal",
+      // Loopback, so the upload endpoint's path resolves to this gate's own fake rather than the internet.
+      baseUrl: base,
+      authScheme: "Key {{key}}",
+      apiKey: "gate-key",
+      reference: { transport: "upload", maxInlineBytes: 1 },
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data: { id: string } }>);
+  assert(provider.ok, "the provider must accept a reference policy");
+
+  const upload = await fetch(`${base}/api/op/ai.endpoint.save`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({
+      providerId: provider.data.id,
+      name: "fal storage",
+      capability: "upload",
+      path: "/gate-upload/initiate",
+      body: { content_type: "{{param:contentType}}", file_size: "{{param:bytes}}" },
+      response: {
+        upload_url: { path: "upload_url", type: "string" },
+        file_url: { path: "file_url", type: "string" },
+      },
+    }),
+  }).then((response) => response.json() as Promise<{ ok: boolean; data: { id: string } }>);
+  assert(upload.ok, "the upload endpoint must save");
+
+  const catalog = await fetch(`${base}/api/op/ai.catalog`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({}),
+  }).then(
+    (response) =>
+      response.json() as Promise<{
+        data: {
+          providers: Array<{ reference: { uploadEndpointId: string | null } }>;
+          endpoints: Array<{ id: string; capability: string; response: Record<string, unknown> }>;
+        };
+      }>,
+  );
+  assert(
+    catalog.data.providers[0]?.reference.uploadEndpointId === upload.data.id,
+    "the catalog must point at the upload endpoint, not carry a file API of its own",
+  );
+  assert(
+    Object.keys(catalog.data.endpoints[0]?.response ?? {}).includes("file_url"),
+    "the endpoint must publish the response it promises",
+  );
+  steps.push("endpoint: the upload is declared as an endpoint, with its response named");
+
+  // It really uploads: the endpoint's path is this gate's own loopback fake.
+  const uploaded = await op<{ via: string; fileUrl: string }>(projectId, "ai.reference.test", {
+    providerId: provider.data.id,
+  });
+  assert(uploaded.data.via === "upload", "the test must take the upload rung");
+  assert(uploads.initiate.length === 1, "the initiate call must happen exactly once");
+  steps.push("upload: the reference travels through the declared endpoint");
+
+  // The drafter needs a text endpoint before it can work, and says so.
+  const draft = await fetch(`${base}/api/op/ai.endpoint.draft`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
+    body: JSON.stringify({ providerId: provider.data.id, path: "/fal-ai/flux/dev" }),
+  }).then(
+    (response) => response.json() as Promise<{ ok: boolean; error?: { code: string; message: string } }>,
+  );
+  assert(draft.ok === false, "drafting must refuse when no text endpoint is bound");
+  assert(draft.error?.code === "capability_missing", `expected capability_missing, got ${draft.error?.code}`);
+  assert(
+    Boolean(draft.error?.message.includes("text endpoint")),
+    "the refusal must say what is missing, because the button is useless without it",
+  );
+  steps.push("draft: refused with a code and a sentence until a text endpoint is bound");
+}
 async function gate20(steps: string[]): Promise<void> {
   await signIn();
   projectId = await newProject("Config check", 50);
@@ -2516,6 +2613,46 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
 
+    if (gateNumber === 21) {
+      // The upload endpoint is declared in the UI like any other, and the drafter is reachable from the same form.
+      await page.click('header [role="tab"]:has-text("Setup")');
+      await page.waitForSelector("text=AI setup", { timeout: 20_000 });
+      await page.click('button[aria-label="Show endpoints for fal"]');
+      await page.waitForSelector("text=fal storage", { timeout: 20_000 });
+
+      const line = await page.locator('span[aria-label="References for fal"]').first().textContent();
+      assert(
+        Boolean(line?.includes("upload endpoint")),
+        `the card must say uploads go through an endpoint, got: ${line}`,
+      );
+
+      await page.click('button:has-text("Add endpoint")');
+      await page.waitForSelector('select[aria-label="Endpoint capability"]', { timeout: 20_000 });
+      const capabilities = await page
+        .locator('select[aria-label="Endpoint capability"] option')
+        .allTextContents();
+      assert(capabilities.includes("upload"), `upload must be a capability, got: ${capabilities.join(", ")}`);
+      assert(
+        (await page.locator('textarea[aria-label="Response field declarations"]').count()) === 1,
+        "an endpoint form must declare its response fields",
+      );
+
+      await page.fill('input[aria-label="Endpoint path"]', "/fal-ai/flux/dev");
+      await page.click('button:has-text("Draft with AI")');
+      await page.waitForSelector("text=capability_missing", { timeout: 30_000 });
+      const message = await page.locator("text=capability_missing").first().textContent();
+      assert(
+        Boolean(message?.includes("text endpoint")),
+        `the draft must say a text endpoint is missing, got: ${message}`,
+      );
+      await page.screenshot({ path: join(artifactDir, "upload-endpoint.png"), fullPage: true });
+      steps.push(
+        "ui: upload is a capability, the response is declared, and drafting names the missing text model",
+      );
+
+      await instance.close();
+      return;
+    }
     if (gateNumber === 20) {
       await page.selectOption('select[aria-label="Project"]', projectId);
       await page.waitForSelector('main [role="tab"]', { timeout: 20_000 });
@@ -2657,8 +2794,8 @@ async function browserFlow(steps: string[]): Promise<void> {
       // The card states how a reference travels, so the choice is visible where it is made.
       const line = await page.locator('span[aria-label="References for fal"]').first().textContent();
       assert(
-        Boolean(line?.includes("else upload to")),
-        `the card must say where references are uploaded, got: ${line}`,
+        Boolean(line?.includes("upload endpoint")),
+        `the card must say uploads go through an endpoint, got: ${line}`,
       );
 
       await page.click('button[aria-label="Test upload for fal"]');
@@ -3123,7 +3260,7 @@ async function main(): Promise<number> {
 
   // Gate 17 uploads a reference back to a loopback fake, so the two-step file API is proved over real HTTP without
   // leaving the machine. The routes record what they were sent, so the gate can assert the typed body and the bytes.
-  if (gateNumber === 17) {
+  if (gateNumber === 17 || gateNumber === 21) {
     app.post("/gate-upload/initiate", async (c) => {
       const body = (await c.req.json()) as { content_type?: unknown; file_size?: unknown };
       uploads.initiate.push({ contentType: body.content_type, fileSize: body.file_size });
@@ -3168,6 +3305,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 18) await gate18(steps);
     else if (gateNumber === 19) await gate19(steps);
     else if (gateNumber === 20) await gate20(steps);
+    else if (gateNumber === 21) await gate21(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);
