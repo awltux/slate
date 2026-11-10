@@ -8,6 +8,8 @@ interface ProviderView {
   baseUrl: string;
   authHeader: string;
   authScheme: string;
+  /** Appended to the base url when Test is pressed. */
+  testPath: string;
   hasKey: boolean;
   notes: string;
   endpointCount: number;
@@ -723,6 +725,7 @@ function ProviderForm({
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
   const [authHeader, setAuthHeader] = useState(provider?.authHeader ?? "Authorization");
   const [authScheme, setAuthScheme] = useState(provider?.authScheme ?? "Bearer {{key}}");
+  const [testPath, setTestPath] = useState(provider?.testPath ?? "/");
   const [apiKey, setApiKey] = useState("");
   const [forgetKey, setForgetKey] = useState(false);
   const [transport, setTransport] = useState(provider?.reference.transport ?? "inline");
@@ -740,7 +743,7 @@ function ProviderForm({
       style={{ marginTop: "0.75rem", gap: "0.5rem" }}
       onSubmit={(event) => {
         event.preventDefault();
-        const values: Record<string, unknown> = { name, kind, baseUrl, authHeader, authScheme };
+        const values: Record<string, unknown> = { name, kind, baseUrl, authHeader, authScheme, testPath };
         if (provider) values.id = provider.id;
         // On an edit, a blank key field means "keep the one that is stored"; forgetting it is an explicit checkbox.
         if (!editing) values.apiKey = apiKey;
@@ -789,6 +792,16 @@ function ProviderForm({
             onChange={(event) => setBaseUrl(event.target.value)}
             placeholder="https://fal.run"
             aria-label={label("base URL")}
+          />
+        </Field>
+        <Field id={`${prefix}-provider-test-path`} label="Test path">
+          <input
+            id={`${prefix}-provider-test-path`}
+            value={testPath}
+            onChange={(event) => setTestPath(event.target.value)}
+            placeholder="/models"
+            aria-label={label("test path")}
+            title="Appended to the base URL when you press Test. /models for an OpenAI-compatible host; / for most others."
           />
         </Field>
       </div>

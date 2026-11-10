@@ -44,6 +44,7 @@ const ProviderViewSchema = z
     authHeader: z.string(),
     authScheme: z.string(),
     hasKey: z.boolean(),
+    testPath: z.string(),
     notes: z.string(),
     endpointCount: z.number().int(),
     reference: ReferenceViewSchema,
@@ -131,8 +132,13 @@ export const aiTest = defineOp({
     if (!provider) throw new SlateError("not_found", `no provider ${providerId ?? "(none given)"}`);
 
     // A GET on the path, never the endpoint's real request: a test that spends money is not a test.
-    const path = endpoint?.path && !endpoint.path.includes("{{") ? endpoint.path : "";
-    const url = `${provider.baseUrl.replace(/\/$/, "")}${path.startsWith("/") || path === "" ? path : `/${path}`}`;
+    const path = endpoint
+      ? endpoint.path && !endpoint.path.includes("{{")
+        ? endpoint.path
+        : ""
+      : (provider.testPath ?? "/");
+    const suffix = path === "" ? "" : path.startsWith("/") ? path : `/${path}`;
+    const url = `${provider.baseUrl.replace(/\/$/, "")}${suffix}`;
     const keys = await readKeys(context.home);
     const apiKey = keys[provider.id] ?? null;
     const headers: Record<string, string> = {};
@@ -240,6 +246,7 @@ export const aiCatalog = defineOp({
           name: provider.name,
           kind: provider.kind,
           baseUrl: provider.baseUrl,
+          testPath: provider.testPath,
           authHeader: provider.auth.header,
           authScheme: provider.auth.scheme,
           hasKey: Boolean(keys[provider.id]),
@@ -295,6 +302,8 @@ export const aiProviderSave = defineOp({
       name: z.string().trim().min(1),
       kind: z.string().default("custom"),
       baseUrl: z.string().url(),
+      /** Appended to the base url for a connection test. "/models" for an OpenAI-compatible host, "/" for most others. */
+      testPath: z.string().default("/"),
       authHeader: z.string().default("Authorization"),
       authScheme: z.string().default("Bearer {{key}}"),
       notes: z.string().default(""),
@@ -321,6 +330,7 @@ export const aiProviderSave = defineOp({
       baseUrl: input.baseUrl,
       auth: { header: input.authHeader, scheme: input.authScheme },
       reference: input.reference ?? existing?.reference ?? DEFAULT_REFERENCE_POLICY,
+      testPath: input.testPath,
       notes: input.notes,
     };
 

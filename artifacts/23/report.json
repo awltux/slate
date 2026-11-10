@@ -1,7 +1,7 @@
 {
   "gate": 23,
   "status": "passed",
-  "base": "http://127.0.0.1:50553",
+  "base": "http://127.0.0.1:60585",
   "steps": [
     "test: a provider that answers 200 is reported reachable, key accepted",
     "test: each endpoint is checked on its own path",

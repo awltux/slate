@@ -2251,10 +2251,12 @@ async function gate23(steps: string[]): Promise<void> {
   const provider = await hostOp<{ id: string }>("ai.provider.save", {
     name: "gate host",
     baseUrl: base,
+    testPath: "/gate-ping",
     apiKey: "gate-key",
   });
   const ok = await hostOp<{
     target: string;
+    url: string;
     status: number | null;
     reachable: boolean;
     auth: string;
@@ -2262,6 +2264,10 @@ async function gate23(steps: string[]): Promise<void> {
     ms: number;
   }>("ai.test", { providerId: provider.data.id });
   assert(ok.data.reachable, "a host that answers must be reported reachable");
+  assert(
+    ok.data.url.endsWith("/gate-ping"),
+    `the provider's test path must be part of the url, got ${ok.data.url}`,
+  );
   assert(ok.data.status === 200, `expected 200, got ${ok.data.status}`);
   assert(ok.data.auth === "accepted", "a 200 must be read as the key being accepted");
   // The test is a reachability check: it must not send the generating request.

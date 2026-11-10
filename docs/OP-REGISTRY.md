@@ -489,6 +489,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "string",
       "format": "uri"
     },
+    "testPath": {
+      "type": "string",
+      "default": "/"
+    },
     "authHeader": {
       "type": "string",
       "default": "Authorization"

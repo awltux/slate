@@ -82,6 +82,11 @@ export const ProviderSchema = z
       })
       .strict(),
     reference: ReferencePolicySchema.default({}),
+    /**
+     * Appended to the base url to form the address a connection test asks for. A generic GET on a base url often 404s
+     * while the host is perfectly healthy, so the path that actually proves it belongs in the declaration.
+     */
+    testPath: z.string().default("/"),
     notes: z.string().default(""),
   })
   .strict();

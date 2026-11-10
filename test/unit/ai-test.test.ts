@@ -149,7 +149,8 @@ describe("what a failing test tells you", () => {
       response: { status: number; body: string; error: string | null };
     };
 
-    expect(data.request.url).toBe("https://fal.example");
+    // The provider's test path defaults to "/", so the address it asks is the base url plus that path.
+    expect(data.request.url).toBe("https://fal.example/");
     expect(data.request.method).toBe("GET");
     expect(data.request.body).toBe("");
     expect(data.response.status).toBe(500);
@@ -186,5 +187,73 @@ describe("what a failing test tells you", () => {
     expect(data.response.body).toBe("");
     // The reason is kept: "unreachable" alone tells you nothing about a proxy or a typo.
     expect(data.response.error).toContain("ECONNREFUSED");
+  });
+});
+
+describe("the provider's test path", () => {
+  it("is appended to the base url, so the path that proves a host can be declared", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "openai-ish", baseUrl: "https://llm.example/v1", testPath: "/models", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+
+    const data = expectOk(
+      await registry.execute(
+        "ai.test",
+        { providerId: provider.id },
+        testContext(root, { home, http: answering(200) }),
+      ),
+    ).data as { url: string; status: number };
+
+    expect(data.url).toBe("https://llm.example/v1/models");
+    expect(data.status).toBe(200);
+  });
+
+  it("does not add a second slash", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "slashed", baseUrl: "https://llm.example/v1/", testPath: "models", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+
+    const data = expectOk(
+      await registry.execute(
+        "ai.test",
+        { providerId: provider.id },
+        testContext(root, { home, http: answering(200) }),
+      ),
+    ).data as { url: string };
+    expect(data.url).toBe("https://llm.example/v1/models");
+  });
+
+  it("is ignored when an endpoint is tested, because an endpoint has its own path", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "host", baseUrl: "https://llm.example", testPath: "/models", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        { providerId: provider.id, name: "image", capability: "image", method: "POST", path: "/generate" },
+        context,
+      ),
+    ).data as { id: string };
+
+    const data = expectOk(
+      await registry.execute(
+        "ai.test",
+        { endpointId: endpoint.id },
+        testContext(root, { home, http: answering(200) }),
+      ),
+    ).data as { url: string };
+    expect(data.url).toBe("https://llm.example/generate");
   });
 });

@@ -19,6 +19,7 @@ const fal: Provider = {
   baseUrl: "https://rest.alpha.fal.ai",
   auth: { header: "Authorization", scheme: "Key {{key}}" },
   reference: { transport: "upload", maxInlineBytes: 1_000 },
+  testPath: "/",
   notes: "",
 };
 

@@ -14,6 +14,7 @@ const fal: Provider = {
   baseUrl: "https://fal.run",
   auth: { header: "Authorization", scheme: "Key {{key}}" },
   reference: DEFAULT_REFERENCE_POLICY,
+  testPath: "/",
   notes: "",
 };
 

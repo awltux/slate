@@ -4,6 +4,7 @@ User-visible changes per slice. Internal refactors are not listed.
 
 ## Test a provider, and each of its endpoints
 
+- **A provider declares the path its connection is tested on** (*Test path*, e.g. `/models` for an OpenAI-compatible host, `/` for most others). A generic GET on a base URL usually 404s while the host is perfectly healthy, so the address that proves it belongs in the declaration rather than in the code.
 - **Every provider row has a Test button**, and every endpoint row has one too. They send **one GET** and report what the
   host answered: how long it took, whether the address is right, and whether the key was accepted or refused.
 - **A test never generates anything.** It does not send the endpoint's body, so trying it cannot cost money — which is the
