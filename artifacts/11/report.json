@@ -1,7 +1,7 @@
 {
   "gate": 11,
   "status": "passed",
-  "base": "http://127.0.0.1:64446",
+  "base": "http://127.0.0.1:62597",
   "steps": [
     "provider: fal stored with one credential",
     "endpoint: FLUX dev, its own parameters, its own body shape",
@@ -11,6 +11,7 @@
     "endpoint edit: the path moved, and preview renders the new call",
     "permission: an editor cannot open setup at all",
     "ui: providers hide their endpoints, and opening one shows the call",
+    "ui: a preview dies with the config it described, and shows the provider's scheme",
     "ui: a model is edited from a form that opens on what is stored",
     "ui: deleting a model clears its profile binding and leaves the host standing",
     "ui: a provider is edited from a form that opens on what is stored",

@@ -2275,6 +2275,40 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.screenshot({ path: join(artifactDir, "setup.png"), fullPage: true });
       steps.push("ui: providers hide their endpoints, and opening one shows the call");
 
+      // A preview is a claim about the current config, so changing the provider must retire it and the next preview
+      // must show the new scheme. This is the bug where a stale card kept saying "Key" after the provider said "Bearer".
+      const view = page;
+      const previewText = async () => (await view.locator("pre").first().textContent()) ?? "";
+      await page.click("table tbody tr >> nth=0 >> button:has-text('Preview')");
+      await page.waitForSelector("text=Request preview", { timeout: 20_000 });
+      assert((await previewText()).includes("Key ••••"), "the preview must render the provider's own scheme");
+
+      await page.click('button[aria-label="Edit fal"]');
+      await page.waitForSelector('input[aria-label="Edit auth scheme"]', { timeout: 20_000 });
+      await page.fill('input[aria-label="Edit auth scheme"]', "Bearer {{key}}");
+      await page.click('button:has-text("Save provider")');
+      await page.waitForTimeout(700);
+      assert(
+        (await page.locator("text=Request preview").count()) === 0,
+        "changing the provider must retire a preview that no longer describes it",
+      );
+
+      await page.click("table tbody tr >> nth=0 >> button:has-text('Preview')");
+      await page.waitForSelector("text=Request preview", { timeout: 20_000 });
+      assert(
+        (await previewText()).includes("Bearer ••••"),
+        `the new preview must show the new scheme, got: ${await previewText()}`,
+      );
+      await page.screenshot({ path: join(artifactDir, "preview-auth.png"), fullPage: true });
+
+      // Put the fixture back the way the rest of the gate expects it.
+      await page.click('button[aria-label="Edit fal"]');
+      await page.waitForSelector('input[aria-label="Edit auth scheme"]', { timeout: 20_000 });
+      await page.fill('input[aria-label="Edit auth scheme"]', "Key {{key}}");
+      await page.click('button:has-text("Save provider")');
+      await page.waitForTimeout(500);
+      steps.push("ui: a preview dies with the config it described, and shows the provider's scheme");
+
       // Edit a model from its row: the form opens on what is stored, and saving keeps the same endpoint.
       await page.click('button[aria-label="Edit TTS base"]');
       await page.waitForSelector('input[aria-label="Endpoint name"]', { timeout: 20_000 });
