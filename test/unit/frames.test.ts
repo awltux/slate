@@ -38,12 +38,13 @@ async function sheeted(kind: "location" | "character", name: string) {
   await registry.execute("entity.update", { entityId: entity.entityId, prompt: `${name} prompt` }, context);
   const generated = expectOk(
     await registry.execute("entity.generate", { entityId: entity.entityId, count: 1 }, context),
-  ).data as { candidates: Array<{ id: string }> };
+  ).data as { candidates: Array<{ id: string; assetId: string }> };
   await registry.execute(
-    "sheet.select",
-    { entityId: entity.entityId, images: [{ role: "front", candidateId: generated.candidates[0]?.id }] },
+    "sheet.edit",
+    { entityId: entity.entityId, items: [{ assetId: generated.candidates[0]?.assetId, role: "front" }] },
     context,
   );
+  await registry.execute("sheet.publish", { entityId: entity.entityId }, context);
   return entity.entityId;
 }
 

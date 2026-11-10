@@ -95,18 +95,25 @@ describe("generating and selecting", () => {
   it("publishes an identity sheet from chosen candidates and reports missing angles", async () => {
     const entity = await defineCharacter();
     const generated = await generate(entity.entityId, 6);
-    const images = generated.candidates.slice(0, 4).map((candidate, index) => ({
-      role: ["front", "profile-left", "three-quarter-left", "back"][index],
-      candidateId: candidate.id,
+    const items = generated.candidates.slice(0, 4).map((candidate, index) => ({
+      assetId: candidate.assetId,
+      role: ["front", "profile-left", "three-quarter-left", "back"][index] ?? null,
     }));
 
-    const sheet = expectOk(
-      await registry.execute("sheet.select", { entityId: entity.entityId, images }, context),
-    ).data as { version: number; images: unknown[]; missingAngles: string[] };
+    await registry.execute("sheet.edit", { entityId: entity.entityId, items }, context);
+    const sheet = expectOk(await registry.execute("sheet.publish", { entityId: entity.entityId }, context))
+      .data as {
+      version: number;
+      images: unknown[];
+      missingAngles: string[];
+      compositeAssetId: string | null;
+    };
 
     expect(sheet.version).toBe(1);
     expect(sheet.images).toHaveLength(4);
     expect(sheet.missingAngles).toEqual(["profile-right", "three-quarter-right"]);
+    // Publishing composes the items into the one image a reference passes on.
+    expect(sheet.compositeAssetId).toBeTruthy();
   });
 
   it("publishes a variant sheet for an outfit, with its own prompt", async () => {
@@ -125,14 +132,19 @@ describe("generating and selecting", () => {
     ).data as { variantId: string };
 
     const generated = await generate(entity.entityId, 2, variant.variantId);
+    await registry.execute(
+      "sheet.edit",
+      {
+        entityId: entity.entityId,
+        variantId: variant.variantId,
+        items: [{ assetId: generated.candidates[0]?.assetId, role: "front" }],
+      },
+      context,
+    );
     const sheet = expectOk(
       await registry.execute(
-        "sheet.select",
-        {
-          entityId: entity.entityId,
-          images: [{ role: "front", candidateId: generated.candidates[0]?.id }],
-          variantId: variant.variantId,
-        },
+        "sheet.publish",
+        { entityId: entity.entityId, variantId: variant.variantId },
         context,
       ),
     ).data as { version: number };

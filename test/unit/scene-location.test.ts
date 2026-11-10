@@ -47,14 +47,15 @@ async function locationWithSheet() {
   const generated = expectOk(
     await registry.execute("entity.generate", { entityId: entity.entityId, count: 1 }, context),
   ).data as { candidates: Array<{ id: string; assetId: string }> };
-  const sheet = expectOk(
-    await registry.execute(
-      "sheet.select",
-      { entityId: entity.entityId, images: [{ role: "lighting", candidateId: generated.candidates[0]?.id }] },
-      context,
-    ),
-  ).data as { images: Array<{ assetId: string }> };
-  return { entityId: entity.entityId, coverAssetId: sheet.images[0]?.assetId };
+  await registry.execute(
+    "sheet.edit",
+    { entityId: entity.entityId, items: [{ assetId: generated.candidates[0]?.assetId, role: "lighting" }] },
+    context,
+  );
+  const sheet = expectOk(await registry.execute("sheet.publish", { entityId: entity.entityId }, context))
+    .data as { compositeAssetId: string | null; images: Array<{ assetId: string }> };
+  // What a scene shows is the composed reference sheet, not one of the views that went into it.
+  return { entityId: entity.entityId, coverAssetId: sheet.compositeAssetId };
 }
 
 describe("scene location", () => {

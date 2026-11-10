@@ -52,12 +52,16 @@ async function keeperWithSheet(context: OpContext) {
   await registry.execute("entity.update", { entityId: entity.entityId, prompt: "keeper v1" }, context);
   const generated = expectOk(
     await registry.execute("entity.generate", { entityId: entity.entityId, count: 1 }, context),
-  ).data as { candidates: Array<{ id: string }> };
+  ).data as { candidates: Array<{ id: string; assetId: string }> };
   await registry.execute(
-    "sheet.select",
+    "sheet.edit",
+    { entityId: entity.entityId, items: [{ assetId: generated.candidates[0]?.assetId, role: "front" }] },
+    context,
+  );
+  await registry.execute(
+    "sheet.publish",
     {
       entityId: entity.entityId,
-      images: [{ role: "front", candidateId: generated.candidates[0]?.id }],
       rights: { licence: "original", likenessConsent: "granted" },
     },
     context,
