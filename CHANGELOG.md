@@ -2,6 +2,12 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## @ names a scene resource in a prompt
+
+- **Typing `@` in a frame prompt offers the scene's resources**, filtered as you keep typing. Arrow keys move, Enter or a
+  click inserts the name, Escape closes it — and the resource is ticked as a reference at the same time, because naming
+  something in a prompt is asking for it to be used.
+- The list says so when the scene has no resources attached yet, instead of opening an empty box.
 ## A frame is chosen, not accepted
 
 - **Generate one to four images, then keep the one that is right.** Every image a call makes stays on the shot, so

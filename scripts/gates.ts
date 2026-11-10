@@ -3274,7 +3274,19 @@ async function browserFlow(steps: string[]): Promise<void> {
         'textarea[aria-label="Frame prompt"]',
         "Elias trims the wick, amber light, salt on his hands",
       );
-      // Three images, then keep the one that is right: a frame is chosen from what was made, not accepted blind.
+      // Typing @ offers the scene's resources; this scene has none, so the popup says so rather than staying silent.
+      await page.fill('textarea[aria-label="Frame prompt"]', "a wide shot of @");
+      await page.waitForSelector('[aria-label="Scene resources"]', { timeout: 20_000 });
+      const mentionHint = await page.locator('[aria-label="Scene resources"]').first().textContent();
+      assert(
+        Boolean(mentionHint && mentionHint.trim().length > 0),
+        "the mention popup must say something, even when the scene has no resources",
+      );
+      await page.fill(
+        'textarea[aria-label="Frame prompt"]',
+        "Elias trims the wick, amber light, salt on his hands",
+      );
+      steps.push("ui: typing @ offers the scene's resources"); // Three images, then keep the one that is right: a frame is chosen from what was made, not accepted blind.
       await page.selectOption('select[aria-label="How many images to generate"]', "3");
       await page.click('button:has-text("Generate start frame")');
       await page.waitForSelector('section[aria-label^="Frames for shot"] img[alt*="option 3"]', {

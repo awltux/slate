@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ApiError, runOp } from "../api.js";
+import { type Mention, applyMention, findMention, matchMentions } from "./mention.js";
 
 interface Entity {
   id: string;
@@ -45,6 +46,31 @@ export function FrameDialog({
   const [useStartFrame, setUseStartFrame] = useState(true);
   const [count, setCount] = useState(3);
   const [made, setMade] = useState<{ assetIds: string[]; role: string } | null>(null);
+  const [mention, setMention] = useState<Mention | null>(null);
+  const [active, setActive] = useState(0);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+
+  const options = mention ? matchMentions(sceneEntities, mention.query) : [];
+
+  /** Typing @ opens the list; everything else closes it, so the popup never lingers over unrelated text. */
+  function trackMention(value: string, caret: number) {
+    setMention(findMention(value, caret));
+    setActive(0);
+  }
+
+  function insert(entity: { id: string; name: string }) {
+    const area = promptRef.current;
+    if (!mention || !area) return;
+    const next = applyMention(prompt, area.selectionStart, mention, entity.name);
+    setPrompt(next.text);
+    setMention(null);
+    // Naming a resource also conditions on it: a mention is a reference, not decoration.
+    setPicked((current) => (current.includes(entity.id) ? current : [...current, entity.id]));
+    requestAnimationFrame(() => {
+      area.focus();
+      area.setSelectionRange(next.caret, next.caret);
+    });
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,12 +138,77 @@ export function FrameDialog({
       <label className="stack" style={{ gap: "0.25rem" }}>
         <span className="muted">Describe the frame</span>
         <textarea
+          ref={promptRef}
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
+          onChange={(event) => {
+            setPrompt(event.target.value);
+            trackMention(event.target.value, event.target.selectionStart);
+          }}
+          onKeyDown={(event) => {
+            if (!mention) return;
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setMention(null);
+              return;
+            }
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              if (options.length === 0) return;
+              const step = event.key === "ArrowDown" ? 1 : -1;
+              setActive((current) => (current + step + options.length) % options.length);
+              return;
+            }
+            if (event.key === "Enter" || event.key === "Tab") {
+              const option = options[active];
+              if (!option) return;
+              event.preventDefault();
+              insert(option);
+            }
+          }}
+          onBlur={() => setTimeout(() => setMention(null), 120)}
           rows={4}
           aria-label="Frame prompt"
-          placeholder="A lighthouse keeper trims the wick, amber light, salt on his hands"
+          placeholder="A lighthouse keeper trims the wick, amber light, salt on his hands. Type @ for a scene resource."
         />
+        {mention ? (
+          <ul
+            className="card"
+            aria-label="Scene resources"
+            style={{ marginTop: "0.2rem", padding: "0.3rem", listStyle: "none" }}
+          >
+            {options.length === 0 ? (
+              <li className="muted" style={{ fontSize: 12 }}>
+                {sceneEntities.length === 0
+                  ? "No scene resources yet. Attach characters or locations to this scene first."
+                  : "No name matches that."}
+              </li>
+            ) : (
+              options.map((entity, index) => (
+                <li key={entity.id}>
+                  <button
+                    type="button"
+                    aria-current={index === active}
+                    aria-label={`Mention ${entity.name}`}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      insert(entity);
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      background: index === active ? "var(--raised, #23262d)" : "transparent",
+                      border: "none",
+                      padding: "0.25rem 0.4rem",
+                    }}
+                  >
+                    {entity.name} <span className="muted">({entity.kind})</span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        ) : null}
       </label>
 
       {role === "last" ? (
