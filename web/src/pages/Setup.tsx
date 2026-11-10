@@ -102,6 +102,9 @@ export function Setup() {
     setBusy(true);
     setError(null);
     setNotice(null);
+    // Any change can invalidate a rendered request: the endpoint's path, its provider's host or auth scheme, the
+    // parameter list. The preview says "this is what would be sent", so it must not outlive the config it described.
+    setPreview(null);
     try {
       await action();
       await load();
