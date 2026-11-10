@@ -37,13 +37,19 @@ interface Candidate {
   variantId: string | null;
 }
 
+interface SheetItem {
+  role: string | null;
+  assetId: string;
+  status: string;
+}
+
 interface VariantView {
   id: string;
   name: string;
   description: string;
   prompt: string;
   version: number;
-  images: Array<{ role: string; assetId: string }>;
+  images: SheetItem[];
   missingAngles: string[];
 }
 
@@ -58,7 +64,11 @@ interface EntityView {
   libraryId: string | null;
   libraryVersion: number | null;
   version: number;
-  images: Array<{ role: string; assetId: string }>;
+  images: SheetItem[];
+  /** The composed reference sheet: the one image a model is conditioned on. */
+  compositeAssetId: string | null;
+  /** Present while the sheet is open for editing, holding the version publishing would produce. */
+  draft: { version: number; items: SheetItem[]; missingAngles: string[] } | null;
   missingAngles: string[];
   heightM: number | null;
   licence: string;
@@ -225,7 +235,6 @@ function EntityCard({
   const [description, setDescription] = useState(entity.description);
   const [styleId, setStyleId] = useState(entity.styleId ?? "");
   const [count, setCount] = useState("4");
-  const [assign, setAssign] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -286,18 +295,29 @@ function EntityCard({
     await run(() => runOp(projectId, "entity.generate", { entityId: entity.id, count: Number(count) || 4 }));
   }
 
-  const candidates = entity.candidates.filter((candidate) => candidate.variantId === null);
+  /** One dropdown per item: a rotation, disabled to keep it out of the reference image, or delete on publish. */
+  const itemValue = (item: SheetItem): string => {
+    if (item.status === "deleted") return "delete";
+    if (item.status === "disabled") return "disabled";
+    return item.role ?? "";
+  };
+
+  async function setItem(index: number, value: string) {
+    const items = (entity.draft?.items ?? []).map((item, position) => {
+      if (position !== index) return item;
+      if (value === "delete") return { ...item, status: "deleted" };
+      if (value === "disabled") return { ...item, status: "disabled" };
+      return { ...item, status: "active", role: value === "" ? null : value };
+    });
+    await run(() => runOp(projectId, "sheet.edit", { entityId: entity.id, items }));
+  }
+
+  async function openSheet() {
+    await run(() => runOp(projectId, "sheet.edit", { entityId: entity.id }));
+  }
 
   async function publish() {
-    const images = Object.entries(assign)
-      .filter(([, role]) => role !== "")
-      .map(([candidateId, role]) => ({ role, candidateId }));
-    if (images.length === 0) {
-      setError("assign at least one candidate to a role");
-      return;
-    }
-    await run(() => runOp(projectId, "sheet.select", { entityId: entity.id, images }));
-    setAssign({});
+    await run(() => runOp(projectId, "sheet.publish", { entityId: entity.id }));
   }
 
   async function remove() {
@@ -435,63 +455,121 @@ function EntityCard({
         </div>
       </div>
 
-      {entity.images.length > 0 ? (
-        <div className="row" style={{ alignItems: "flex-start" }}>
-          {entity.images.map((image) => (
-            <figure key={`${image.role}-${image.assetId}`} style={{ margin: 0 }}>
-              <img
-                src={media(image.assetId)}
-                alt={`${entity.name} ${image.role}`}
-                style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 6 }}
-              />
-              <figcaption className="muted" style={{ fontSize: 11, textAlign: "center" }}>
-                {image.role}
-              </figcaption>
-            </figure>
-          ))}
+      {entity.compositeAssetId ? (
+        <div className="row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
+          <figure style={{ margin: 0 }}>
+            <img
+              src={media(entity.compositeAssetId)}
+              alt={`${entity.name} reference sheet`}
+              style={{ width: 192, height: 128, objectFit: "contain", borderRadius: 6 }}
+            />
+            <figcaption className="muted" style={{ fontSize: 11 }}>
+              reference sheet v{entity.version} — what a shot is conditioned on
+            </figcaption>
+          </figure>
+          <div className="stack" style={{ gap: "0.3rem", flex: 1 }}>
+            <span className="muted" style={{ fontSize: 12 }}>
+              {entity.images.length} item(s) in the sheet
+              {entity.images.some((image) => image.status === "disabled")
+                ? `, ${entity.images.filter((image) => image.status === "disabled").length} kept out`
+                : ""}
+            </span>
+            <div className="row" style={{ alignItems: "flex-start" }}>
+              {entity.images.map((image) => (
+                <figure key={image.assetId} style={{ margin: 0 }}>
+                  <img
+                    src={media(image.assetId)}
+                    alt={`${entity.name} ${image.role ?? "unassigned"}`}
+                    style={{
+                      width: 72,
+                      height: 72,
+                      objectFit: "cover",
+                      borderRadius: 4,
+                      opacity: image.status === "disabled" ? 0.4 : 1,
+                    }}
+                  />
+                  <figcaption className="muted" style={{ fontSize: 10, textAlign: "center" }}>
+                    {image.role ?? "unassigned"}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
         </div>
       ) : null}
 
-      {candidates.length > 0 ? (
+      {entity.draft ? (
         <div className="stack" style={{ gap: "0.4rem" }}>
           <div className="row">
-            <strong>Pick the sheet</strong>
-            <span className="muted">assign a role to each image you keep</span>
+            <strong>Editing the sheet</strong>
+            <span className="chip">will publish as v{entity.draft.version}</span>
+            <span className="muted" style={{ fontSize: 12 }}>
+              a type marks a view; “disabled” keeps it out of the reference image; “delete” removes it on
+              publish
+            </span>
             <div className="spacer" />
             <button type="button" className="primary" onClick={() => void publish()} disabled={busy}>
-              Publish sheet
+              {busy ? "Publishing…" : "Publish sheet"}
             </button>
           </div>
-          <div className="row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
-            {candidates.map((candidate) => (
-              <div key={candidate.id} className="stack" style={{ gap: "0.25rem", width: 120 }}>
-                <img
-                  src={media(candidate.assetId)}
-                  alt="candidate"
-                  style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 6 }}
-                />
-                <select
-                  value={assign[candidate.id] ?? ""}
-                  onChange={(event) => setAssign({ ...assign, [candidate.id]: event.target.value })}
-                  aria-label={`Role for candidate ${candidate.id}`}
-                >
-                  <option value="">unused</option>
-                  {ANGLES.map((angle) => (
-                    <option key={angle} value={angle}>
-                      {angle}
-                    </option>
-                  ))}
-                  {OTHER_ROLES.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
+          {entity.draft.items.length === 0 ? (
+            <p className="empty">
+              Nothing in this sheet yet. Generate candidates and they join this set, or open the sheet again
+              after assigning types.
+            </p>
+          ) : (
+            <div className="row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
+              {entity.draft.items.map((item, index) => (
+                <div key={item.assetId} className="stack" style={{ gap: "0.25rem", width: 150 }}>
+                  <img
+                    src={media(item.assetId)}
+                    alt={`${entity.name} item ${index + 1}`}
+                    style={{
+                      width: 120,
+                      height: 120,
+                      objectFit: "cover",
+                      borderRadius: 6,
+                      opacity: item.status === "disabled" || item.status === "deleted" ? 0.4 : 1,
+                    }}
+                  />
+                  <select
+                    value={itemValue(item)}
+                    onChange={(event) => void setItem(index, event.target.value)}
+                    aria-label={`Type for item ${index + 1}`}
+                    disabled={busy}
+                    style={{ width: 150 }}
+                  >
+                    <option value="">unassigned</option>
+                    {ANGLES.map((angle) => (
+                      <option key={angle} value={angle}>
+                        {angle}
+                      </option>
+                    ))}
+                    {OTHER_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                    <option value="disabled">disabled — keep out</option>
+                    <option value="delete">delete on publish</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      ) : null}
+      ) : (
+        <div className="row">
+          <button type="button" onClick={() => void openSheet()} disabled={busy}>
+            {entity.version === 0 ? "Start the sheet" : "Edit sheet"}
+          </button>
+          <span className="muted" style={{ fontSize: 12 }}>
+            {entity.version === 0
+              ? "opening the sheet turns generation into a set you can publish"
+              : `this film uses v${entity.version} until you publish`}
+          </span>
+        </div>
+      )}
 
       {entity.variants.length > 0 ? (
         <div className="stack" style={{ gap: "0.4rem" }}>
