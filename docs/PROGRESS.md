@@ -22,6 +22,22 @@ four surfaces exist.
 | 15 | Project shape, models and look | `pnpm gate:15` | **done** | [create](../artifacts/15/new-project.png) · [project](../artifacts/15/project-created.png) · [report](../artifacts/15/report.json) |
 | 16 | Deleting a project, guarded | `pnpm gate:16` | **done** | [confirm](../artifacts/16/delete-project.png) · [after](../artifacts/16/projects-after-delete.png) · [report](../artifacts/16/report.json) |
 | 17 | References reach a remote model | `pnpm gate:17` | **done** | [transport](../artifacts/17/reference-transport.png) · [report](../artifacts/17/report.json) |
+| 18 | Project backup and restore | `pnpm gate:18` | **done** | [export](../artifacts/18/project-export.png) · [import](../artifacts/18/project-import.png) · [report](../artifacts/18/report.json) |
+
+## Slice 18 — what it proves
+
+- **A film leaves and comes back as itself.** The gate builds a project with a scene, a shot and a generated frame,
+  exports it to one 7z, deletes the project outright, imports the archive, and asserts the same project id, name and
+  revision return with the frame still served.
+- **The archive is self-describing**: a manifest inside it names the project and counts its shots, so the file can be
+  identified without opening the documents — the gate unpacks it and reads that manifest.
+- **Nothing is written before the archive is proven**: one root folder, no links, no paths outside the unpacked tree, a
+  manifest that parses, and a project document that agrees with it about which film this is.
+- **A backup cannot overwrite a film that moved on**: importing an archive whose project is already on the host is a
+  `conflict`.
+- **7-Zip is discovered, not assumed**: it joins the service catalogue and the health list, with `SLATE_7Z_PATH` as the
+  escape hatch, and a missing archiver is a `capability_missing` rather than a half-written backup. A cached capability
+  snapshot that predates the tool is discarded and re-probed instead of hiding it.
 
 ## Slice 17 — what it proves
 

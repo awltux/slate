@@ -2,6 +2,20 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## A project can be backed up and restored
+
+- **Export writes the film to one 7z**: the whole project folder — documents, media, exports and its commit history —
+  with a manifest inside that names the project, its revision, its shape and what it contains. A person can open the
+  archive and read what it is without Slate.
+- **Import puts it back as itself**: same id, same revision, same media, served again. The project returns to the host
+  list, so a deleted film can be restored from its archive.
+- **Import refuses to overwrite**: an archive whose project is already on this host is a conflict, not a silent
+  replacement — a backup must not destroy work done since it was taken.
+- **7-Zip is in the health panel**, discovered like every other tool, with `SLATE_7Z_PATH` as the escape hatch. A host
+  without it says so plainly instead of failing halfway through a backup.
+- **The archive is verified before anything is written**: one root folder, no links, no paths outside itself, and a
+  manifest that agrees with the project document.
+
 ## Reference images can reach a remote model
 
 - **A reference travels as bytes, not as a localhost URL.** Providers that fetch a URL can now be given one: images
