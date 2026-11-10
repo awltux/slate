@@ -149,28 +149,36 @@ Entity (character | location | prop | style)
   ├── description          the director's words
   ├── prompt               the agent's draft, built from the description with flourish added
   ├── styleId ─────────────► a style sheet applied to this entity's generations
-  ├── identity  SheetVersion (v1..vn)
-  │      ├── images[]      6 head rotations for a character · views for a place or a thing
+  ├── identity  SheetVersion (v1..vn) — published, and what a shot pins
+  │      ├── images[]      items: { role, assetId, status: active | disabled | deleted }
+  │      ├── compositeAssetId  the items tiled into ONE reference image — this is what is shared
   │      ├── measurements  heightM (drives the Blender proxy scale)
   │      └── rights        licence · likenessConsent
+  ├── sheetDraft SheetVersion | null — the sheet being edited; its version is the next one to publish
   ├── variants[]           wardrobe (a character) · states (a location, a prop)
-  │      └── { name, description, prompt, sheet: SheetVersion }
-  └── candidates[]         generated options awaiting a decision
+  │      └── { name, description, prompt, sheet: SheetVersion, sheetDraft }
+  └── candidates[]         generated options, and the record of what was generated
 ```
+
+**A sheet is edited, then published.** Editing never rewrites a published version: it fills `sheetDraft`, which starts
+as a copy of the published items and carries the version number publishing will produce. `sheet.publish` composes the
+items whose status is `active` into one reference image, keeps `disabled` ones listed but out of it, and drops the
+`deleted` ones — so a mistake is undone in the same gesture that made it instead of by rewriting history.
 
 **The process is always the same shape:**
 
 ```
-description ──(agent)──► prompt ──(generate)──► candidates ──(director picks)──► sheet version
+description ──(agent)──► prompt ──(generate)──► draft items ──(edit types)──► publish ──► sheet version + one image
 ```
 
 1. Someone creates the entry and writes a **description** in their own words.
 2. An agent turns that into a **prompt** — the flourish, the camera language, the negatives — and stores it beside the
    description. Both are kept, so a sheet can be traced to the sentence and the prompt that produced it.
-3. `entity.generate` renders **candidates** from the prompt, with the entity's style sheet applied. A batch is priced
-   and reserved before it runs; it is the cheapest paid step in the system.
-4. The **director picks** one or more candidates and assigns each a role. That publishes a sheet version — no free-text
-   editing, no "close enough".
+3. `entity.generate` renders **candidates** from the prompt, with the entity's style sheet applied, and adds them to the
+   sheet being edited. Generating again extends the set instead of replacing it. A batch is priced and reserved before
+   it runs; it is the cheapest paid step in the system.
+4. The **director types each item** — a rotation, or `disabled` to leave it out, or `delete` to drop it — and publishes.
+   The types are the edit; publishing is the decision.
 
 - **A character's identity sheet is six head rotations** (front, three-quarter left, profile left, back, profile right,
   three-quarter right). A partial selection publishes, but reports what is missing, because a usable sheet with five

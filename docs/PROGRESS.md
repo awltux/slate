@@ -18,6 +18,24 @@ four surfaces exist.
 | 11 | Setup: AI connections | `pnpm gate:11` | **done** | [setup](../artifacts/11/setup.png) · [report](../artifacts/11/report.json) |
 | 12 | Scenes, frames and the shoot | `pnpm gate:12` | **done** | [plan](../artifacts/12/plan-expanded.png) · [report](../artifacts/12/report.json) |
 | 13 | Model profiles per project | `pnpm gate:13` | **done** | [profiles](../artifacts/13/binding-sets.png) · [project](../artifacts/13/project-binding.png) · [report](../artifacts/13/report.json) |
+| 14 | Editable sheets, one reference image | `pnpm gate:14` | **done** | [editor](../artifacts/14/sheet-editor.png) · [published](../artifacts/14/sheet-published.png) · [report](../artifacts/14/report.json) |
+
+## Slice 14 — what it proves
+
+- **A sheet is edited rather than rebuilt.** Opening it starts from the published items, and generating more candidates
+  adds them to the same set — the gate proves that a second generation leaves one published sheet plus five draft
+  items, not two.
+- **An item's type is the edit.** A rotation or a kind, `disabled` to keep it out of the picture, `delete` to remove it
+  when the sheet is published; the type dropdown carries all three.
+- **Publishing composes one reference image** from the active items, and that single image is what a scene backdrop, a
+  cut fallback and the app library's cover actually point at. A disabled item stays listed but is not in the composite;
+  a deleted one is gone (`dropped` reports it).
+- **Only a publish advances the version**, so an edit in progress does not make a shot pinned to v3 stale — the gate
+  asserts the shot is fresh after the edit and stale after the publish.
+- **The reference sheet travels**: pushing the entry to the app library makes the composite its cover, and pulling
+  re-ingests it.
+- **A gate whose browser step fails now fails.** The harness used to record a skipped UI step and still report
+  `passed`, which meant a broken page could never fail its own gate.
 
 ## Slice 13 — what it proves
 

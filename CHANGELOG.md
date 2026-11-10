@@ -2,6 +2,19 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Sheets you edit, and one reference image per sheet
+
+- **A sheet is edited, not rebuilt.** Opening a sheet starts from the items already published, and generating
+  candidates adds the new images to that same set — a second pass refines the sheet instead of throwing it away.
+- **Every item has a type**: a head rotation or a kind, `disabled` to keep it out of the reference image, or `delete`
+  to remove it when the sheet is published.
+- **Publishing composes one reference sheet** from the active items: a single tiled image, and that is what a shot, a
+  scene backdrop and the app library actually share. Disabled items stay listed but out of the picture; deleted ones
+  are gone.
+- **The version only advances on publish**, so a shot pinned to v3 is not made stale by an edit that is still in
+  progress.
+- **A pushed entry carries its reference sheet** to the app library as the item's cover, and a pull brings it back.
+
 ## Model profiles, chosen per project
 
 - **A binding set is a profile, and there can be any number of them.** "Draft, cheap" and "Final, FLUX" are two sets
