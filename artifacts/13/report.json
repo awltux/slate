@@ -1,7 +1,7 @@
 {
   "gate": 13,
   "status": "passed",
-  "base": "http://127.0.0.1:64435",
+  "base": "http://127.0.0.1:54753",
   "steps": [
     "endpoints: two image models and one text model",
     "profiles: Draft (cheap) and Final (FLUX dev)",

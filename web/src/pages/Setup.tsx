@@ -379,12 +379,10 @@ export function Setup() {
 function Field({
   id,
   label,
-  hint,
   children,
 }: {
   id: string;
   label: string;
-  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -393,11 +391,6 @@ function Field({
         {label}
       </label>
       {children}
-      {hint ? (
-        <span className="muted" style={{ fontSize: 11 }}>
-          {hint}
-        </span>
-      ) : null}
     </div>
   );
 }
@@ -425,7 +418,7 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
       }}
     >
       <div className="row" style={{ alignItems: "flex-start" }}>
-        <Field id="provider-name" label="Name" hint="how you will refer to it here">
+        <Field id="provider-name" label="Name">
           <input
             id="provider-name"
             value={name}
@@ -434,7 +427,7 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
             aria-label="Provider name"
           />
         </Field>
-        <Field id="provider-kind" label="Kind" hint="a label, not a mode">
+        <Field id="provider-kind" label="Kind">
           <input
             id="provider-kind"
             value={kind}
@@ -443,7 +436,7 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
             aria-label="Provider kind"
           />
         </Field>
-        <Field id="provider-base-url" label="Base URL" hint="scheme + host only; each endpoint adds its path">
+        <Field id="provider-base-url" label="Base URL">
           <input
             id="provider-base-url"
             value={baseUrl}
@@ -455,7 +448,7 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
       </div>
 
       <div className="row" style={{ alignItems: "flex-start" }}>
-        <Field id="provider-header" label="Key header" hint="the header the provider reads your key from">
+        <Field id="provider-header" label="Key header">
           <input
             id="provider-header"
             value={authHeader}
@@ -464,11 +457,7 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
             aria-label="Auth header"
           />
         </Field>
-        <Field
-          id="provider-scheme"
-          label="Key format"
-          hint="{{key}} is replaced with the secret; the prefix is provider-specific"
-        >
+        <Field id="provider-scheme" label="Key format">
           <input
             id="provider-scheme"
             value={authScheme}
@@ -477,7 +466,7 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
             aria-label="Auth scheme"
           />
         </Field>
-        <Field id="provider-key" label="API key" hint="stored write-only in the host, never shown again">
+        <Field id="provider-key" label="API key">
           <input
             id="provider-key"
             type="password"
@@ -640,7 +629,7 @@ function BindingSetForm({
         setDescription("");
       }}
     >
-      <Field id="binding-set-name" label="New profile" hint="e.g. Draft, cheap / Final, FLUX">
+      <Field id="binding-set-name" label="New profile">
         <input
           id="binding-set-name"
           value={name}
@@ -649,11 +638,7 @@ function BindingSetForm({
           aria-label="Binding set name"
         />
       </Field>
-      <Field
-        id="binding-set-description"
-        label="Description"
-        hint="what it is for, and roughly what it costs"
-      >
+      <Field id="binding-set-description" label="Description">
         <input
           id="binding-set-description"
           value={description}
