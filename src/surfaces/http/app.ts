@@ -1,5 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -597,6 +601,68 @@ export function createApp(options: AppOptions): Hono {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
     });
+  });
+
+  // An archive is downloaded by name, never by path, and only to the owner: it contains the whole film.
+  app.get("/api/exports/:name", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to read an archive" });
+    if (identity.role !== "owner")
+      throw new HTTPException(403, { message: "only the owner may take a copy" });
+
+    const name = c.req.param("name");
+    if (!/^[a-z0-9-]+\.7z$/u.test(name)) throw new HTTPException(400, { message: "invalid archive name" });
+
+    const file = join(options.home, "exports", name);
+    const info = await stat(file).catch(() => null);
+    if (!info?.isFile()) throw new HTTPException(404, { message: "no such archive" });
+
+    return c.body(Readable.toWeb(createReadStream(file)) as ReadableStream, 200, {
+      "content-type": "application/x-7z-compressed",
+      "content-length": String(info.size),
+      // The browser's own save dialog is the file widget: it is where a person chooses where a copy goes.
+      "content-disposition": `attachment; filename="${name}"`,
+      "cache-control": "no-store",
+    });
+  });
+
+  // An archive chosen in the browser arrives as bytes, is written to a temporary file for the operation to verify,
+  // and is removed either way. Streaming keeps a large project out of memory.
+  app.post("/api/imports", async (c) => {
+    const identity = await readIdentity(c, await secret());
+    if (!identity) throw new HTTPException(401, { message: "sign in to import a project" });
+    if (!hasValidCsrf(c, identity.session))
+      throw new HTTPException(403, { message: "missing or invalid CSRF token" });
+    if (identity.role !== "owner") throw new HTTPException(403, { message: "only the owner may import" });
+
+    const body = c.req.raw.body;
+    if (!body) throw new HTTPException(400, { message: "no archive was sent" });
+
+    const work = await mkdtemp(join(tmpdir(), "slate-upload-"));
+    const file = join(work, "upload.7z");
+    try {
+      await pipeline(
+        Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]),
+        createWriteStream(file),
+      );
+      const result = await registry.execute(
+        "project.import",
+        { archive: file },
+        {
+          root: options.home,
+          home: options.home,
+          actor: await displayNameFor(identity.userId),
+          clock: options.clock,
+          run: options.run,
+          vendorDir: options.vendorDir,
+          privileged: true,
+          tool: toolResolver,
+        },
+      );
+      return c.json(result);
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
   });
 
   // Media is addressed by asset id, never by path, and served only to a signed-in member of this host.
