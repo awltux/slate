@@ -4,6 +4,7 @@ import {
   type BindingSetOption,
   type PresenceUser,
   type ProjectSummary,
+  exportProject,
   framePixels,
   listBindingSets,
   pingPresence,
@@ -91,6 +92,11 @@ export function ProjectView({
   const [confirmName, setConfirmName] = useState("");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportTo, setExportTo] = useState("");
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
   const [draft, setDraft] = useState(project.name);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -149,6 +155,23 @@ export function ProjectView({
   useEffect(() => {
     if (editing) nameInput.current?.focus();
   }, [editing]);
+
+  /** Export writes the whole folder to one archive. The destination is the owner's; empty means the host's exports. */
+  async function exportArchive() {
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      const archived = await exportProject(project.id, exportTo.trim());
+      setExportNotice(
+        `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB at revision ${archived.revision}`,
+      );
+      setExporting(false);
+    } catch (caught) {
+      setExportError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+    } finally {
+      setExportBusy(false);
+    }
+  }
 
   /** The typed name is checked by the operation as well: the form cannot be the only guard on an irreversible delete. */
   async function removeProject() {
@@ -240,9 +263,54 @@ export function ProjectView({
                 Delete
               </button>
             ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  setExporting((open) => !open);
+                  setExportError(null);
+                }}
+                title="Write this project to a 7z archive"
+                aria-label="Export this project"
+              >
+                Export
+              </button>
+            ) : null}
           </h1>
         )}
         {renameError ? <p className="error">{renameError}</p> : null}
+        {exportNotice ? <p className="muted">{exportNotice}</p> : null}
+        {exporting && canDelete ? (
+          <div className="card stack" style={{ marginTop: "0.4rem" }}>
+            <strong>Export “{project.name}”</strong>
+            <p className="muted" style={{ margin: 0 }}>
+              The whole folder — documents, media and exports — goes into one 7z with a manifest describing
+              it. Leave the folder empty to write into the host&apos;s exports folder.
+            </p>
+            <div className="row">
+              <input
+                value={exportTo}
+                onChange={(event) => setExportTo(event.target.value)}
+                placeholder="host exports folder"
+                aria-label="Export destination folder"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void exportArchive()}
+                disabled={exportBusy}
+              >
+                {exportBusy ? "Archiving…" : "Export"}
+              </button>
+              <button type="button" onClick={() => setExporting(false)} disabled={exportBusy}>
+                Close
+              </button>
+            </div>
+            {exportError ? <p className="error">{exportError}</p> : null}
+          </div>
+        ) : null}
         {sets.length > 0 && canRename ? (
           <div className="row" style={{ gap: "0.4rem", marginTop: "0.4rem" }}>
             <label htmlFor="model-profile" className="muted" style={{ fontSize: 12 }}>

@@ -6,6 +6,7 @@ import {
   type ProjectSummary,
   createProject,
   framePixels,
+  importProject,
   listBindingSetOptions,
   listLibraryStyles,
 } from "../api.js";
@@ -41,6 +42,7 @@ export function Projects({ projects, onCreated, onOpen }: Props) {
   const [styles, setStyles] = useState<LibraryStyle[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [archive, setArchive] = useState("");
 
   // Both lists are host state, so they are readable before any project exists; a caller who cannot read one simply
   // gets the host default instead of a broken form.
@@ -60,6 +62,23 @@ export function Projects({ projects, onCreated, onOpen }: Props) {
       cancelled = true;
     };
   }, []);
+
+  /** Restoring is not creating: the archive carries the id, revision and media, so the film returns as itself. */
+  async function restore(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const imported = await importProject(archive.trim());
+      setArchive("");
+      await onCreated();
+      onOpen(imported.projectId);
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -218,6 +237,27 @@ export function Projects({ projects, onCreated, onOpen }: Props) {
             {busy ? "Creating…" : "Create project"}
           </button>
         </div>
+      </form>
+
+      <form className="card stack" onSubmit={restore}>
+        <h2>Import a project</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          Restore an archive written by Export. The film comes back with its id, revision and media; an
+          archive whose project is already on this host is refused rather than overwritten.
+        </p>
+        <div className="row">
+          <input
+            value={archive}
+            onChange={(event) => setArchive(event.target.value)}
+            placeholder="D:\backups\the-last-light-7f3a1c2d-r12.7z"
+            aria-label="Archive to import"
+            style={{ flex: 1 }}
+          />
+          <button className="primary" type="submit" disabled={busy || archive.trim() === ""}>
+            {busy ? "Working…" : "Import"}
+          </button>
+        </div>
+        {error ? <p className="error">{error}</p> : null}
       </form>
     </div>
   );

@@ -277,6 +277,34 @@ export async function runGlobalOp<T>(name: string, input: unknown): Promise<{ da
   return { data: payload.data, version: payload.version ?? 0 };
 }
 
+export interface ExportedArchive {
+  projectId: string;
+  archiveName: string;
+  bytes: number;
+  sha256: string;
+  revision: number;
+}
+
+/** Writes the project to a 7z archive; an empty destination means the host's exports folder. */
+export function exportProject(projectId: string, destination: string): Promise<ExportedArchive> {
+  return runOp<ExportedArchive>(projectId, "project.export", { destination: destination || undefined }).then(
+    (result) => result.data,
+  );
+}
+
+export interface ImportedProject {
+  projectId: string;
+  name: string;
+  revision: number;
+  files: number;
+  exportedAt: string;
+}
+
+/** Restores a project from an archive written by exportProject. */
+export function importProject(archive: string): Promise<ImportedProject> {
+  return runGlobalOp<ImportedProject>("project.import", { archive }).then((result) => result.data);
+}
+
 export interface ReferenceUploadResult {
   provider: string;
   via: string;
