@@ -48,7 +48,9 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `previz.get` | read | `previz_get` | The sets and every shot's blockout state. |
 | `project.create` | write | `project_create` | Create a project folder with its documents and genesis commit. |
 | `project.delete` | destructive | `project_delete` | Delete a project from this host, keeping its folder unless told otherwise. |
+| `project.export` | read | `project_export` | Write the project to a 7z archive with a manifest describing it. |
 | `project.history` | read | `project_history` | Recent commits: what changed, who changed it and why. |
+| `project.import` | write | `project_import` | Restore a project from a 7z archive written by project.export. |
 | `project.rename` | write | `project_rename` | Change the project name. |
 | `project.set-bindings` | write | `project_set-bindings` | Choose the binding set this project generates with (null uses the host default). |
 | `prompt.expand` | spend | `prompt_expand` | Turn a description into a generation prompt, using the style sheet when one is applied. |
@@ -1309,6 +1311,22 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 }
 ```
 
+### `project.export`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "destination": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
 ### `project.history`
 
 ```json
@@ -1322,6 +1340,25 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "default": 20
     }
   },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `project.import`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "archive": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "archive"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
