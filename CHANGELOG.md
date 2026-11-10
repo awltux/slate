@@ -46,6 +46,8 @@ User-visible changes per slice. Internal refactors are not listed.
   list, so a deleted film can be restored from its archive.
 - **Import refuses to overwrite**: an archive whose project is already on this host is a conflict, not a silent
   replacement — a backup must not destroy work done since it was taken.
+- **A missing tool says how to install it.** Every service carries the page to download it from and the version Slate
+  relies on, shown in the health row when it is red or amber - a red dot alone tells you nothing to do.
 - **7-Zip is in the health panel**, discovered like every other tool, with `SLATE_7Z_PATH` as the escape hatch. A host
   without it says so plainly instead of failing halfway through a backup.
 - **The archive is verified before anything is written**: one root folder, no links, no paths outside itself, and a

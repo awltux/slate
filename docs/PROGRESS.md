@@ -59,6 +59,9 @@ four surfaces exist.
   which is how a fresh host starts — and the cache moved with it: one snapshot in the home, not one copy per film.
 - **Every tool is listed once**, including the archiver, with its version and (for the owner) the install path that
   explains a surprise.
+- **A tool that is missing is actionable**: the row links to its download page and states the version Slate relies on,
+  so a red dot is a next step rather than a diagnosis with no treatment. The gate asserts every non-green row carries an
+  https link and a requirement, and that at least one such row exists on the gate host.
 - **Probing again is the operator's fix**: it refreshes in place, so a tool installed a minute ago appears.
 
 ## Slice 18 — what it proves
