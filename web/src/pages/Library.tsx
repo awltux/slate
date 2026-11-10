@@ -202,83 +202,84 @@ export function Library({ projectId }: { projectId: string }) {
         </p>
       </div>
 
-      <div className="card stack">
-        <div className="row">
-          <h2 style={{ margin: 0 }}>How each type is written</h2>
-          <div className="spacer" />
-          <span className="muted" style={{ fontSize: 12 }}>
+      <details className="card">
+        <summary style={{ cursor: "pointer" }}>
+          <strong>How each type is written</strong>
+          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: 12 }}>
             the instructions a text model is given when it turns your words into a prompt
           </span>
-        </div>
-        {typePrompts.map((entry) => (
-          <details key={entry.kind} style={{ borderTop: "1px solid var(--line)", paddingTop: "0.4rem" }}>
-            <summary
-              className="row"
-              style={{ cursor: "pointer", gap: "0.5rem" }}
-              aria-label={`Prompt for ${entry.kind}`}
-            >
-              <span className="chip">{entry.kind}</span>
-              <span className="muted" style={{ fontSize: 12 }}>
-                {entry.source === "project"
-                  ? "this film's own"
-                  : entry.source === "global"
-                    ? "the host's"
-                    : "built-in"}
-                {entry.project ? " · edited here" : ""}
-              </span>
-            </summary>
-            {editingKind === entry.kind ? (
-              <div className="stack" style={{ gap: "0.4rem", marginTop: "0.4rem" }}>
-                <textarea
-                  value={draftPrompt}
-                  onChange={(event) => setDraftPrompt(event.target.value)}
-                  rows={4}
-                  aria-label={`Instructions for ${entry.kind}`}
-                  placeholder={entry.effective}
-                />
-                <div className="row">
+        </summary>
+        <div className="stack" style={{ marginTop: "0.6rem" }}>
+          {typePrompts.map((entry) => (
+            <details key={entry.kind} style={{ borderTop: "1px solid var(--line)", paddingTop: "0.4rem" }}>
+              <summary
+                className="row"
+                style={{ cursor: "pointer", gap: "0.5rem" }}
+                aria-label={`Prompt for ${entry.kind}`}
+              >
+                <span className="chip">{entry.kind}</span>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {entry.source === "project"
+                    ? "this film's own"
+                    : entry.source === "global"
+                      ? "the host's"
+                      : "built-in"}
+                  {entry.project ? " · edited here" : ""}
+                </span>
+              </summary>
+              {editingKind === entry.kind ? (
+                <div className="stack" style={{ gap: "0.4rem", marginTop: "0.4rem" }}>
+                  <textarea
+                    value={draftPrompt}
+                    onChange={(event) => setDraftPrompt(event.target.value)}
+                    rows={4}
+                    aria-label={`Instructions for ${entry.kind}`}
+                    placeholder={entry.effective}
+                  />
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => void saveTypePrompt(entry.kind, draftPrompt)}
+                    >
+                      {busy ? "Saving…" : "Save for this film"}
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => void saveTypePrompt(entry.kind, "")}>
+                      Use the global prompt
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => setEditingKind(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                    {entry.global
+                      ? `The host's wording: ${entry.global}`
+                      : "The host uses the built-in wording."}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="muted" style={{ margin: "0.4rem 0", fontSize: 13, whiteSpace: "pre-wrap" }}>
+                    {entry.effective}
+                  </p>
                   <button
                     type="button"
-                    className="primary"
-                    disabled={busy}
-                    onClick={() => void saveTypePrompt(entry.kind, draftPrompt)}
+                    onClick={() => {
+                      setEditingKind(entry.kind);
+                      // Start from the text actually in force: an empty box with a hint cannot be edited, and the
+                      // usual edit is a small change to the wording that is already there.
+                      setDraftPrompt(entry.effective);
+                    }}
                   >
-                    {busy ? "Saving…" : "Save for this film"}
+                    Edit for this film
                   </button>
-                  <button type="button" disabled={busy} onClick={() => void saveTypePrompt(entry.kind, "")}>
-                    Use the global prompt
-                  </button>
-                  <button type="button" disabled={busy} onClick={() => setEditingKind(null)}>
-                    Cancel
-                  </button>
-                </div>
-                <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                  {entry.global
-                    ? `The host's wording: ${entry.global}`
-                    : "The host uses the built-in wording."}
-                </p>
-              </div>
-            ) : (
-              <>
-                <p className="muted" style={{ margin: "0.4rem 0", fontSize: 13, whiteSpace: "pre-wrap" }}>
-                  {entry.effective}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingKind(entry.kind);
-                    // Start from the text actually in force: an empty box with a hint cannot be edited, and the
-                    // usual edit is a small change to the wording that is already there.
-                    setDraftPrompt(entry.effective);
-                  }}
-                >
-                  Edit for this film
-                </button>
-              </>
-            )}
-          </details>
-        ))}
-      </div>
+                </>
+              )}
+            </details>
+          ))}
+        </div>
+      </details>
 
       <form className="card stack" onSubmit={create}>
         <div className="row">

@@ -2675,6 +2675,8 @@ async function browserFlow(steps: string[]): Promise<void> {
       const openCount = await page.locator("details[open]").count();
       assert(openCount === 0, "the type prompts must start minimised");
 
+      // The section itself is a closed title: six sets of instructions are reference material, not the page.
+      await page.click('summary:has-text("How each type is written")');
       await page.click('summary[aria-label="Prompt for character"]');
       await page.waitForSelector('button:has-text("Edit for this film")', { timeout: 20_000 });
       await page.click('button:has-text("Edit for this film")');
