@@ -11,7 +11,15 @@ interface ShotSummary {
   description: string;
   stale: boolean;
   staleCause: string | null;
+  frames: { board?: string; first?: string; last?: string };
   readiness: { pass: number; warn: number; fail: number };
+}
+
+interface SceneEntity {
+  entityId: string;
+  name: string;
+  kind: string;
+  coverAssetId: string | null;
 }
 
 interface SceneLocation {
@@ -20,9 +28,10 @@ interface SceneLocation {
   coverAssetId: string | null;
 }
 
-interface LocationOption {
+interface LibraryOption {
   id: string;
   name: string;
+  kind: string;
 }
 
 interface SceneSummary {
@@ -31,6 +40,7 @@ interface SceneSummary {
   heading: { intExt: string; location: string; timeOfDay: string };
   synopsis: string;
   body: string;
+  entities: SceneEntity[];
   location: SceneLocation | null;
   staleCount: number;
   shots: ShotSummary[];
@@ -60,7 +70,8 @@ export function Plan({ projectId }: { projectId: string }) {
   const [scenes, setScenes] = useState<SceneSummary[] | null>(null);
   const [vocabulary, setVocabulary] = useState<Vocabulary>(FALLBACK_VOCABULARY);
   const [error, setError] = useState<string | null>(null);
-  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [library, setLibrary] = useState<LibraryOption[]>([]);
+  const [openScene, setOpenScene] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [conflict, setConflict] = useState(false);
 
@@ -69,13 +80,14 @@ export function Plan({ projectId }: { projectId: string }) {
       const [list, words, third] = await Promise.all([
         runOp<{ scenes: SceneSummary[] }>(projectId, "scene.list", {}),
         runOp<Vocabulary>(projectId, "plan.vocabulary", {}),
-        runOp<{ entities: Array<{ id: string; name: string; kind: string }> }>(projectId, "entity.list", {
-          kind: "location",
-        }),
+        runOp<{ entities: Array<{ id: string; name: string; kind: string }> }>(projectId, "entity.list", {}),
       ]);
       setScenes(list.data.scenes);
       setVocabulary(words.data);
-      setLocations(third.data.entities.map((entity) => ({ id: entity.id, name: entity.name })));
+      setLibrary(
+        third.data.entities.map((entity) => ({ id: entity.id, name: entity.name, kind: entity.kind })),
+      );
+      setOpenScene((current) => current ?? list.data.scenes[0]?.id ?? null);
       setRevision(list.version);
       setConflict(false);
     } catch (caught) {
@@ -149,7 +161,9 @@ export function Plan({ projectId }: { projectId: string }) {
           scene={scene}
           vocabulary={vocabulary}
           revision={revision}
-          locations={locations}
+          library={library}
+          open={openScene === scene.id}
+          onToggle={() => setOpenScene(openScene === scene.id ? null : scene.id)}
           onConflict={() => setConflict(true)}
           onChange={load}
         />
@@ -239,7 +253,9 @@ function SceneCard({
   scene,
   vocabulary,
   revision,
-  locations,
+  library,
+  open,
+  onToggle,
   onConflict,
   onChange,
 }: {
@@ -247,7 +263,9 @@ function SceneCard({
   scene: SceneSummary;
   vocabulary: Vocabulary;
   revision: number;
-  locations: LocationOption[];
+  library: LibraryOption[];
+  open: boolean;
+  onToggle: () => void;
   onConflict: () => void;
   onChange: () => Promise<void>;
 }) {
@@ -261,13 +279,13 @@ function SceneCard({
   const [editingScene, setEditingScene] = useState(false);
   const [editingShot, setEditingShot] = useState<string | null>(null);
 
-  async function setLocation(entityId: string | null) {
+  async function setEntities(entityIds: string[]) {
     setBusy(true);
     setError(null);
     try {
-      await runOp(projectId, "scene.set-location", {
+      await runOp(projectId, "scene.set-entities", {
         sceneId: scene.id,
-        entityId,
+        entityIds,
         expectedRevision: revision,
       });
       await onChange();
@@ -278,6 +296,25 @@ function SceneCard({
       setBusy(false);
     }
   }
+
+  async function generateFrames(shotId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      for (const role of ["first", "last"] as const) {
+        await runOp(projectId, "frame.generate", { shotId, role, expectedRevision: revision });
+      }
+      await onChange();
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "conflict") onConflict();
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const attachedIds = scene.entities.map((entity) => entity.entityId);
+  const unattached = library.filter((item) => !attachedIds.includes(item.id));
 
   async function addShot(event: React.FormEvent) {
     event.preventDefault();
@@ -314,7 +351,38 @@ function SceneCard({
 
   return (
     <div className="card stack">
-      {editingScene ? (
+      <div className="row">
+        <button
+          type="button"
+          className="link-button"
+          aria-expanded={open}
+          aria-label={`${open ? "Collapse" : "Expand"} scene ${scene.number}`}
+          onClick={onToggle}
+        >
+          {open ? "▾" : "▸"}
+        </button>
+        <h2 style={{ marginBottom: "0.15rem" }}>
+          {scene.number}. {scene.heading.intExt} {scene.heading.location} — {scene.heading.timeOfDay}
+        </h2>
+        <span className="chip">
+          {scene.shots.length} shot{scene.shots.length === 1 ? "" : "s"}
+        </span>
+        {scene.entities.length > 0 ? <span className="chip">{scene.entities.length} items</span> : null}
+        {scene.staleCount > 0 ? <span className="chip warn">{scene.staleCount} stale</span> : null}
+        <div className="spacer" />
+        {open ? (
+          <button
+            type="button"
+            className="link-button"
+            aria-label="Edit scene"
+            onClick={() => setEditingScene(true)}
+          >
+            Edit scene
+          </button>
+        ) : null}
+      </div>
+
+      {!open ? null : editingScene ? (
         <SceneEditor
           projectId={projectId}
           scene={scene}
@@ -329,42 +397,48 @@ function SceneCard({
         />
       ) : (
         <div>
-          <div className="row">
-            <h2 style={{ marginBottom: "0.15rem" }}>
-              {scene.number}. {scene.heading.intExt} {scene.heading.location} — {scene.heading.timeOfDay}
-            </h2>
-            <button
-              type="button"
-              className="link-button"
-              aria-label="Edit scene"
-              onClick={() => setEditingScene(true)}
-            >
-              Edit scene
-            </button>
-          </div>
-          <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
-            <select
-              value={scene.location?.entityId ?? ""}
-              aria-label={`Location for scene ${scene.number}`}
-              onChange={(event) => void setLocation(event.target.value || null)}
-              disabled={busy}
-            >
-              <option value="">no location linked</option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
+          <div className="row" style={{ alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+            {scene.entities.length === 0 ? (
+              <span className="muted">No library items attached.</span>
+            ) : (
+              scene.entities.map((entity) => (
+                <span className="chip" key={entity.entityId}>
+                  {entity.name}
+                  <span className="muted"> · {entity.kind}</span>
+                  <button
+                    type="button"
+                    className="link-button"
+                    aria-label={`Detach ${entity.name}`}
+                    disabled={busy}
+                    onClick={() => void setEntities(attachedIds.filter((id) => id !== entity.entityId))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))
+            )}
             {scene.location?.coverAssetId ? (
               <img
                 src={`/p/${projectId}/media/${scene.location.coverAssetId}`}
                 alt={`Backdrop for scene ${scene.number}`}
                 style={{ width: 96, height: 54, objectFit: "cover", borderRadius: 4, background: "#000" }}
               />
-            ) : scene.location ? (
-              <span className="muted">linked, but the location has no sheet yet</span>
             ) : null}
+            <select
+              value=""
+              aria-label={`Attach a library item to scene ${scene.number}`}
+              disabled={busy || unattached.length === 0}
+              onChange={(event) => {
+                if (event.target.value) void setEntities([...attachedIds, event.target.value]);
+              }}
+            >
+              <option value="">{unattached.length === 0 ? "no more items" : "attach item…"}</option>
+              {unattached.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {item.kind}
+                </option>
+              ))}
+            </select>
           </div>
           <p className="muted" style={{ margin: 0 }}>
             {scene.shots.length} shot{scene.shots.length === 1 ? "" : "s"}
@@ -374,129 +448,184 @@ function SceneCard({
         </div>
       )}
 
-      {scene.shots.length > 0 ? (
-        <table>
-          <thead>
-            <tr>
-              <th style={{ width: 70 }}>Shot</th>
-              <th style={{ width: 150 }}>Framing</th>
-              <th style={{ width: 70 }}>Time</th>
-              <th>Description</th>
-              <th style={{ width: 150 }}>Readiness</th>
-              <th style={{ width: 60 }} />
-            </tr>
-          </thead>
-          <tbody>
-            {scene.shots.map((shot) =>
-              editingShot === shot.id ? (
-                <ShotEditorRow
-                  key={shot.id}
-                  projectId={projectId}
-                  shot={shot}
-                  vocabulary={vocabulary}
-                  revision={revision}
-                  onConflict={onConflict}
-                  onDone={async () => {
-                    setEditingShot(null);
-                    await onChange();
-                  }}
-                  onCancel={() => setEditingShot(null)}
-                />
-              ) : (
-                <tr key={shot.id}>
-                  <td className="mono">{shot.number}</td>
-                  <td>
-                    {shot.size} · {shot.movement}
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      {shot.angle}
-                    </div>
-                  </td>
-                  <td className="mono">{shot.durationSec}s</td>
-                  <td>
-                    {shot.description || <span className="muted">—</span>}
-                    {shot.stale ? (
-                      <div className="row" style={{ marginTop: "0.35rem" }}>
-                        <span className="chip warn">stale</span>
-                        <span className="muted" style={{ fontSize: 12 }}>
-                          {shot.staleCause}
-                        </span>
-                        <button type="button" onClick={() => void rebase(shot.id)}>
-                          Re-check
-                        </button>
-                      </div>
-                    ) : null}
-                  </td>
-                  <td>
-                    <span className="dot green" />
-                    {shot.readiness.pass}
-                    {shot.readiness.warn > 0 ? (
-                      <>
-                        <span className="dot amber" style={{ marginLeft: 10 }} />
-                        {shot.readiness.warn}
-                      </>
-                    ) : null}
-                    {shot.readiness.fail > 0 ? (
-                      <>
-                        <span className="dot red" style={{ marginLeft: 10 }} />
-                        {shot.readiness.fail}
-                      </>
-                    ) : null}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      aria-label={`Edit shot ${shot.number}`}
-                      onClick={() => setEditingShot(shot.id)}
-                    >
-                      Edit
-                    </button>
-                  </td>
+      {!open ? null : (
+        <>
+          {scene.shots.length > 0 ? (
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: 70 }}>Shot</th>
+                  <th style={{ width: 150 }}>Framing</th>
+                  <th style={{ width: 70 }}>Time</th>
+                  <th>Description</th>
+                  <th style={{ width: 170 }}>Start / end</th>
+                  <th style={{ width: 150 }}>Readiness</th>
+                  <th style={{ width: 60 }} />
                 </tr>
-              ),
-            )}
-          </tbody>
-        </table>
-      ) : (
-        <p className="empty">No shots yet. A scene becomes a shot list, one framing at a time.</p>
-      )}
+              </thead>
+              <tbody>
+                {scene.shots.map((shot) =>
+                  editingShot === shot.id ? (
+                    <ShotEditorRow
+                      key={shot.id}
+                      projectId={projectId}
+                      shot={shot}
+                      vocabulary={vocabulary}
+                      revision={revision}
+                      onConflict={onConflict}
+                      onDone={async () => {
+                        setEditingShot(null);
+                        await onChange();
+                      }}
+                      onCancel={() => setEditingShot(null)}
+                    />
+                  ) : (
+                    <tr key={shot.id}>
+                      <td className="mono">{shot.number}</td>
+                      <td>
+                        {shot.size} · {shot.movement}
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {shot.angle}
+                        </div>
+                      </td>
+                      <td className="mono">{shot.durationSec}s</td>
+                      <td>
+                        {shot.description || <span className="muted">—</span>}
+                        {shot.stale ? (
+                          <div className="row" style={{ marginTop: "0.35rem" }}>
+                            <span className="chip warn">stale</span>
+                            <span className="muted" style={{ fontSize: 12 }}>
+                              {shot.staleCause}
+                            </span>
+                            <button type="button" onClick={() => void rebase(shot.id)}>
+                              Re-check
+                            </button>
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        <div className="row" style={{ gap: "0.25rem" }}>
+                          {shot.frames.first ? (
+                            <img
+                              src={`/p/${projectId}/media/${shot.frames.first}`}
+                              alt={`Start frame for shot ${shot.number}`}
+                              style={{
+                                width: 70,
+                                height: 40,
+                                objectFit: "cover",
+                                borderRadius: 4,
+                                background: "#000",
+                              }}
+                            />
+                          ) : (
+                            <span className="muted" style={{ fontSize: 12 }}>
+                              no start
+                            </span>
+                          )}
+                          {shot.frames.last ? (
+                            <img
+                              src={`/p/${projectId}/media/${shot.frames.last}`}
+                              alt={`End frame for shot ${shot.number}`}
+                              style={{
+                                width: 70,
+                                height: 40,
+                                objectFit: "cover",
+                                borderRadius: 4,
+                                background: "#000",
+                              }}
+                            />
+                          ) : (
+                            <span className="muted" style={{ fontSize: 12 }}>
+                              no end
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            disabled={busy}
+                            aria-label={`Generate frames for shot ${shot.number}`}
+                            onClick={() => void generateFrames(shot.id)}
+                          >
+                            Frames
+                          </button>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="dot green" />
+                        {shot.readiness.pass}
+                        {shot.readiness.warn > 0 ? (
+                          <>
+                            <span className="dot amber" style={{ marginLeft: 10 }} />
+                            {shot.readiness.warn}
+                          </>
+                        ) : null}
+                        {shot.readiness.fail > 0 ? (
+                          <>
+                            <span className="dot red" style={{ marginLeft: 10 }} />
+                            {shot.readiness.fail}
+                          </>
+                        ) : null}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          aria-label={`Edit shot ${shot.number}`}
+                          onClick={() => setEditingShot(shot.id)}
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+          ) : (
+            <p className="empty">No shots yet. A scene becomes a shot list, one framing at a time.</p>
+          )}
 
-      <form className="row" onSubmit={addShot}>
-        <select value={size} onChange={(event) => setSize(event.target.value)} aria-label="Shot size">
-          {vocabulary.shotSizes.map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
-        <select value={angle} onChange={(event) => setAngle(event.target.value)} aria-label="Camera angle">
-          {vocabulary.shotAngles.map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
-        <select
-          value={movement}
-          onChange={(event) => setMovement(event.target.value)}
-          aria-label="Camera movement"
-        >
-          {vocabulary.shotMovements.map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
-        <input
-          value={duration}
-          onChange={(event) => setDuration(event.target.value)}
-          inputMode="numeric"
-          style={{ width: 70 }}
-          aria-label="Duration in seconds"
-        />
-        <input
-          placeholder="What happens in this shot?"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          style={{ flex: 1 }}
-        />
-        <button type="submit" disabled={busy}>
-          Add shot
-        </button>
-      </form>
+          <form className="row" onSubmit={addShot}>
+            <select value={size} onChange={(event) => setSize(event.target.value)} aria-label="Shot size">
+              {vocabulary.shotSizes.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+            <select
+              value={angle}
+              onChange={(event) => setAngle(event.target.value)}
+              aria-label="Camera angle"
+            >
+              {vocabulary.shotAngles.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+            <select
+              value={movement}
+              onChange={(event) => setMovement(event.target.value)}
+              aria-label="Camera movement"
+            >
+              {vocabulary.shotMovements.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+            <input
+              value={duration}
+              onChange={(event) => setDuration(event.target.value)}
+              inputMode="numeric"
+              style={{ width: 70 }}
+              aria-label="Duration in seconds"
+            />
+            <input
+              placeholder="What happens in this shot?"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button type="submit" disabled={busy}>
+              Add shot
+            </button>
+          </form>
+        </>
+      )}
       {error ? <p className="error">{error}</p> : null}
     </div>
   );
