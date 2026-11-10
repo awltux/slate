@@ -9,12 +9,21 @@ export interface SessionData {
   csrf: string | null;
 }
 
+export interface ProjectSettings {
+  runtimeSeconds: number;
+  aspectRatio: string;
+  frameRate: number;
+  resolutionPixels: number;
+  defaultStyleId: string | null;
+}
+
 export interface ProjectSummary {
   id: string;
   name: string;
   createdAt: string;
   /** The model profile this project runs on; null means the host default. */
   bindingSetId: string | null;
+  settings: ProjectSettings;
 }
 
 export interface Warning {
@@ -99,12 +108,52 @@ export function createProject(input: {
   name: string;
   runtimeSeconds: number;
   aspectRatio: string;
+  frameRate: number;
+  resolutionPixels: number;
   budgetUsd: number;
-}): Promise<{ projectId: string; name: string; revision: number; commit: string }> {
-  return request<{ projectId: string; name: string; revision: number; commit: string }>("/api/projects", {
+  bindingSetId: string | null;
+  styleLibraryId: string | null;
+}): Promise<{ projectId: string; name: string; revision: number; commit: string; styleId: string | null }> {
+  return request<{
+    projectId: string;
+    name: string;
+    revision: number;
+    commit: string;
+    styleId: string | null;
+  }>("/api/projects", {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+/** The pixels a shape and a short edge produce, so a form can say them before the project exists. */
+export function framePixels(settings: { aspectRatio: string; resolutionPixels: number }): string {
+  const [rawWidth, rawHeight] = settings.aspectRatio.split(":");
+  const ratio = (Number(rawWidth) || 16) / (Number(rawHeight) || 9);
+  const short = settings.resolutionPixels;
+  const width = ratio >= 1 ? Math.round((short * ratio) / 2) * 2 : short;
+  const height = ratio >= 1 ? short : Math.round(short / ratio / 2) * 2;
+  return `${width}x${height}`;
+}
+
+export interface LibraryStyle {
+  id: string;
+  name: string;
+  description: string;
+  version: number;
+  coverAssetId: string | null;
+}
+
+/** The app library's style sheets, readable before a project exists so a look can be chosen at creation. */
+export async function listLibraryStyles(): Promise<LibraryStyle[]> {
+  const result = await runGlobalOp<{ styles: LibraryStyle[] }>("library.styles", {});
+  return result.data.styles;
+}
+
+/** Binding-set names, readable before a project exists. */
+export async function listBindingSetOptions(): Promise<BindingSetOption[]> {
+  const result = await runGlobalOp<{ sets: BindingSetOption[] }>("ai.bindingsets", {});
+  return result.data.sets;
 }
 
 /** Runs an operation. Envelope metadata (version, commit, warnings) is preserved for the caller. */

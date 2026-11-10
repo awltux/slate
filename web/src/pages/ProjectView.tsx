@@ -4,6 +4,7 @@ import {
   type BindingSetOption,
   type PresenceUser,
   type ProjectSummary,
+  framePixels,
   listBindingSets,
   pingPresence,
   runOp,
@@ -239,6 +240,12 @@ export function ProjectView({
               ))}
             </span>
           ) : null}
+        </p>
+        {/* The shape and rate every still, cut and master is made to: fixed at creation, so it is stated, not chosen. */}
+        <p className="muted" style={{ margin: 0, fontSize: 12 }} aria-label="Project format">
+          {framePixels(project.settings)} · {project.settings.frameRate} fps ·{" "}
+          {Math.round(project.settings.runtimeSeconds)}s
+          {project.settings.defaultStyleId ? " · project style" : ""}
         </p>
       </div>
       <div className="tabs" role="tablist">
