@@ -236,3 +236,62 @@ describe("editing and deleting", () => {
     expect(list.entities[0]?.variants).toHaveLength(0);
   });
 });
+
+describe("the shape of a sheet image", () => {
+  it("renders at the film's aspect ratio, not a square", async () => {
+    const created = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+    await registry.execute("entity.update", { entityId: created.entityId, prompt: "the keeper" }, context);
+
+    const calls: string[][] = [];
+    const ffmpeg = fakeFfmpeg();
+    const recording = testContext(root, {
+      home,
+      run: async (argv) => {
+        calls.push(argv);
+        return ffmpeg.run(argv);
+      },
+      tool: ffmpeg.tool,
+    });
+
+    expectOk(await registry.execute("entity.generate", { entityId: created.entityId, count: 1 }, recording));
+
+    // The film is 16:9 at 1080p, so a sheet image is 1920x1080: a square reference teaches a square picture.
+    const render = calls.find((argv) => argv.some((arg) => arg.includes("1920x1080")));
+    expect(render, `no 1920x1080 render in: ${calls.map((c) => c.join(" ")).join(" | ")}`).toBeTruthy();
+    expect(calls.some((argv) => argv.some((arg) => arg.includes("512x512")))).toBe(false);
+  });
+
+  it("follows a portrait film", async () => {
+    const created = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+    await registry.execute("entity.update", { entityId: created.entityId, prompt: "the keeper" }, context);
+    expectOk(
+      await registry.execute("project.update", { aspectRatio: "9:16", resolutionPixels: 1080 }, context),
+    );
+
+    const calls: string[][] = [];
+    const ffmpeg = fakeFfmpeg();
+    const recording = testContext(root, {
+      home,
+      run: async (argv) => {
+        calls.push(argv);
+        return ffmpeg.run(argv);
+      },
+      tool: ffmpeg.tool,
+    });
+
+    expectOk(await registry.execute("entity.generate", { entityId: created.entityId, count: 1 }, recording));
+    expect(calls.some((argv) => argv.some((arg) => arg.includes("1080x1920")))).toBe(true);
+  });
+});

@@ -2,6 +2,12 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Sheet images are made at the film's shape
+
+- **A library item's sheet is rendered at the project's aspect ratio**, not a fixed square. A square reference teaches the
+  model a square picture, and every frame then fights it; a 16:9 film now gets 16:9 sheet images, a portrait film 1080×1920.
+- Changing the film's shape changes the next sheet images too, because the size comes from the project's settings rather
+  than a constant.
 ## Expand a frame prompt with the text model
 
 - **The frame editor has Expand**, beside the director's sentence, exactly as a library item does: it asks the text model

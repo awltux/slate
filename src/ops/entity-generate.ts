@@ -9,6 +9,7 @@ import { renderStill } from "../kernel/catalog/fake-gateway.js";
 import { appendLedger, readLedger, remainingUsd } from "../kernel/ledger/ledger.js";
 import { type Asset, ingestAsset } from "../kernel/production/assets.js";
 import { draftSheet } from "../kernel/production/entities.js";
+import { frameSize } from "../kernel/production/format.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { projectPaths } from "../kernel/workspace/paths.js";
 import { loadDocuments } from "./documents.js";
@@ -47,6 +48,9 @@ export const entityGenerate = defineOp({
   touched: (input) => [`entity:${input.entityId}`, "ledger"],
   run: async (input, context) => {
     const { project, production: before } = await loadDocuments(context);
+    // A sheet image is a reference for a frame, so it is made at the film's shape: a square sheet teaches the model a
+    // square picture, and the frame then fights it.
+    const size = frameSize(project.settings);
     const entity = before.entities[input.entityId];
     if (!entity) throw new SlateError("not_found", `no entity ${input.entityId}`);
 
@@ -98,7 +102,7 @@ export const entityGenerate = defineOp({
       for (let index = 0; index < input.count; index += 1) {
         const outputFile = join(work, `candidate-${index}.png`);
         await renderStill(
-          { binary, prompt, index: index + input.seed, width: 512, height: 512, outputFile },
+          { binary, prompt, index: index + input.seed, width: size.width, height: size.height, outputFile },
           context.run,
         );
         const asset = await ingestAsset(context.root, {
