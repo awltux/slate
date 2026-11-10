@@ -44,20 +44,23 @@ interface Preview {
 }
 
 const CAPABILITIES = ["text", "image", "video", "audio", "upscale"] as const;
+const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
 function message(caught: unknown): string {
   return caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught);
 }
 
 /**
- * Setup declares the AI layer. A provider is transport and a credential; an endpoint is one capability and one request
- * shape; a binding picks which endpoint serves a capability. Preview renders the request without sending it, which is
- * how a new provider is tested without a key or a bill.
+ * Setup declares the AI layer, grouped the way a person thinks about it: a provider is a host and a key, and the models
+ * you can call are hidden underneath it until you open it. Bindings, which pick what serves each capability, are the
+ * only thing that spans providers.
  */
 export function Setup() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [openProvider, setOpenProvider] = useState<string | null>(null);
+  const [addingFor, setAddingFor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -99,9 +102,9 @@ export function Setup() {
       <div className="card">
         <h2>AI setup</h2>
         <p className="muted" style={{ marginBottom: 0 }}>
-          Providers own transport and credentials; endpoints own one capability and one request shape;
-          bindings choose which endpoint serves a capability. Keys are write-only: this page can replace one
-          but never reads it back.
+          A provider is a host and a credential; its endpoints are the models you can call, one per
+          capability, each with its own method, path, parameters and body template. Keys are write-only: this
+          page can replace one but never reads it back.
         </p>
       </div>
 
@@ -115,108 +118,128 @@ export function Setup() {
         </div>
         {catalog.providers.length === 0 ? (
           <p className="empty">
-            No provider yet. Add fal, an OpenAI-compatible host, or anything else that speaks REST.
+            No provider yet. Add fal, an OpenAI-compatible host, or anything else that speaks REST — then open
+            it to add models.
           </p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Kind</th>
-                <th>Base URL</th>
-                <th>Auth</th>
-                <th>Key</th>
-                <th>Endpoints</th>
-              </tr>
-            </thead>
-            <tbody>
-              {catalog.providers.map((provider) => (
-                <tr key={provider.id}>
-                  <td>{provider.name}</td>
-                  <td className="muted">{provider.kind}</td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {provider.baseUrl}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {provider.authHeader}: {provider.authScheme}
-                  </td>
-                  <td>
-                    <span className={`chip${provider.hasKey ? "" : " warn"}`}>
-                      {provider.hasKey ? "set" : "missing"}
-                    </span>
-                  </td>
-                  <td>{provider.endpointCount}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
+        ) : null}
         <ProviderForm busy={busy} onSubmit={(values) => run(() => runGlobalOp("ai.provider.save", values))} />
       </div>
 
-      <div className="card">
-        <div className="row">
-          <h2 style={{ margin: 0 }}>Endpoints</h2>
-          <div className="spacer" />
-          <span className="chip">{catalog.endpoints.length}</span>
-        </div>
-        {catalog.endpoints.length === 0 ? (
-          <p className="empty">
-            An endpoint is one model: a path, the parameters it accepts, and a body template that places them.
-          </p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Capability</th>
-                <th>Call</th>
-                <th>Result</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {catalog.endpoints.map((endpoint) => (
-                <tr key={endpoint.id}>
-                  <td>{endpoint.name}</td>
-                  <td>
-                    <span className="chip">{endpoint.capability}</span>
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {endpoint.method} {endpoint.path}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {endpoint.resultPath || "—"}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(async () => {
-                          const result = await runGlobalOp<Preview>("ai.preview", {
-                            endpointId: endpoint.id,
-                          });
-                          setPreview(result.data);
-                        })
-                      }
-                    >
-                      Preview
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      {catalog.providers.map((provider) => {
+        const endpoints = catalog.endpoints.filter((endpoint) => endpoint.providerId === provider.id);
+        const open = openProvider === provider.id;
+        return (
+          <div className="card stack" key={provider.id}>
+            <div className="row">
+              <button
+                type="button"
+                className="link-button"
+                aria-expanded={open}
+                aria-label={`${open ? "Hide" : "Show"} endpoints for ${provider.name}`}
+                onClick={() => setOpenProvider(open ? null : provider.id)}
+              >
+                {open ? "▾" : "▸"}
+              </button>
+              <h2 style={{ margin: 0 }}>{provider.name}</h2>
+              <span className="chip">{provider.kind}</span>
+              <span className={`chip${provider.hasKey ? "" : " warn"}`}>
+                {provider.hasKey ? "key set" : "no key"}
+              </span>
+              <span className="muted mono" style={{ fontSize: 12 }}>
+                {provider.baseUrl}
+              </span>
+              <div className="spacer" />
+              <button
+                type="button"
+                onClick={() => setOpenProvider(open ? null : provider.id)}
+                disabled={busy}
+              >
+                {endpoints.length} endpoint{endpoints.length === 1 ? "" : "s"}
+              </button>
+            </div>
 
-        <EndpointForm
-          busy={busy}
-          providers={catalog.providers}
-          onSubmit={(values) => run(() => runGlobalOp("ai.endpoint.save", values))}
-        />
-      </div>
+            {open ? (
+              <>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  auth: {provider.authHeader}: {provider.authScheme}
+                </div>
+
+                {endpoints.length === 0 ? (
+                  <p className="empty">
+                    No models yet. Add one — a method, a path, and the parameters it takes.
+                  </p>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Endpoint</th>
+                        <th>Capability</th>
+                        <th>Call</th>
+                        <th>Result</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {endpoints.map((endpoint) => (
+                        <tr key={endpoint.id}>
+                          <td>{endpoint.name}</td>
+                          <td>
+                            <span className="chip">{endpoint.capability}</span>
+                          </td>
+                          <td className="mono" style={{ fontSize: 12 }}>
+                            {endpoint.method} {endpoint.path}
+                          </td>
+                          <td className="mono" style={{ fontSize: 12 }}>
+                            {endpoint.resultPath || "—"}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void run(async () => {
+                                  const result = await runGlobalOp<Preview>("ai.preview", {
+                                    endpointId: endpoint.id,
+                                  });
+                                  setPreview(result.data);
+                                })
+                              }
+                            >
+                              Preview
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                <div className="row">
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => setAddingFor(addingFor === provider.id ? null : provider.id)}
+                    disabled={busy}
+                  >
+                    {addingFor === provider.id ? "Close" : "Add endpoint"}
+                  </button>
+                </div>
+
+                {addingFor === provider.id ? (
+                  <EndpointForm
+                    busy={busy}
+                    providerId={provider.id}
+                    onSubmit={async (values) => {
+                      await run(() => runGlobalOp("ai.endpoint.save", values));
+                      setAddingFor(null);
+                    }}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        );
+      })}
 
       {preview ? (
         <div className="card stack">
@@ -279,6 +302,32 @@ export function Setup() {
   );
 }
 
+function Field({
+  id,
+  label,
+  hint,
+  children,
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="stack" style={{ gap: "0.15rem", flex: 1, minWidth: 0 }}>
+      <label htmlFor={id} className="muted" style={{ fontSize: 12 }}>
+        {label}
+      </label>
+      {children}
+      {hint ? (
+        <span className="muted" style={{ fontSize: 11 }}>
+          {hint}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: unknown) => Promise<void> }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState("custom");
@@ -287,10 +336,12 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
   const [authScheme, setAuthScheme] = useState("Bearer {{key}}");
   const [apiKey, setApiKey] = useState("");
 
+  const headerSent = authScheme.replace(/\{\{\s*key\s*\}\}/g, "••••");
+
   return (
     <form
       className="stack"
-      style={{ marginTop: "0.75rem", gap: "0.4rem" }}
+      style={{ marginTop: "0.75rem", gap: "0.5rem" }}
       onSubmit={(event) => {
         event.preventDefault();
         void onSubmit({ name, kind, baseUrl, authHeader, authScheme, apiKey });
@@ -299,48 +350,79 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
         setApiKey("");
       }}
     >
-      <div className="row">
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="fal"
-          aria-label="Provider name"
-        />
-        <input
-          value={kind}
-          onChange={(event) => setKind(event.target.value)}
-          aria-label="Provider kind"
-          style={{ width: 130 }}
-        />
-        <input
-          value={baseUrl}
-          onChange={(event) => setBaseUrl(event.target.value)}
-          placeholder="https://fal.run"
-          aria-label="Base URL"
-          style={{ flex: 1 }}
-        />
+      <div className="row" style={{ alignItems: "flex-start" }}>
+        <Field id="provider-name" label="Name" hint="how you will refer to it here">
+          <input
+            id="provider-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="fal"
+            aria-label="Provider name"
+          />
+        </Field>
+        <Field id="provider-kind" label="Kind" hint="a label, not a mode">
+          <input
+            id="provider-kind"
+            value={kind}
+            onChange={(event) => setKind(event.target.value)}
+            placeholder="fal, openai-compatible, custom…"
+            aria-label="Provider kind"
+          />
+        </Field>
+        <Field id="provider-base-url" label="Base URL" hint="scheme + host only; each endpoint adds its path">
+          <input
+            id="provider-base-url"
+            value={baseUrl}
+            onChange={(event) => setBaseUrl(event.target.value)}
+            placeholder="https://fal.run"
+            aria-label="Base URL"
+          />
+        </Field>
       </div>
+
+      <div className="row" style={{ alignItems: "flex-start" }}>
+        <Field id="provider-header" label="Key header" hint="the header the provider reads your key from">
+          <input
+            id="provider-header"
+            value={authHeader}
+            onChange={(event) => setAuthHeader(event.target.value)}
+            placeholder="Authorization"
+            aria-label="Auth header"
+          />
+        </Field>
+        <Field
+          id="provider-scheme"
+          label="Key format"
+          hint="{{key}} is replaced with the secret; the prefix is provider-specific"
+        >
+          <input
+            id="provider-scheme"
+            value={authScheme}
+            onChange={(event) => setAuthScheme(event.target.value)}
+            placeholder="Bearer {{key}}   or   Key {{key}}"
+            aria-label="Auth scheme"
+          />
+        </Field>
+        <Field id="provider-key" label="API key" hint="stored write-only in the host, never shown again">
+          <input
+            id="provider-key"
+            type="password"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder="paste the key"
+            aria-label="API key"
+          />
+        </Field>
+      </div>
+
       <div className="row">
-        <input
-          value={authHeader}
-          onChange={(event) => setAuthHeader(event.target.value)}
-          aria-label="Auth header"
-          style={{ width: 150 }}
-        />
-        <input
-          value={authScheme}
-          onChange={(event) => setAuthScheme(event.target.value)}
-          aria-label="Auth scheme"
-          style={{ flex: 1 }}
-        />
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(event) => setApiKey(event.target.value)}
-          placeholder="API key (write-only)"
-          aria-label="API key"
-          style={{ flex: 1 }}
-        />
+        <span className="muted" style={{ fontSize: 12 }}>
+          Sends:{" "}
+          <span className="mono">
+            {authHeader || "(no header)"}: {headerSent || "(no key)"}
+          </span>
+        </span>
+        <div className="spacer" />
         <button className="primary" type="submit" disabled={busy || name === "" || baseUrl === ""}>
           Add provider
         </button>
@@ -351,16 +433,16 @@ function ProviderForm({ busy, onSubmit }: { busy: boolean; onSubmit: (values: un
 
 function EndpointForm({
   busy,
-  providers,
+  providerId,
   onSubmit,
 }: {
   busy: boolean;
-  providers: ProviderView[];
+  providerId: string;
   onSubmit: (values: unknown) => Promise<void>;
 }) {
-  const [providerId, setProviderId] = useState(providers[0]?.id ?? "");
   const [name, setName] = useState("");
   const [capability, setCapability] = useState("image");
+  const [method, setMethod] = useState("POST");
   const [path, setPath] = useState("/");
   const [body, setBody] = useState('{\n  "prompt": "{{prompt}}"\n}');
   const [params, setParams] = useState("[]");
@@ -370,7 +452,7 @@ function EndpointForm({
   return (
     <form
       className="stack"
-      style={{ marginTop: "0.75rem", gap: "0.4rem" }}
+      style={{ gap: "0.4rem", borderTop: "1px solid var(--line)", paddingTop: "0.75rem" }}
       onSubmit={(event) => {
         event.preventDefault();
         try {
@@ -378,10 +460,10 @@ function EndpointForm({
           const parsedParams = JSON.parse(params) as unknown[];
           setFormError(null);
           void onSubmit({
-            providerId: providerId || providers[0]?.id,
+            providerId,
             name,
             capability,
-            method: "POST",
+            method,
             path,
             params: parsedParams,
             body: parsedBody,
@@ -394,17 +476,6 @@ function EndpointForm({
       }}
     >
       <div className="row">
-        <select
-          value={providerId}
-          onChange={(event) => setProviderId(event.target.value)}
-          aria-label="Endpoint provider"
-        >
-          {providers.map((provider) => (
-            <option key={provider.id} value={provider.id}>
-              {provider.name}
-            </option>
-          ))}
-        </select>
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
@@ -417,6 +488,18 @@ function EndpointForm({
           aria-label="Endpoint capability"
         >
           {CAPABILITIES.map((entry) => (
+            <option key={entry} value={entry}>
+              {entry}
+            </option>
+          ))}
+        </select>
+        <select
+          value={method}
+          onChange={(event) => setMethod(event.target.value)}
+          aria-label="HTTP method"
+          style={{ minWidth: 96 }}
+        >
+          {METHODS.map((entry) => (
             <option key={entry} value={entry}>
               {entry}
             </option>
@@ -453,8 +536,8 @@ function EndpointForm({
           aria-label="Result path"
           style={{ flex: 1 }}
         />
-        <button className="primary" type="submit" disabled={busy || name === "" || providers.length === 0}>
-          Add endpoint
+        <button className="primary" type="submit" disabled={busy || name === ""}>
+          Save endpoint
         </button>
       </div>
       {formError ? <p className="error">{formError}</p> : null}
