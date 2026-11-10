@@ -51,6 +51,9 @@ User-visible changes per slice. Internal refactors are not listed.
   blank key field keeps the credential already held, with a checkbox to forget it on purpose. Deleting a provider takes
   its models, the profile bindings that named them and the stored key with it; the confirmation names them and the
   notice reports what actually went.
+- **A model can be edited or deleted from its row.** Edit opens on the stored call — method, path, body template and
+  parameter declarations — and saving keeps the same endpoint rather than adding a second one. Deleting a model leaves
+  the host and its key standing, clearing only the profile binding that named it.
 
 ## Remote review
 
