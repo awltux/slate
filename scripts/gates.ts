@@ -3282,6 +3282,19 @@ async function browserFlow(steps: string[]): Promise<void> {
         },
       );
       await page.screenshot({ path: join(artifactDir, "frame-dialog.png"), fullPage: true });
+      // The end frame can be conditioned on the start frame, on by default, and the dialog says so.
+      await page.click('section[aria-label^="Frames for shot"] button[role="tab"]:has-text("End")');
+      const usesStart = page.locator('input[aria-label="Use the start frame as a reference"]');
+      assert((await usesStart.count()) === 1, "the end frame editor must offer the start frame reference");
+      assert(await usesStart.isChecked(), "it must be on by default");
+      await page.click('button:has-text("Generate end frame")');
+      await page.waitForSelector(
+        'section[aria-label^="Frames for shot"] img[alt^="New end frame for shot"]',
+        {
+          timeout: 120_000,
+        },
+      );
+      steps.push("ui: the end frame is generated from the start frame, with the checkbox on by default");
       await page.click('section[aria-label^="Frames for shot"] button:has-text("Close")');
       await page.waitForSelector('img[alt^="Start frame for shot"]', { timeout: 60_000 });
       await page.screenshot({ path: join(artifactDir, "plan.png"), fullPage: true });

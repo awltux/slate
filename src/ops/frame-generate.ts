@@ -7,6 +7,7 @@ import { SlateError } from "../domain/result.js";
 import { renderStill } from "../kernel/catalog/fake-gateway.js";
 import { appendLedger, readLedger, remainingUsd } from "../kernel/ledger/ledger.js";
 import { ingestAsset } from "../kernel/production/assets.js";
+import { sheetReference } from "../kernel/production/entities.js";
 import { frameSize } from "../kernel/production/format.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { projectPaths } from "../kernel/workspace/paths.js";
@@ -33,6 +34,8 @@ export const frameGenerate = defineOp({
       prompt: z.string().default(""),
       /** Which assets to condition on. Empty means the scene's own attachments. */
       entityIds: z.array(z.string()).default([]),
+      /** For an end frame: also give the generator the start frame, so the shot begins and ends in one place. */
+      useStartFrame: z.boolean().default(true),
       useBlockout: z.boolean().default(true),
       seed: z.number().int().default(0),
       /** Optimistic concurrency: a shot edited while the button was pressed is not silently overwritten. */
@@ -46,6 +49,8 @@ export const frameGenerate = defineOp({
       assetId: z.string(),
       entityIds: z.array(z.string()),
       blockoutAssetId: z.string().nullable(),
+      /** The images the frame was generated from, in the order they were given. */
+      referenceAssetIds: z.array(z.string()),
       /** The size the frame was rendered at: the project's shape, not a choice made per shot. */
       width: z.number().int(),
       height: z.number().int(),
@@ -86,6 +91,17 @@ export const frameGenerate = defineOp({
         ? (blockout?.firstAssetId ?? null)
         : (blockout?.lastAssetId ?? blockout?.firstAssetId ?? null)
       : null;
+
+    // An end frame is made from the same place its start frame is: the image itself is the strongest reference there is.
+    const startFrameAssetId =
+      input.role === "last" && input.useStartFrame ? (shot.frames.first ?? null) : null;
+
+    // Everything the generator is given to look at, in one list: the sheet of each asset, the blockout, the start frame.
+    const referenceAssetIds = [
+      ...attached.map((entity) => sheetReference(entity.identity)).filter((id): id is string => Boolean(id)),
+      ...(blockoutAssetId ? [blockoutAssetId] : []),
+      ...(startFrameAssetId ? [startFrameAssetId] : []),
+    ];
 
     const subject = attached.map((entity) => `${entity.name}: ${entity.description}`).join("; ");
     // A prompt from the dialog is the description; the shot's own framing still shapes it, so style rules keep applying.
@@ -154,6 +170,10 @@ export const frameGenerate = defineOp({
       entityIds: attached.map((entity) => entity.id),
       entityPins: Object.fromEntries(attached.map((entity) => [entity.id, entity.identity?.version ?? 0])),
       blockoutAssetId,
+      /** The start frame, when the end frame was conditioned on it. */
+      startFrameAssetId,
+      /** Every image the generator was given, so provenance names the pictures and not only the ids behind them. */
+      referenceAssetIds,
       /** The words the person wrote, so a frame can say what was asked for and not only what it was made from. */
       prompt: input.prompt.trim(),
       via: "local",
@@ -188,6 +208,8 @@ export const frameGenerate = defineOp({
         assetId: asset.id,
         entityIds: source.entityIds,
         blockoutAssetId,
+        /** The images the frame was generated from. */
+        referenceAssetIds,
         width: size.width,
         height: size.height,
         spentUsd: cost,
@@ -197,15 +219,23 @@ export const frameGenerate = defineOp({
       commit: result.commit.id,
       via: "local",
       warnings:
-        attached.length === 0
+        input.role === "last" && input.useStartFrame && !shot.frames.first
           ? [
               {
-                code: "no_references",
+                code: "no_start_frame",
                 message:
-                  "This scene has no library items attached, so the frame was generated from the description alone.",
+                  "There is no start frame yet, so the end frame was generated without it. Shoot the start frame first for a shot that holds together.",
               },
             ]
-          : [],
+          : attached.length === 0
+            ? [
+                {
+                  code: "no_references",
+                  message:
+                    "This scene has no library items attached, so the frame was generated from the description alone.",
+                },
+              ]
+            : [],
       next: ["frame.generate", "take.generate"],
     };
   },

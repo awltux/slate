@@ -2,6 +2,14 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## An end frame continues from the start frame
+
+- **The end frame editor offers "Use the start frame as a reference", ticked by default.** The start frame joins the
+  reference images the generator is given, so a shot begins and ends in the same place instead of being invented twice.
+- **It is recorded in the frame's provenance**: the reference set and the start frame it continued from, so a frame can
+  say what it was shown and not only what it was asked for.
+- **Unticking it is a deliberate choice**, and with no start frame yet the box is disabled and the frame is generated
+  with a warning rather than a silent guess.
 ## Frames opens an image creation dialog
 
 - **The Frames button now opens a dialog instead of firing blind**: a prompt in words, the scene's assets as a checklist

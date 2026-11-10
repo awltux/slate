@@ -1001,6 +1001,10 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       },
       "default": []
     },
+    "useStartFrame": {
+      "type": "boolean",
+      "default": true
+    },
     "useBlockout": {
       "type": "boolean",
       "default": true

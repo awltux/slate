@@ -233,3 +233,61 @@ describe("frame.generate", () => {
     expect(generated.blockoutAssetId).toBeNull();
   });
 });
+
+describe("an end frame conditioned on the start frame", () => {
+  async function shotWithSheets() {
+    const keeper = await sheeted("character", "The keeper");
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LANTERN ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    await registry.execute("scene.set-entities", { sceneId: scene.sceneId, entityIds: [keeper] }, context);
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "WS", angle: "EYE", movement: "STATIC", durationSec: 4 },
+        context,
+      ),
+    ).data as { shotId: string };
+    return shot.shotId;
+  }
+
+  it("gives the generator the start frame, by default", async () => {
+    const shotId = await shotWithSheets();
+    const first = expectOk(await registry.execute("frame.generate", { shotId, role: "first" }, context))
+      .data as { assetId: string };
+
+    const last = expectOk(await registry.execute("frame.generate", { shotId, role: "last" }, context))
+      .data as { referenceAssetIds: string[]; startFrameAssetId?: string };
+
+    // The start frame is in the reference set, which is what a model would actually be shown.
+    expect(last.referenceAssetIds).toContain(first.assetId);
+
+    const view = expectOk(await registry.execute("shot.get", { shotId }, context)).data as {
+      shot: { frames: { lastSource?: { startFrameAssetId?: string | null; referenceAssetIds: string[] } } };
+    };
+    expect(view.shot.frames.lastSource?.startFrameAssetId).toBe(first.assetId);
+    expect(view.shot.frames.lastSource?.referenceAssetIds).toContain(first.assetId);
+  });
+
+  it("leaves it out when the person unticks the box", async () => {
+    const shotId = await shotWithSheets();
+    const first = expectOk(await registry.execute("frame.generate", { shotId, role: "first" }, context))
+      .data as { assetId: string };
+
+    const last = expectOk(
+      await registry.execute("frame.generate", { shotId, role: "last", useStartFrame: false }, context),
+    ).data as { referenceAssetIds: string[] };
+
+    expect(last.referenceAssetIds).not.toContain(first.assetId);
+  });
+
+  it("says so when there is no start frame to reference", async () => {
+    const shotId = await shotWithSheets();
+    const result = expectOk(await registry.execute("frame.generate", { shotId, role: "last" }, context));
+    expect(result.warnings.map((warning) => warning.code)).toContain("no_start_frame");
+  });
+});

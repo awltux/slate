@@ -41,6 +41,8 @@ export function FrameDialog({
   const [role, setRole] = useState<"first" | "last">("first");
   const [prompt, setPrompt] = useState(basePrompt);
   const [picked, setPicked] = useState<string[]>(sceneEntities.map((entity) => entity.id));
+  // An end frame is made from where the shot began: on by default, and only meaningful once a start frame exists.
+  const [useStartFrame, setUseStartFrame] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<{ assetId: string; role: string } | null>(null);
@@ -59,6 +61,7 @@ export function FrameDialog({
           role,
           prompt,
           entityIds: picked,
+          useStartFrame,
           expectedRevision: revision,
         },
       );
@@ -101,6 +104,26 @@ export function FrameDialog({
           placeholder="A lighthouse keeper trims the wick, amber light, salt on his hands"
         />
       </label>
+
+      {role === "last" ? (
+        <label className="row" style={{ gap: "0.4rem", alignItems: "center", fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={useStartFrame}
+            onChange={(event) => setUseStartFrame(event.target.checked)}
+            aria-label="Use the start frame as a reference"
+            disabled={!frames.first}
+          />
+          <span>
+            Use the start frame as a reference
+            <span className="muted" style={{ marginLeft: 6 }}>
+              {frames.first
+                ? "— the end frame continues from the image the shot begins on"
+                : "(no start frame yet: shoot Start first)"}
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
         <legend className="muted" style={{ fontSize: 12 }}>
