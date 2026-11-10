@@ -1580,9 +1580,15 @@ async function browserFlow(steps: string[]): Promise<void> {
     if (gateNumber === 11) {
       await page.click('header [role="tab"]:has-text("Setup")');
       await page.waitForSelector("text=AI setup", { timeout: 20_000 });
+
+      // Endpoints are hidden under their provider until it is opened.
+      const hidden = await page.locator("text=POST /fal-ai/flux/dev").count();
+      assert(hidden === 0, "endpoints must be hidden while the provider is collapsed");
+      await page.click('button[aria-label="Show endpoints for fal"]');
       await page.waitForSelector("text=FLUX dev", { timeout: 20_000 });
+      await page.waitForSelector("text=POST /fal-ai/flux/dev", { timeout: 20_000 });
       await page.screenshot({ path: join(artifactDir, "setup.png"), fullPage: true });
-      steps.push("ui: the owner sees providers, endpoints and bindings");
+      steps.push("ui: providers hide their endpoints, and opening one shows the call");
       await instance.close();
       return;
     }
