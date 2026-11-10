@@ -11,6 +11,9 @@ interface ServiceRow {
   binaryName: string | null;
   installPath: string | null;
   detail: string;
+  /** Where to install it from, and the version this application relies on. */
+  installUrl: string;
+  installRequirement: string;
 }
 
 interface ChainRow {
@@ -136,6 +139,7 @@ export function Health() {
               <th style={{ width: 140 }}>Status</th>
               <th style={{ width: 120 }}>Version</th>
               <th>Detail</th>
+              <th style={{ width: 170 }}>Not installed?</th>
             </tr>
           </thead>
           <tbody>
@@ -164,6 +168,27 @@ export function Health() {
                 </td>
                 <td className="mono">{service.version ?? "—"}</td>
                 <td className="muted">{service.detail}</td>
+                <td>
+                  {service.status === "green" ? (
+                    <span className="muted">—</span>
+                  ) : service.installUrl ? (
+                    <>
+                      <a
+                        href={service.installUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`How to install ${service.displayName}`}
+                      >
+                        How to install
+                      </a>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {service.installRequirement}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="muted">{service.installRequirement}</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -2698,8 +2698,30 @@ async function browserFlow(steps: string[]): Promise<void> {
         services.some((row) => row.includes("7-Zip")),
         "the archiver must be in the list",
       );
+      // A missing tool must say where to get it and which version is needed - a red dot alone is a dead end.
+      const rows = await page.locator("table").last().locator("tbody tr").all();
+      let checkedMissing = 0;
+      for (const row of rows) {
+        const status = (await row.locator("td").nth(1).textContent()) ?? "";
+        if (status.includes("green")) continue;
+        checkedMissing += 1;
+        const link = row.locator('a[aria-label^="How to install"]');
+        assert((await link.count()) === 1, `a missing tool must offer an install link, row: ${status}`);
+        const href = (await link.getAttribute("href")) ?? "";
+        assert(href.startsWith("https://"), `the install link must go to a real page, got: ${href}`);
+        const requirement = (await row.locator("td").nth(3).textContent()) ?? "";
+        assert(
+          requirement.length > 20,
+          `a missing tool must state its version requirement, got: ${requirement}`,
+        );
+      }
+      assert(
+        checkedMissing > 0,
+        "this host is expected to lack at least one tool, or the check proves nothing",
+      );
+
       await page.screenshot({ path: join(artifactDir, "host-health.png"), fullPage: true });
-      steps.push("ui: health is a top-level page and lists every tool with no project open");
+      steps.push("ui: health is a top-level page, and a missing tool links to how to install it");
 
       // Probing again is the operator's fix when a tool was just installed.
       const before = await page.locator("text=/^Checked /").first().textContent();
