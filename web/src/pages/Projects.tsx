@@ -6,7 +6,7 @@ import {
   type ProjectSummary,
   createProject,
   framePixels,
-  importProject,
+  importProjectFile,
   listBindingSetOptions,
   listLibraryStyles,
 } from "../api.js";
@@ -42,7 +42,7 @@ export function Projects({ projects, onCreated, onOpen }: Props) {
   const [styles, setStyles] = useState<LibraryStyle[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [archive, setArchive] = useState("");
+  const [file, setFile] = useState<File | null>(null);
 
   // Both lists are host state, so they are readable before any project exists; a caller who cannot read one simply
   // gets the host default instead of a broken form.
@@ -66,11 +66,12 @@ export function Projects({ projects, onCreated, onOpen }: Props) {
   /** Restoring is not creating: the archive carries the id, revision and media, so the film returns as itself. */
   async function restore(event: React.FormEvent) {
     event.preventDefault();
+    if (file === null) return;
     setBusy(true);
     setError(null);
     try {
-      const imported = await importProject(archive.trim());
-      setArchive("");
+      const imported = await importProjectFile(file);
+      setFile(null);
       await onCreated();
       onOpen(imported.projectId);
     } catch (caught) {
@@ -246,14 +247,15 @@ export function Projects({ projects, onCreated, onOpen }: Props) {
           archive whose project is already on this host is refused rather than overwritten.
         </p>
         <div className="row">
+          {/* The browser's file dialog is the picker: there is no path to type, and none to mistype. */}
           <input
-            value={archive}
-            onChange={(event) => setArchive(event.target.value)}
-            placeholder="D:\backups\the-last-light-7f3a1c2d-r12.7z"
+            type="file"
+            accept=".7z,application/x-7z-compressed"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             aria-label="Archive to import"
             style={{ flex: 1 }}
           />
-          <button className="primary" type="submit" disabled={busy || archive.trim() === ""}>
+          <button className="primary" type="submit" disabled={busy || file === null}>
             {busy ? "Working…" : "Import"}
           </button>
         </div>

@@ -4,6 +4,7 @@ import {
   type BindingSetOption,
   type PresenceUser,
   type ProjectSummary,
+  archiveUrl,
   exportProject,
   framePixels,
   listBindingSets,
@@ -93,7 +94,7 @@ export function ProjectView({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportTo, setExportTo] = useState("");
+  const [exportArchiveName, setExportArchiveName] = useState("");
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
@@ -156,16 +157,16 @@ export function ProjectView({
     if (editing) nameInput.current?.focus();
   }, [editing]);
 
-  /** Export writes the whole folder to one archive. The destination is the owner's; empty means the host's exports. */
+  /** Export writes the whole folder to the host's exports folder; taking a copy anywhere is the save dialog's job. */
   async function exportArchive() {
     setExportBusy(true);
     setExportError(null);
     try {
-      const archived = await exportProject(project.id, exportTo.trim());
+      const archived = await exportProject(project.id);
+      setExportArchiveName(archived.archiveName);
       setExportNotice(
         `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB at revision ${archived.revision}`,
       );
-      setExporting(false);
     } catch (caught) {
       setExportError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
     } finally {
@@ -286,16 +287,10 @@ export function ProjectView({
             <strong>Export “{project.name}”</strong>
             <p className="muted" style={{ margin: 0 }}>
               The whole folder — documents, media and exports — goes into one 7z with a manifest describing
-              it. Leave the folder empty to write into the host&apos;s exports folder.
+              it, in the host&apos;s exports folder. Save a copy opens your computer&apos;s save dialog, so a
+              copy can go wherever you keep backups.
             </p>
             <div className="row">
-              <input
-                value={exportTo}
-                onChange={(event) => setExportTo(event.target.value)}
-                placeholder="host exports folder"
-                aria-label="Export destination folder"
-                style={{ flex: 1 }}
-              />
               <button
                 type="button"
                 className="primary"
@@ -304,6 +299,16 @@ export function ProjectView({
               >
                 {exportBusy ? "Archiving…" : "Export"}
               </button>
+              {exportNotice ? (
+                <a
+                  className="primary"
+                  href={archiveUrl(exportArchiveName)}
+                  download={exportArchiveName}
+                  aria-label="Save a copy of the archive"
+                >
+                  Save a copy…
+                </a>
+              ) : null}
               <button type="button" onClick={() => setExporting(false)} disabled={exportBusy}>
                 Close
               </button>

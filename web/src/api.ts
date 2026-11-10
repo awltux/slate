@@ -285,8 +285,8 @@ export interface ExportedArchive {
   revision: number;
 }
 
-/** Writes the project to a 7z archive; an empty destination means the host's exports folder. */
-export function exportProject(projectId: string, destination: string): Promise<ExportedArchive> {
+/** Writes the project to a 7z archive in the host's exports folder, or wherever the caller names. */
+export function exportProject(projectId: string, destination?: string): Promise<ExportedArchive> {
   return runOp<ExportedArchive>(projectId, "project.export", { destination: destination || undefined }).then(
     (result) => result.data,
   );
@@ -300,9 +300,30 @@ export interface ImportedProject {
   exportedAt: string;
 }
 
-/** Restores a project from an archive written by exportProject. */
-export function importProject(archive: string): Promise<ImportedProject> {
-  return runGlobalOp<ImportedProject>("project.import", { archive }).then((result) => result.data);
+/** Uploads an archive the browser picked, so importing needs no typed path. */
+export async function importProjectFile(file: File): Promise<ImportedProject> {
+  const headers: Record<string, string> = { "content-type": "application/octet-stream" };
+  if (csrfToken) headers["x-slate-csrf"] = csrfToken;
+  const response = await fetch("/api/imports", {
+    method: "POST",
+    credentials: "same-origin",
+    headers,
+    body: file,
+  });
+  const payload = (await response.json()) as {
+    ok: boolean;
+    data?: ImportedProject;
+    error?: { code: string; message: string };
+  };
+  if (!response.ok || !payload.ok || !payload.data) {
+    throw new ApiError(payload.error?.code ?? "internal", payload.error?.message ?? "the import failed");
+  }
+  return payload.data;
+}
+
+/** Where a copy of an archive is fetched from; the browser's save dialog decides where it lands. */
+export function archiveUrl(name: string): string {
+  return `/api/exports/${encodeURIComponent(name)}`;
 }
 
 export interface ReferenceUploadResult {
