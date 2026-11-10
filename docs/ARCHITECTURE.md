@@ -212,6 +212,26 @@ shared item — so "newer" is a version comparison, not a conflict.
 another entity styled by it. The refusal names what is using it, because "cannot delete" without a reason is a puzzle,
 not an error.
 
+**A project is created with its shape, its models and its look.** These are not preferences on a form: every stage
+downstream is made to match them, so they are asked for once and stored on the project document.
+
+```
+ProjectSettings  runtimeSeconds · aspectRatio · frameRate · resolutionPixels · defaultStyleId
+                 ↓                   ↓            ↓               ↓                ↓
+             plan length      stills and cut   cut render     short edge       entity prompts and generations
+                                shape          rate           (1080p either     that name no style of their own
+                                                              way up)
+aiBindingSetId   the model profile the film runs on; null follows the host default
+```
+
+- **One shape, computed once.** `resolutionPixels` is the *short* edge, so 1080 means 1920x1080 landscape and 1080x1920
+  portrait. `frameSize()` turns a shape into pixels and every surface uses it rather than passing a size per call.
+- **The look is one decision.** Choosing a library style at creation clones it into the project and records it as
+  `defaultStyleId`; an entity's own `styleId` still wins, so an entry can break the look deliberately.
+- **Reading before a project exists.** Creating a film needs the model profiles and the library's style sheets, so
+  `ai.bindingsets` and `library.styles` are *host-level* reads: signed-in callers can read them with no project folder,
+  while changing host configuration stays with the owner.
+
 **The chain, with versions at every step:**
 
 ```

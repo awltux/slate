@@ -2,6 +2,18 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## A project is created with its shape, rate, models and look
+
+- **Creating a project asks for the decisions that shape everything after it**: aspect ratio, frame rate, resolution,
+  the model profile it runs on, and a style sheet from the app library. They are stored on the project instead of being
+  assumed by the page that happens to run first.
+- **The shape is used, not decorative.** Stills are generated at the project's size, the cut is rendered at that size
+  and the project's frame rate, and a delivered master's manifest records the settings it was made to.
+- **A style chosen at creation is cloned into the project** and applied to every entry that names no style of its own,
+  so a look is chosen once rather than for each character.
+- **The app library and the model profiles are readable before a project exists** — `library.styles` and
+  `ai.bindingsets` answer at host level, which is exactly when a new film needs them.
+
 ## Sheets you edit, and one reference image per sheet
 
 - **A sheet is edited, not rebuilt.** Opening a sheet starts from the items already published, and generating

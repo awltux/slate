@@ -19,6 +19,19 @@ four surfaces exist.
 | 12 | Scenes, frames and the shoot | `pnpm gate:12` | **done** | [plan](../artifacts/12/plan-expanded.png) · [report](../artifacts/12/report.json) |
 | 13 | Model profiles per project | `pnpm gate:13` | **done** | [profiles](../artifacts/13/binding-sets.png) · [project](../artifacts/13/project-binding.png) · [report](../artifacts/13/report.json) |
 | 14 | Editable sheets, one reference image | `pnpm gate:14` | **done** | [editor](../artifacts/14/sheet-editor.png) · [published](../artifacts/14/sheet-published.png) · [report](../artifacts/14/report.json) |
+| 15 | Project shape, models and look | `pnpm gate:15` | **done** | [create](../artifacts/15/new-project.png) · [project](../artifacts/15/project-created.png) · [report](../artifacts/15/report.json) |
+
+## Slice 15 — what it proves
+
+- **Creation is where the film's shape is decided**, not a default nobody chose: aspect ratio, frame rate, resolution,
+  model profile and a style sheet are asked for and stored on the project.
+- **The settings govern the pixels.** The gate generates a still for a 9:16 project at 720 and gets 720x1280, renders
+  the cut at the same size, and asserts the encoder was told the project's frame rate rather than a baked-in 30.
+- **The look is one decision.** The chosen library style is cloned into the project, and an entry that names no style
+  of its own is written with it — the gate asserts `prompt.expand` reports and carries that style.
+- **A session can read the film before touching it**: `session.brief` carries the settings and the profile.
+- **The app library and profiles are readable before a project exists**, which is what makes choosing them at
+  creation possible at all.
 
 ## Slice 14 — what it proves
 
@@ -171,7 +184,7 @@ already exists.
 | Delete a scene or shot | missing — needs cascade rules for takes and cut items |
 | Scene intent note (GUIDE §17 handoff) | missing |
 | Coverage plan (GUIDE §7: master plus variants) | missing |
-| Project settings after creation (runtime, aspect, budget) | only `project.create` sets them |
+| Project settings after creation (runtime, shape, rate, look, budget) | only `project.create` sets them |
 | Upload images from the browser (boards, sheet views) | operations take server-side paths |
 | Compare two takes side by side | `take.list` returns both; the page stacks them |
 | Conform a take into its slot (trim/retime) | `cut.build` uses planned durations |
