@@ -196,7 +196,7 @@ export function Library({ projectId }: { projectId: string }) {
               aria-label={kind === "body" ? "Body of character" : "Costume worn by"}
               style={{ minWidth: 200 }}
             >
-              <option value="">worn by which character?</option>
+              <option value="">{kind === "body" ? "of which character?" : "worn by which character?"}</option>
               {characters.map((character) => (
                 <option key={character.id} value={character.id}>
                   {character.name}
