@@ -2462,7 +2462,14 @@ async function gate18(steps: string[]): Promise<void> {
   assert(exported.data.counts.assets > 0, "the manifest must count the assets the film has");
   assert(exported.data.counts.shots === 1, "the manifest must count the shots the film has");
 
-  const archive = join(gateHome, "exports", exported.data.archiveName);
+  const archive = join(
+    gateHome,
+    "downloads",
+    "slate",
+    "exports",
+    slugify("The Last Light"),
+    exported.data.archiveName,
+  );
   gate18Archive = archive;
   assert(existsSync(archive), `the archive must be on disk at ${exported.data.archiveName}`);
   steps.push("export: one archive on disk, hashed, with the film's contents counted");
@@ -2803,7 +2810,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       steps.push("ui: the export offers a copy through the browser's save dialog, named after the archive");
 
       // A chosen folder is a token, not a path: the UI opens the host's dialog, and an unknown token is refused.
-      await page.waitForSelector("text=Choose folder…", { timeout: 20_000 });
+      await page.waitForSelector("text=Change folder…", { timeout: 20_000 });
       const unknownToken = await fetch(`${base}/p/${projectId}/api/op/project.export`, {
         method: "POST",
         headers: { "content-type": "application/json", cookie, "x-slate-csrf": csrf },
@@ -2814,7 +2821,14 @@ async function browserFlow(steps: string[]): Promise<void> {
         unknownToken.error?.code === "not_found",
         `the refusal must be not_found, got ${unknownToken.error?.code}`,
       );
-      steps.push("ui: the archive card offers Choose folder…, and an unknown token is refused");
+      const folderLine = await page.locator("text=Exports go to").first().textContent();
+      assert(
+        Boolean(folderLine?.includes("Downloads/slate/exports/the-last-light")),
+        `the card must state the default folder, got: ${folderLine}`,
+      );
+      steps.push(
+        "ui: the archive card states its folder, offers Change folder…, and refuses an unknown token",
+      );
       await page.screenshot({ path: join(artifactDir, "project-export.png"), fullPage: true });
 
       await instance.close();
@@ -2831,7 +2845,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       const line = await page.locator('span[aria-label="References for fal"]').first().textContent();
       assert(
         Boolean(line?.includes("upload endpoint")),
-        `the card must say uploads go through an endpoint, got: ${line}`,
+        "the card must say uploads go through an endpoint, got: $line",
       );
 
       await page.click('button[aria-label="Test upload for fal"]');
@@ -2839,7 +2853,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       const notice = await page.locator("text=Uploaded").first().textContent();
       assert(
         Boolean(notice?.includes("/gate-upload/file/reference.png")),
-        `the notice must show the url the provider returned, got: ${notice}`,
+        "the notice must show the url the provider returned, got: $notice",
       );
       await page.screenshot({ path: join(artifactDir, "reference-transport.png"), fullPage: true });
       steps.push("ui: the provider states how references travel, and a test upload proves the file API");
@@ -2895,7 +2909,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.selectOption('select[aria-label="Style sheet"]', { index: 1 });
       // The form says the pixels the chosen shape produces, before the project exists.
       const hint = await page.locator("text=at 25 fps").first().textContent();
-      assert(Boolean(hint?.includes("1080x1920")), `the form must state the frame size, got: ${hint}`);
+      assert(Boolean(hint?.includes("1080x1920")), "the form must state the frame size, got: $hint");
       await page.waitForTimeout(400);
       await page.screenshot({ path: join(artifactDir, "new-project.png"), fullPage: true });
       steps.push("ui: the create form asks for shape, rate, models and a look");
@@ -2903,7 +2917,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.click('button:has-text("Create project")');
       await page.waitForSelector('[aria-label="Project format"]', { timeout: 20_000 });
       const format = await page.locator('[aria-label="Project format"]').first().textContent();
-      assert(Boolean(format?.includes("1080x1920")), `the project must state its shape, got: ${format}`);
+      assert(Boolean(format?.includes("1080x1920")), "the project must state its shape, got: $format");
       assert(Boolean(format?.includes("25 fps")), "the project must state its rate");
       assert(Boolean(format?.includes("project style")), "the project must state that it runs on a style");
       await page.waitForTimeout(400);
@@ -3019,7 +3033,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.waitForSelector("text=Request preview", { timeout: 20_000 });
       assert(
         (await previewText()).includes("Bearer ••••"),
-        `the new preview must show the new scheme, got: ${await previewText()}`,
+        "the new preview must show the new scheme, got: $await previewText()",
       );
       await page.screenshot({ path: join(artifactDir, "preview-auth.png"), fullPage: true });
 
@@ -3037,7 +3051,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       const storedEndpointName = await page.inputValue('input[aria-label="Endpoint name"]');
       assert(
         storedEndpointName === "TTS base",
-        `the endpoint form must open on the stored name, got ${storedEndpointName}`,
+        "the endpoint form must open on the stored name, got $storedEndpointName",
       );
       await page.fill('input[aria-label="Endpoint name"]', "TTS base 2");
       await page.screenshot({ path: join(artifactDir, "endpoint-edit.png"), fullPage: true });
@@ -3056,7 +3070,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       const endpointNotice = await page.locator("text=TTS base 2 deleted").first().textContent();
       assert(
         Boolean(endpointNotice?.includes("1 profile binding cleared")),
-        `the notice must report the binding that went with it, got: ${endpointNotice}`,
+        "the notice must report the binding that went with it, got: $endpointNotice",
       );
       steps.push("ui: deleting a model clears its profile binding and leaves the host standing");
 
@@ -3066,7 +3080,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       const prefilled = await page.inputValue('input[aria-label="Edit base URL"]');
       assert(
         prefilled === "https://fal-prod.run",
-        `the edit form must open on the stored host, got ${prefilled}`,
+        "the edit form must open on the stored host, got $prefilled",
       );
       await page.fill('input[aria-label="Edit provider name"]', "fal prod");
       await page.screenshot({ path: join(artifactDir, "setup-edit.png"), fullPage: true });
@@ -3081,7 +3095,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       const warning = await page.locator("text=go for good").first().textContent();
       assert(
         Boolean(warning?.includes("1 endpoint") && warning?.includes("1 profile binding")),
-        `the confirmation must name what goes with the provider, got: ${warning}`,
+        "the confirmation must name what goes with the provider, got: $warning",
       );
       await page.screenshot({ path: join(artifactDir, "setup-delete.png"), fullPage: true });
       await page.click('button:has-text("Delete it")');
@@ -3089,7 +3103,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       const notice = await page.locator("text=fal prod deleted").first().textContent();
       assert(
         Boolean(notice?.includes("1 endpoint") && notice?.includes("1 profile binding")),
-        `the notice must report what went with the provider, got: ${notice}`,
+        "the notice must report what went with the provider, got: $notice",
       );
       await page.waitForTimeout(400);
       await page.screenshot({ path: join(artifactDir, "setup-deleted.png"), fullPage: true });
@@ -3102,7 +3116,7 @@ async function browserFlow(steps: string[]): Promise<void> {
     if (gateNumber === 10) {
       const reviewContext = await instance.newContext();
       const reviewPage = await reviewContext.newPage();
-      await reviewPage.goto(`${base}${gate10Url}`);
+      await reviewPage.goto("$base$gate10Url");
       await reviewPage.waitForSelector("text=Shots", { timeout: 20_000 });
       await reviewPage.waitForSelector("video", { timeout: 20_000 });
       await reviewPage.screenshot({ path: join(artifactDir, "review-link.png"), fullPage: true });
@@ -3287,8 +3301,10 @@ async function browserFlow(steps: string[]): Promise<void> {
 
 async function main(): Promise<number> {
   await mkdir(artifactDir, { recursive: true });
-  const home = await mkdtemp(join(tmpdir(), `slate-gate${gateNumber}-`));
+  const home = await mkdtemp(join(tmpdir(), "slate-gate$gateNumber-"));
   gateHome = home;
+  // The archive default is the OS downloads folder; keep it inside the gate's own temp home.
+  process.env.SLATE_DOWNLOADS_DIR = join(home, "downloads");
   await ensureOwner(home, systemClock, "gate-password-123");
   // A reviewer and an editor exist on every gate host: the privilege boundary and collaboration are exercised end to end.
   await addUser(home, { username: "reviewer", password: "gate-viewer-123", role: "viewer" }, systemClock);
@@ -3309,8 +3325,8 @@ async function main(): Promise<number> {
       const body = (await c.req.json()) as { content_type?: unknown; file_size?: unknown };
       uploads.initiate.push({ contentType: body.content_type, fileSize: body.file_size });
       return c.json({
-        upload_url: `${base}/gate-upload/put`,
-        file_url: `${base}/gate-upload/file/reference.png`,
+        upload_url: "$base/gate-upload/put",
+        file_url: "$base/gate-upload/file/reference.png",
       });
     });
     app.put("/gate-upload/put", async (c) => {

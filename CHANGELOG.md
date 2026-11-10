@@ -2,6 +2,16 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Exports have a folder of their own
+
+- **Each project remembers where its archives go**, by default `Downloads/slate/exports/<project name>`. Config states
+  the folder, Change folder… points it elsewhere, Reset to default puts it back — and Export needs no choice at all.
+- **The folder is host state, not a document field**: the project file never carries an absolute path, so a film does
+  not move its backups when it moves machines. Results carry the label (`Downloads/slate/exports/the-last-light`), never
+  the path.
+- **The folder dialog now comes to the front.** It used to open behind the browser with no taskbar entry, wait for a
+  click nobody could give, and then be killed at sixty seconds — which read as "the button does nothing". It is now
+  owned by a topmost window, and a timeout or a real failure is reported with what to do instead.
 ## Health says how an agent drives Slate
 
 - **An "Agent access" card** on the health page names the three surfaces - MCP over stdio, the HTTP API, the CLI - and

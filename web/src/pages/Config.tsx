@@ -2,16 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   type BindingSetOption,
+  type ExportFolder,
   type LibraryStyle,
   type ProjectBudget,
   type ProjectSummary,
   archiveUrl,
+  exportFolder,
   exportProject,
-  exportProjectTo,
   listBindingSetOptions,
   listLibraryStyles,
   pickFolder,
   runOp,
+  setExportFolder,
   updateProject,
 } from "../api.js";
 
@@ -237,34 +239,36 @@ export function Config({ project, canEdit, canDelete, onChanged, onDeleted }: Pr
 }
 
 /**
- * Writing the film out. The default lands in the host's exports folder and can be copied anywhere with the save dialog;
- * a folder chosen with the host's own dialog is written in one move, which is what a large project needs and what the
- * browser cannot name for itself.
+ * Writing the film out. It goes to a folder the project remembers - by default the OS downloads folder under a Slate tree
+ * named after the film - and copies leave through the browser's own save dialog.
  */
 function Archive({ project, canDelete }: { project: ProjectSummary; canDelete: boolean }) {
-  const [chosen, setChosen] = useState<{ id: string; label: string } | null>(null);
-  const [fallback, setFallback] = useState(false);
-  const [to, setTo] = useState("");
-  const [hosted, setHosted] = useState(true);
+  const [folder, setFolder] = useState<ExportFolder | null>(null);
   const [archiveName, setArchiveName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function run(destination?: string, destinationId?: string) {
+  const refresh = useCallback(async () => {
+    try {
+      setFolder(await exportFolder(project.id));
+    } catch (caught) {
+      setError(message(caught));
+    }
+  }, [project.id]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function run() {
     setBusy(true);
     setError(null);
     try {
-      const archived = destinationId
-        ? await exportProjectTo(project.id, destinationId)
-        : await exportProject(project.id, destination || undefined);
-      const isHosted = !destination && !destinationId;
-      setHosted(isHosted);
+      const archived = await exportProject(project.id);
       setArchiveName(archived.archiveName);
       setNotice(
-        isHosted
-          ? `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB at revision ${archived.revision}`
-          : `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB, written to ${chosen?.label ?? "the folder you gave"} at revision ${archived.revision}`,
+        `${archived.archiveName} — ${Math.round(archived.bytes / 1024)} KB at revision ${archived.revision}`,
       );
     } catch (caught) {
       setError(message(caught));
@@ -277,17 +281,31 @@ function Archive({ project, canDelete }: { project: ProjectSummary; canDelete: b
   async function choose() {
     setBusy(true);
     setError(null);
+    setNotice("A folder dialog is opening on this computer's screen — it may be behind this window.");
     try {
       const picked = await pickFolder();
-      if (picked.cancelled || !picked.id || !picked.label) {
+      if (picked.cancelled || !picked.id) {
         setNotice("No folder was chosen.");
         return;
       }
-      setChosen({ id: picked.id, label: picked.label });
-      setNotice(`Folder chosen: ${picked.label}. Export to write the archive there.`);
+      const saved = await setExportFolder(project.id, picked.id);
+      setFolder(saved);
+      setNotice(`Exports now go to ${saved.label}.`);
     } catch (caught) {
-      // No desktop to draw a dialog on: offer the typed path rather than leaving no way to choose.
-      if (caught instanceof ApiError && caught.code === "capability_missing") setFallback(true);
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reset() {
+    setBusy(true);
+    setError(null);
+    try {
+      const saved = await setExportFolder(project.id, null);
+      setFolder(saved);
+      setNotice(`Exports go back to ${saved.label}.`);
+    } catch (caught) {
       setError(message(caught));
     } finally {
       setBusy(false);
@@ -298,26 +316,31 @@ function Archive({ project, canDelete }: { project: ProjectSummary; canDelete: b
     <div className="card stack">
       <h2>Archive</h2>
       <p className="muted" style={{ margin: 0 }}>
-        The whole folder — documents, media and exports — goes into one 7z with a manifest describing it, in
-        the host&apos;s exports folder. Save a copy opens your computer&apos;s save dialog; choosing a folder
-        writes it there in one move, with no copy through the browser.
+        The whole folder — documents, media and exports — goes into one 7z with a manifest describing it.
+        {folder ? (
+          <>
+            {" "}
+            Exports go to <strong>{folder.label}</strong>
+            {folder.isDefault ? " (the default for this project)" : ""}.
+          </>
+        ) : null}
       </p>
       <div className="row">
         <button type="button" className="primary" onClick={() => void run()} disabled={busy || !canDelete}>
           {busy ? "Archiving…" : "Export"}
         </button>
         <button type="button" onClick={() => void choose()} disabled={busy || !canDelete}>
-          {busy ? "Working…" : "Choose folder…"}
+          Change folder…
         </button>
-        {chosen ? (
-          <button type="button" onClick={() => void run(undefined, chosen.id)} disabled={busy || !canDelete}>
-            Export to {chosen.label}
+        {folder && !folder.isDefault ? (
+          <button type="button" onClick={() => void reset()} disabled={busy || !canDelete}>
+            Reset to default
           </button>
         ) : null}
-        {hosted && archiveName ? (
+        {archiveName ? (
           <a
             className="primary"
-            href={archiveUrl(archiveName)}
+            href={archiveUrl(project.id, archiveName)}
             download={archiveName}
             aria-label="Save a copy of the archive"
           >
@@ -325,30 +348,6 @@ function Archive({ project, canDelete }: { project: ProjectSummary; canDelete: b
           </a>
         ) : null}
       </div>
-      {fallback ? (
-        <>
-          <div className="row">
-            <input
-              value={to}
-              onChange={(event) => setTo(event.target.value)}
-              placeholder="D:\backups\films"
-              aria-label="Export destination folder"
-              style={{ flex: 1 }}
-            />
-            <button
-              type="button"
-              onClick={() => void run(to.trim())}
-              disabled={busy || to.trim() === "" || !canDelete}
-            >
-              Export there
-            </button>
-          </div>
-          <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-            This host has no desktop to show a folder dialog on. Type the folder the host can reach, or use
-            Save a copy.
-          </p>
-        </>
-      ) : null}
       {notice ? <p className="muted">{notice}</p> : null}
       {error ? <p className="error">{error}</p> : null}
     </div>

@@ -309,6 +309,23 @@ export interface ExportedArchive {
   revision: number;
 }
 
+export interface ExportFolder {
+  label: string;
+  isDefault: boolean;
+}
+
+/** Where this project's archives go, as a label; the path stays on the host. */
+export function exportFolder(projectId: string): Promise<ExportFolder> {
+  return runOp<ExportFolder>(projectId, "project.export-folder", {}).then((result) => result.data);
+}
+
+/** Remembers a chosen folder for this project, or resets it to the downloads default. */
+export function setExportFolder(projectId: string, destinationId: string | null): Promise<ExportFolder> {
+  return runOp<ExportFolder>(projectId, "project.set-export-folder", { destinationId }).then(
+    (result) => result.data,
+  );
+}
+
 export interface FolderChoice {
   id: string | null;
   label: string | null;
@@ -363,8 +380,8 @@ export async function importProjectFile(file: File): Promise<ImportedProject> {
 }
 
 /** Where a copy of an archive is fetched from; the browser's save dialog decides where it lands. */
-export function archiveUrl(name: string): string {
-  return `/api/exports/${encodeURIComponent(name)}`;
+export function archiveUrl(projectId: string, name: string): string {
+  return `/p/${projectId}/api/archive/${encodeURIComponent(name)}`;
 }
 
 export interface ReferenceUploadResult {
