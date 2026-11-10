@@ -198,6 +198,10 @@ export const aiEndpointSave = defineOp({
     if (!config.providers.some((provider) => provider.id === input.providerId)) {
       throw new SlateError("not_found", `no provider ${input.providerId}`);
     }
+    // As with a provider, an id names an endpoint that exists; an unknown one is a stale form, not a new model.
+    if (input.id && !config.endpoints.some((endpoint) => endpoint.id === input.id)) {
+      throw new SlateError("not_found", `no endpoint ${input.id}`);
+    }
     const id = input.id ?? newId("aie");
     const endpoint: Endpoint = {
       id,
