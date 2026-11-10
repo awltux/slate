@@ -61,10 +61,22 @@ export const FrameSourceSchema = z
     startFrameAssetId: z.string().nullable().default(null),
     /** Every image the generator was given. */
     referenceAssetIds: z.array(z.string()).default([]),
+    /** Every image the call made, so a different one can be kept later. */
+    candidateAssetIds: z.array(z.string()).default([]),
     /** What the person asked for, when they wrote it themselves. */
     prompt: z.string().default(""),
     via: z.string().default("local"),
     at: z.string(),
+  })
+  .strict();
+
+/** One generated image that has not been kept: what a frame was made from, and when. */
+export const FrameCandidateSchema = z
+  .object({
+    assetId: z.string().startsWith("ast_"),
+    role: z.enum(["first", "last"]),
+    prompt: z.string().default(""),
+    createdAt: z.string(),
   })
   .strict();
 
@@ -75,6 +87,8 @@ export const ShotFramesSchema = z
     last: z.string().startsWith("ast_").optional(),
     firstSource: FrameSourceSchema.optional(),
     lastSource: FrameSourceSchema.optional(),
+    /** Every image generated for this shot, so a frame can be swapped without regenerating it. */
+    candidates: z.array(FrameCandidateSchema).default([]),
   })
   .strict();
 

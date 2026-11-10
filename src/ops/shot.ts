@@ -36,6 +36,19 @@ const ShotViewSchema = z
         last: z.string().optional(),
         firstSource: z.unknown().optional(),
         lastSource: z.unknown().optional(),
+        /** Every image generated for this shot, so a frame can be swapped without regenerating it. */
+        candidates: z
+          .array(
+            z
+              .object({
+                assetId: z.string(),
+                role: z.string(),
+                prompt: z.string(),
+                createdAt: z.string(),
+              })
+              .strict(),
+          )
+          .default([]),
       })
       .strict(),
     builtFromSceneHash: z.string(),
@@ -105,7 +118,7 @@ export const shotCreate = defineOp({
           durationSec: input.durationSec,
           description: input.description,
           builtFromSceneHash,
-          frames: {},
+          frames: { candidates: [] },
           entityIds: [],
           pins: {},
           createdAt: now,

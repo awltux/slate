@@ -1,9 +1,9 @@
 {
   "gate": 2,
   "status": "passed",
-  "base": "http://127.0.0.1:51359",
+  "base": "http://127.0.0.1:51844",
   "steps": [
-    "project: prj_daffdd686b4e4dfc8efba1a85221932c",
+    "project: prj_0696bfaaff4c4dce81181533c61901d7",
     "story: five lines set, none missing",
     "scenes: 1 INT lantern room, 2 EXT gallery",
     "shots: 1A, 1B and one more, with readiness checks",
@@ -13,8 +13,8 @@
     "brief: 2 scenes, 3 shots, 1 stale, next step named",
     "plan: readiness and staleness per shot",
     "headless: story.set, scene.create and shot.create via the CLI, no daemon",
-    "mcp: 80 tools over stdio (2024-11-05), story.set called",
+    "mcp: 81 tools over stdio (2024-11-05), story.set called",
     "ui: the end frame is generated from the start frame, with the checkbox on by default",
-    "ui: wrote the five lines, planned a shot, and generated a frame from the dialog"
+    "ui: planned a shot, generated three images in the dialog and kept one as the frame"
   ]
 }

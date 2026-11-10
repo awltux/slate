@@ -3274,13 +3274,22 @@ async function browserFlow(steps: string[]): Promise<void> {
         'textarea[aria-label="Frame prompt"]',
         "Elias trims the wick, amber light, salt on his hands",
       );
+      // Three images, then keep the one that is right: a frame is chosen from what was made, not accepted blind.
+      await page.selectOption('select[aria-label="How many images to generate"]', "3");
       await page.click('button:has-text("Generate start frame")');
-      await page.waitForSelector(
-        'section[aria-label^="Frames for shot"] img[alt^="New start frame for shot"]',
-        {
-          timeout: 120_000,
-        },
+      await page.waitForSelector('section[aria-label^="Frames for shot"] img[alt*="option 3"]', {
+        timeout: 180_000,
+      });
+      const options = await page.locator('section[aria-label^="Frames for shot"] figure').allTextContents();
+      assert(
+        options.some((text) => text.includes("used now")) &&
+          options.some((text) => text.includes("not kept")),
+        `the dialog must show which image is used and which can be kept, got: ${options.join(" | ")}`,
       );
+      await page.click('button[aria-label^="Keep option 2 as the start frame"]');
+      await page.waitForFunction(() => !document.body.innerText.includes("invalid_input"), undefined, {
+        timeout: 60_000,
+      });
       await page.screenshot({ path: join(artifactDir, "frame-dialog.png"), fullPage: true });
       // The end frame can be conditioned on the start frame, on by default, and the dialog says so.
       await page.click('section[aria-label^="Frames for shot"] button[role="tab"]:has-text("End")');
@@ -3298,7 +3307,7 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.click('section[aria-label^="Frames for shot"] button:has-text("Close")');
       await page.waitForSelector('img[alt^="Start frame for shot"]', { timeout: 60_000 });
       await page.screenshot({ path: join(artifactDir, "plan.png"), fullPage: true });
-      steps.push("ui: wrote the five lines, planned a shot, and generated a frame from the dialog");
+      steps.push("ui: planned a shot, generated three images in the dialog and kept one as the frame");
     } else {
       // Health is a host tab: it is reachable from anywhere, with or without a project.
       await page.click('header [role="tab"]:has-text("Health")');

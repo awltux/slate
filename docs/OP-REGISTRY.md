@@ -36,6 +36,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `estimate.create` | read | project | `estimate_create` | Price a batch of takes for the given tier before anything is submitted. |
 | `frame.attach` | write | project | `frame_attach` | Attach an image to a shot slot (board, first or last), copied into the project by content hash. |
 | `frame.generate` | spend | project | `frame_generate` | Generate a shot's start or end frame from its scene's library items and the previz blockout. |
+| `frame.select` | write | project | `frame_select` | Keep one of the generated images as the shot's start or end frame. |
 | `graph.stale` | read | project | `graph_stale` | Nodes whose inputs changed since they were built, with the cause. |
 | `history.revert` | destructive | project | `history_revert` | Undo the most recent commit by restoring the state before it. |
 | `job.get` | read | project | `job_get` | The state of a job. |
@@ -1005,6 +1006,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "boolean",
       "default": true
     },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "default": 1
+    },
     "useBlockout": {
       "type": "boolean",
       "default": true
@@ -1020,6 +1027,39 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "required": [
     "shotId",
     "role"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `frame.select`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "shotId": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "first",
+        "last"
+      ]
+    },
+    "assetId": {
+      "type": "string"
+    },
+    "expectedRevision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "shotId",
+    "role",
+    "assetId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

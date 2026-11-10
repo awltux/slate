@@ -43,9 +43,10 @@ export function FrameDialog({
   const [picked, setPicked] = useState<string[]>(sceneEntities.map((entity) => entity.id));
   // An end frame is made from where the shot began: on by default, and only meaningful once a start frame exists.
   const [useStartFrame, setUseStartFrame] = useState(true);
+  const [count, setCount] = useState(3);
+  const [made, setMade] = useState<{ assetIds: string[]; role: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [made, setMade] = useState<{ assetId: string; role: string } | null>(null);
 
   const current = role === "first" ? frames.first : frames.last;
 
@@ -53,7 +54,7 @@ export function FrameDialog({
     setBusy(true);
     setError(null);
     try {
-      const result = await runOp<{ assetId: string; role: string; entityIds: string[] }>(
+      const result = await runOp<{ assetId: string; assetIds: string[]; role: string }>(
         projectId,
         "frame.generate",
         {
@@ -62,10 +63,24 @@ export function FrameDialog({
           prompt,
           entityIds: picked,
           useStartFrame,
+          count,
           expectedRevision: revision,
         },
       );
-      setMade({ assetId: result.data.assetId, role: result.data.role });
+      setMade({ assetIds: result.data.assetIds, role: result.data.role });
+      await onDone();
+    } catch (caught) {
+      setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function keep(assetId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await runOp(projectId, "frame.select", { shotId, role, assetId, expectedRevision: revision });
       await onDone();
     } catch (caught) {
       setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
@@ -173,23 +188,53 @@ export function FrameDialog({
               </figcaption>
             </figure>
           ) : null}
-          {made && made.role === role ? (
-            <figure style={{ margin: 0 }}>
-              <img
-                src={`/p/${projectId}/media/${made.assetId}`}
-                alt={`New ${role === "first" ? "start" : "end"} frame for shot ${shotNumber}`}
-                style={{ width: 220, borderRadius: 6, border: "1px solid var(--line)" }}
-              />
-              <figcaption className="muted" style={{ fontSize: 12 }}>
-                just generated
-              </figcaption>
-            </figure>
-          ) : null}
+          {made && made.role === role
+            ? made.assetIds.map((assetId, index) => (
+                <figure key={assetId} style={{ margin: 0 }}>
+                  <img
+                    src={`/p/${projectId}/media/${assetId}`}
+                    alt={`New ${role === "first" ? "start" : "end"} frame for shot ${shotNumber}, option ${index + 1}`}
+                    style={{
+                      width: 180,
+                      borderRadius: 6,
+                      border: index === 0 ? "2px solid var(--accent, #c9a227)" : "1px solid var(--line)",
+                    }}
+                  />
+                  <figcaption className="muted" style={{ fontSize: 12 }}>
+                    {index === 0 ? "used now" : "made, not kept"}
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ marginLeft: 6 }}
+                      onClick={() => void keep(assetId)}
+                      disabled={busy}
+                      aria-label={`Keep option ${index + 1} as the ${role === "first" ? "start" : "end"} frame`}
+                    >
+                      Keep
+                    </button>
+                  </figcaption>
+                </figure>
+              ))
+            : null}
         </div>
       ) : null}
 
       {error ? <p className="error">{error}</p> : null}
       <div className="row">
+        <label className="row" style={{ gap: "0.35rem", alignItems: "center", fontSize: 13 }}>
+          <span className="muted">Images</span>
+          <select
+            value={count}
+            onChange={(event) => setCount(Number(event.target.value))}
+            aria-label="How many images to generate"
+          >
+            {[1, 2, 3, 4].map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           type="button"
           className="primary"

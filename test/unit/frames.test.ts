@@ -291,3 +291,75 @@ describe("an end frame conditioned on the start frame", () => {
     expect(result.warnings.map((warning) => warning.code)).toContain("no_start_frame");
   });
 });
+
+describe("keeping a frame from the images that were made", () => {
+  async function shotWithCandidates(count: number) {
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LANTERN ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "WS", angle: "EYE", movement: "STATIC", durationSec: 4 },
+        context,
+      ),
+    ).data as { shotId: string };
+    const generated = expectOk(
+      await registry.execute(
+        "frame.generate",
+        { shotId: shot.shotId, role: "first", count, prompt: "a lighthouse keeper at night" },
+        context,
+      ),
+    ).data as { assetId: string; assetIds: string[] };
+    return { shotId: shot.shotId, generated };
+  }
+
+  it("keeps every image it made, and uses the first", async () => {
+    const { shotId, generated } = await shotWithCandidates(3);
+    expect(generated.assetIds).toHaveLength(3);
+    // Distinct images: three renders that share a seed would be three charges for one picture.
+    expect(new Set(generated.assetIds).size).toBe(3);
+
+    const view = expectOk(await registry.execute("shot.get", { shotId }, context)).data as {
+      shot: { frames: { first: string; candidates: Array<{ assetId: string; role: string }> } };
+    };
+    expect(view.shot.frames.first).toBe(generated.assetId);
+    expect(view.shot.frames.candidates).toHaveLength(3);
+  });
+
+  it("switches the frame to another candidate without generating anything", async () => {
+    const { shotId, generated } = await shotWithCandidates(2);
+    const other = generated.assetIds[1] as string;
+
+    const kept = expectOk(
+      await registry.execute("frame.select", { shotId, role: "first", assetId: other }, context),
+    ).data as { assetId: string };
+
+    expect(kept.assetId).toBe(other);
+    const view = expectOk(await registry.execute("shot.get", { shotId }, context)).data as {
+      shot: { frames: { first: string } };
+    };
+    expect(view.shot.frames.first).toBe(other);
+
+    // Selection is a commit like any other decision.
+    const history = expectOk(await registry.execute("project.history", { limit: 3 }, context)).data as {
+      commits: Array<{ intent: string }>;
+    };
+    expect(history.commits[0]?.intent).toContain("keep a different first frame");
+  });
+
+  it("refuses an image that was never made for this shot", async () => {
+    const { shotId } = await shotWithCandidates(1);
+    const refused = await registry.execute(
+      "frame.select",
+      { shotId, role: "first", assetId: "ast_made_up" },
+      context,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.code).toBe("invalid_input");
+  });
+});

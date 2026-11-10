@@ -32,7 +32,7 @@ import {
   variantDelete,
   variantUpdate,
 } from "./entity.js";
-import { frameGenerate } from "./frame-generate.js";
+import { frameGenerate, frameSelect } from "./frame-generate.js";
 import { frameAttach } from "./frame.js";
 import { graphStale, sessionBrief } from "./graph.js";
 import { historyRevert, projectHistory } from "./history.js";
@@ -104,6 +104,7 @@ export function createRegistry(): OpRegistry {
     noteList,
     noteResolve,
     frameGenerate,
+    frameSelect,
     promptExpand,
     libraryPush,
     libraryPull,

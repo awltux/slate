@@ -36,6 +36,8 @@ export const frameGenerate = defineOp({
       entityIds: z.array(z.string()).default([]),
       /** For an end frame: also give the generator the start frame, so the shot begins and ends in one place. */
       useStartFrame: z.boolean().default(true),
+      /** How many images to make. More than one leaves a choice; the first is used until another is kept. */
+      count: z.number().int().min(1).max(4).default(1),
       useBlockout: z.boolean().default(true),
       seed: z.number().int().default(0),
       /** Optimistic concurrency: a shot edited while the button was pressed is not silently overwritten. */
@@ -49,6 +51,8 @@ export const frameGenerate = defineOp({
       assetId: z.string(),
       entityIds: z.array(z.string()),
       blockoutAssetId: z.string().nullable(),
+      /** Every image this call made, in the order they were rendered. */
+      assetIds: z.array(z.string()),
       /** The images the frame was generated from, in the order they were given. */
       referenceAssetIds: z.array(z.string()),
       /** The size the frame was rendered at: the project's shape, not a choice made per shot. */
@@ -142,34 +146,40 @@ export const frameGenerate = defineOp({
     });
 
     const work = await mkdtemp(join(tmpdir(), "slate-frame-"));
-    const outputFile = join(work, `${input.role}.png`);
-    let asset: Awaited<ReturnType<typeof ingestAsset>> | undefined;
+    const made: Array<Awaited<ReturnType<typeof ingestAsset>>> = [];
     try {
-      await renderStill(
-        {
-          binary: ffmpeg.binary,
-          prompt,
-          index: input.seed + (input.role === "last" ? 1 : 0),
-          width: size.width,
-          height: size.height,
-          outputFile,
-        },
-        context.run,
-      );
-      // The asset must be copied out while the temp file still exists.
-      asset = await ingestAsset(context.root, {
-        kind: "frame",
-        sourcePath: outputFile,
-        clock: context.clock,
-      });
+      for (let index = 0; index < input.count; index += 1) {
+        const outputFile = join(work, `${input.role}-${index}.png`);
+        await renderStill(
+          {
+            binary: ffmpeg.binary,
+            prompt,
+            // Distinct seeds per candidate: the same seed twice would spend money to return the same picture.
+            index: input.seed + (input.role === "last" ? 1 : 0) + index,
+            width: size.width,
+            height: size.height,
+            outputFile,
+          },
+          context.run,
+        );
+        // The asset must be copied out while the temp file still exists.
+        made.push(
+          await ingestAsset(context.root, { kind: "frame", sourcePath: outputFile, clock: context.clock }),
+        );
+      }
     } finally {
       await rm(work, { recursive: true, force: true });
     }
+    const asset = made[0];
+    if (!asset) throw new SlateError("service_unavailable", "no frame was rendered", { retryable: true });
+
     if (!asset) throw new SlateError("internal", "the frame was not ingested");
     const source = {
       entityIds: attached.map((entity) => entity.id),
       entityPins: Object.fromEntries(attached.map((entity) => [entity.id, entity.identity?.version ?? 0])),
       blockoutAssetId,
+      /** Every image this call made, so a different one can be kept later. */
+      candidateAssetIds: made.map((entry) => entry.id),
       /** The start frame, when the end frame was conditioned on it. */
       startFrameAssetId,
       /** Every image the generator was given, so provenance names the pictures and not only the ids behind them. */
@@ -189,13 +199,24 @@ export const frameGenerate = defineOp({
       // Checked again at commit time: an edit that landed while the frame was rendering must not be overwritten.
       expectedRevision: input.expectedRevision,
       mutate: ({ production: target }) => {
-        target.assets[asset.id] = asset;
+        // Every image made is an asset of the film, or a candidate would be a file with no record and no way to view it.
+        for (const entry of made) target.assets[entry.id] = entry;
         const local = target.shots[input.shotId];
         if (!local) return;
+        // Every image stays on the shot: the first is used now, and another can be kept without paying again.
+        const candidates = [
+          ...local.frames.candidates,
+          ...made.map((entry) => ({
+            assetId: entry.id,
+            role: input.role,
+            prompt: input.prompt.trim(),
+            createdAt: context.clock.now(),
+          })),
+        ];
         if (input.role === "first") {
-          local.frames = { ...local.frames, first: asset.id, firstSource: source };
+          local.frames = { ...local.frames, first: asset.id, firstSource: source, candidates };
         } else {
-          local.frames = { ...local.frames, last: asset.id, lastSource: source };
+          local.frames = { ...local.frames, last: asset.id, lastSource: source, candidates };
         }
         local.updatedAt = context.clock.now();
       },
@@ -208,6 +229,8 @@ export const frameGenerate = defineOp({
         assetId: asset.id,
         entityIds: source.entityIds,
         blockoutAssetId,
+        /** Every image this call made. The first is the one now used as the frame. */
+        assetIds: made.map((entry) => entry.id),
         /** The images the frame was generated from. */
         referenceAssetIds,
         width: size.width,
@@ -242,3 +265,80 @@ export const frameGenerate = defineOp({
 });
 
 void newId;
+
+/**
+ * Keep one of the images already made for this shot. A frame is a judgement, and the images are already paid for: choosing
+ * between them should cost nothing and be reversible in the history like any other decision.
+ */
+export const frameSelect = defineOp({
+  name: "frame.select",
+  policy: "write",
+  summary: "Keep one of the generated images as the shot's start or end frame.",
+  input: z
+    .object({
+      shotId: z.string(),
+      role: z.enum(["first", "last"]),
+      assetId: z.string(),
+      expectedRevision: z.number().int().optional(),
+    })
+    .strict(),
+  output: z
+    .object({
+      shotId: z.string(),
+      role: z.string(),
+      assetId: z.string(),
+      candidates: z.number().int(),
+    })
+    .strict(),
+  touched: (input) => [`shot:${input.shotId}`],
+  run: async (input, context) => {
+    const { production } = await loadDocuments(context);
+    const current = production.shots[input.shotId];
+    if (!current) throw new SlateError("not_found", `no shot ${input.shotId}`);
+
+    // Only an image that was made for this shot and this role can become its frame: an id from elsewhere is a mistake.
+    const candidate = current.frames.candidates.find(
+      (entry) => entry.assetId === input.assetId && entry.role === input.role,
+    );
+    const alreadyKept =
+      (input.role === "first" ? current.frames.first : current.frames.last) === input.assetId;
+    if (!candidate && !alreadyKept) {
+      throw new SlateError("invalid_input", "that image was not generated for this shot's frame", {
+        detail: { assetId: input.assetId, role: input.role },
+      });
+    }
+
+    const result = await commitDocuments({
+      root: context.root,
+      actor: context.actor,
+      intent: `frame: keep a different ${input.role} frame for shot ${current.number}`,
+      touched: [`shot:${input.shotId}`],
+      clock: context.clock,
+      expectedRevision: input.expectedRevision,
+      mutate: ({ production: target }) => {
+        const local = target.shots[input.shotId];
+        if (!local) return;
+        const source = input.role === "first" ? local.frames.firstSource : local.frames.lastSource;
+        // The provenance of the kept image is the provenance of the call that made it, with its prompt.
+        const kept = source ? { ...source, prompt: candidate?.prompt ?? source.prompt } : undefined;
+        local.frames =
+          input.role === "first"
+            ? { ...local.frames, first: input.assetId, firstSource: kept }
+            : { ...local.frames, last: input.assetId, lastSource: kept };
+        local.updatedAt = context.clock.now();
+      },
+    });
+
+    return {
+      data: {
+        shotId: input.shotId,
+        role: input.role,
+        assetId: input.assetId,
+        candidates: current.frames.candidates.length,
+      },
+      version: result.project.revision,
+      commit: result.commit.id,
+      next: ["shot.get"],
+    };
+  },
+});

@@ -2,6 +2,14 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## A frame is chosen, not accepted
+
+- **Generate one to four images, then keep the one that is right.** Every image a call makes stays on the shot, so
+  keeping a different one costs nothing and is a commit like any other decision (and can be undone like one).
+- **The dialog shows them side by side**: the current frame, the image now used, and the others marked "made, not kept"
+  with a Keep button each.
+- **`frame.select` keeps a candidate**, and refuses an image that was not made for that shot and role — a wrong id is a
+  mistake, not a better take.
 ## An end frame continues from the start frame
 
 - **The end frame editor offers "Use the start frame as a reference", ticked by default.** The start frame joins the
