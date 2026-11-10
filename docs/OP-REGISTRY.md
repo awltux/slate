@@ -990,6 +990,17 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
         "last"
       ]
     },
+    "prompt": {
+      "type": "string",
+      "default": ""
+    },
+    "entityIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
     "useBlockout": {
       "type": "boolean",
       "default": true
