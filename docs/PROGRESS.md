@@ -16,6 +16,18 @@ four surfaces exist.
 | 9 | Finish & deliver | `pnpm gate:9` | **done** | [finish](../artifacts/9/finish.png) · [report](../artifacts/9/report.json) |
 | 10 | Remote review | `pnpm gate:10` | **done** | [review-link](../artifacts/10/review-link.png) · [report](../artifacts/10/report.json) |
 | 11 | Setup: AI connections | `pnpm gate:11` | **done** | [setup](../artifacts/11/setup.png) · [report](../artifacts/11/report.json) |
+| 12 | Scenes, frames and the shoot | `pnpm gate:12` | **done** | [plan](../artifacts/12/plan-expanded.png) · [report](../artifacts/12/report.json) |
+
+## Slice 12 — what it proves
+
+- **A scene is a set of library items**, not a single location link, and the first location among them is the backdrop
+  the cut falls back to.
+- **Frames are generated from those items**: the frame records the entity ids, the sheet versions they were pinned at
+  and the blockout it was conditioned on, so the picture has a provenance rather than a prompt.
+- **The shoot runs between the frames**: an approved estimate produces a take that records `fromFrameId` and
+  `toFrameId`, and the clip moves from one to the other over the shot's duration.
+- **The plan stays readable**: scenes are one collapsed heading, and only the selected scene shows its items, shots and
+  frames.
 
 ## Slice 11 — what it proves
 

@@ -2,6 +2,15 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Scenes hold library items; frames are generated; the shoot runs between them
+
+- **A scene carries the library items that are in it** — the place, the people, the things, as many as you like. The
+  first location among them is the backdrop.
+- **Start and end frames are generated**, not drawn: each is conditioned on the scene's items and, when the previz has
+  one, on the blockout render that fixes the geometry. The frame records both, so it can be regenerated or blamed.
+- **The shoot runs from the start frame to the end frame**, and the take records the pair it was made between.
+- **Scenes are collapsed to a heading** in the plan, with only the selected scene open.
+
 ## Setup — AI connections
 
 - **A Setup tab, for the owner only.** Declare any number of AI providers and, within each, any number of endpoints —

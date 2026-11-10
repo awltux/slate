@@ -182,14 +182,25 @@ description ──(agent)──► prompt ──(generate)──► candidates �
   may point at one; generation records which style it used.
 - **A location entity can be materialised as a set**: the Blender file and manifest are the location made geometric,
   which is why `set.attach` binds entities to objects (`entityMap`).
-- **A scene** is a screenplay unit — slugline, synopsis, body — that may *reference* a location entity
-  (`locationEntityId`); it does not own it. Two scenes in one place share the location sheet and, usually, one set
-  version. A linked location supplies the backdrop plate: when a shot has no frame of its own, the cut falls back to
-  the location's cover image rather than dropping the shot.
+- **A scene** is a screenplay unit — slugline, synopsis, body — that carries the **library items in it**
+  (`entityIds`: the place, the people, the things, any number of any kind). The first location among them is the
+  backdrop: when a shot has no frame of its own, the cut falls back to that location's cover image rather than dropping
+  the shot. Two scenes in one place share the location sheet and usually one set version.
+- **A frame is generated, not drawn.** `frame.generate` renders a shot's start or end still from the scene's items and,
+  when one exists, from the previz blockout that fixes the geometry. Each frame records the `entityIds`, the sheet
+  versions they were pinned at, and the blockout it was conditioned on (`firstSource` / `lastSource`), so it can be
+  reproduced and a mismatch can be blamed on the right input.
+- **The shoot runs between the frames.** A take is generated from an approved estimate and records `fromFrameId` and
+  `toFrameId`; the renderer moves from the start frame to the end frame over the shot's duration.
 - **A shot** lists the entities in frame (`entityIds`) and **pins** the sheet versions it was conditioned on:
   `pins: { entityId: sheetVersion }`.
 
-**Two scopes, one shape.** A project has a library of the entities it uses. The host has a library of items shared by\nevery project: pushing copies an entity (images included) into it as a versioned item, importing brings a copy back.\nA project entity is always a *clone* - it records which library version it came from and its own edits never touch the\nshared item - so "newer" is a version comparison, not a conflict.\n\n**Deleting is a reference question.** An entry can be deleted only when nothing points at it: a shot that lists it, or
+**Two scopes, one shape.** A project has a library of the entities it uses. The host has a library of items shared by
+every project: pushing copies an entity (images included) into it as a versioned item, importing brings a copy back.
+A project entity is always a *clone* — it records which library version it came from, and its own edits never touch the
+shared item — so "newer" is a version comparison, not a conflict.
+
+**Deleting is a reference question.** An entry can be deleted only when nothing points at it: a shot that lists it, or
 another entity styled by it. The refusal names what is using it, because "cannot delete" without a reason is a puzzle,
 not an error.
 
