@@ -21,6 +21,24 @@ four surfaces exist.
 | 14 | Editable sheets, one reference image | `pnpm gate:14` | **done** | [editor](../artifacts/14/sheet-editor.png) · [published](../artifacts/14/sheet-published.png) · [report](../artifacts/14/report.json) |
 | 15 | Project shape, models and look | `pnpm gate:15` | **done** | [create](../artifacts/15/new-project.png) · [project](../artifacts/15/project-created.png) · [report](../artifacts/15/report.json) |
 | 16 | Deleting a project, guarded | `pnpm gate:16` | **done** | [confirm](../artifacts/16/delete-project.png) · [after](../artifacts/16/projects-after-delete.png) · [report](../artifacts/16/report.json) |
+| 17 | References reach a remote model | `pnpm gate:17` | **done** | [transport](../artifacts/17/reference-transport.png) · [report](../artifacts/17/report.json) |
+
+## Slice 17 — what it proves
+
+- **A local file can be handed to a remote model.** Image references are inlined as a data URI when they fit, and
+  uploaded through the provider's own two-step file API when they do not — the gate runs that upload over real HTTP
+  back to a loopback fake, asserting the initiate body (content type, byte count as a number) and that the presigned
+  PUT received exactly the measured bytes.
+- **The transport is declared, not hardcoded**: inline or inline-then-upload, the ceiling, the endpoint, its body
+  template and the response paths all live on the provider.
+- **Nothing is silently dropped.** A reference over the ceiling with no upload declared is planned as refused — a
+  `reference_too_large` warning in preview — and would be a coded failure at call time, not a call that quietly ran
+  without its reference.
+- **Preview stays offline and still answers**: it reports the size, the rung and where the reference lands, without
+  moving a byte.
+- **The upload is testable before a shot needs it**: `ai.reference.test` uploads a tiny image, and the card offers it.
+- **No test can reach the internet by accident**: the network is an injected port, and a test context without a fake
+  throws rather than fetching.
 
 ## Slice 16 — what it proves
 
@@ -192,7 +210,7 @@ already exists.
 
 | Item | State |
 |---|---|
-| Sheet-conditioned generation (pass pinned views to the gateway) | provenance field exists; the local gateway has no reference input |
+| Sheet-conditioned generation (pass pinned views to the gateway) | provenance field exists, and references can now be staged inline or uploaded (slice 17); the local gateway still takes no reference input |
 | Delete a scene or shot | missing — needs cascade rules for takes and cut items |
 | Scene intent note (GUIDE §17 handoff) | missing |
 | Coverage plan (GUIDE §7: master plus variants) | missing |

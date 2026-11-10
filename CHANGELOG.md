@@ -2,6 +2,19 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Reference images can reach a remote model
+
+- **A reference travels as bytes, not as a localhost URL.** Providers that fetch a URL can now be given one: images
+  under the provider's inline limit go in the request as a data URI, and anything larger is uploaded through the
+  provider's own file API — fal's two-step upload, which hands back a URL fal can fetch.
+- **The transport is declared, per provider**, like auth: inline or inline-then-upload, the inline ceiling, and the
+  upload endpoint with its body template and response paths. Setup carries the fields and the card states the policy.
+- **"Test upload" proves it** with a 64×64 image, so the file API and the credential are checked before a shot depends
+  on them.
+- **Nothing is silently dropped**: a reference too large for an inline limit with no upload declared is reported —
+  in preview as a warning with its size and the limit, and at call time as a coded refusal.
+- **Preview says what would happen without moving bytes**: the size, the rung, and where the reference lands in the body.
+
 ## A project can be deleted, and its name is the guard
 
 - **Only an owner can retire a film**, and only by typing its name. The check is inside the operation, so an API call

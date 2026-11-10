@@ -259,10 +259,17 @@ and one route with many models, a local ComfyUI has no key and a graph id. Writi
 deploy for every model. So the AI layer is three declarations and one renderer:
 
 ```
-Provider   (transport)   id · name · baseUrl · auth { header, scheme: "Key {{key}}" } · credential
+Provider   (transport)   id · name · baseUrl · auth { header, scheme: "Key {{key}}" } · reference · credential
 Endpoint   (a model)     provider · capability · method · path · params[] · body template · resultPath
 Binding    (a profile)   id · name · capability → [endpoint ids], first that resolves wins
 ```
+
+**A reference is a local file and a remote fetch.** Slate serves media from `127.0.0.1` behind a session cookie; a
+generation service fetches from the internet. The bytes therefore travel with the call, and *how* is declared per
+provider (`reference`: `inline` | `upload`, an inline ceiling, and the provider's file API — see
+[ADR 0002](adr/0002-reference-transport.md)). Inline sends a data URI; upload does the provider's two-step
+(initiate → presigned PUT → use the returned public URL). A reference that fits neither is refused with a code rather
+than dropped, because a call that claims to be conditioned on an image and is not is a lie about what the model saw.
 
 **A binding set is a profile, and a project picks one.** "Draft, cheap" and "Final, FLUX" are two sets over the same
 endpoints; `project.aiBindingSetId` says which a film runs on, and null means the host default. Resolution is
