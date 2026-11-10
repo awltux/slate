@@ -136,7 +136,12 @@ export function App() {
             project={active}
             me={session.user.displayName}
             canRename={session.user.role === "owner" || session.user.role === "editor"}
+            canDelete={session.user.role === "owner"}
             onRenamed={refreshProjects}
+            onDeleted={async () => {
+              setActiveId(null);
+              await refreshProjects();
+            }}
           />
         ) : (
           <Projects projects={projects} onCreated={refreshProjects} onOpen={setActiveId} />

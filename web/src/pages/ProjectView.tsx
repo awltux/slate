@@ -72,15 +72,25 @@ export function ProjectView({
   project,
   me,
   canRename,
+  canDelete,
   onRenamed,
+  onDeleted,
 }: {
   project: ProjectSummary;
   me: string;
   canRename: boolean;
+  /** Only an owner may retire a film: it is the one decision that cannot be undone by a commit. */
+  canDelete: boolean;
   onRenamed: () => Promise<void> | void;
+  onDeleted: () => Promise<void> | void;
 }) {
   const [tab, setTab] = useState<Tab>("write");
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [keepAssets, setKeepAssets] = useState(true);
+  const [confirmName, setConfirmName] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [draft, setDraft] = useState(project.name);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -139,6 +149,21 @@ export function ProjectView({
   useEffect(() => {
     if (editing) nameInput.current?.focus();
   }, [editing]);
+
+  /** The typed name is checked by the operation as well: the form cannot be the only guard on an irreversible delete. */
+  async function removeProject() {
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await runOp(project.id, "project.delete", { confirmName, keepAssets });
+      setDeleting(false);
+      await onDeleted();
+    } catch (caught) {
+      setDeleteError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   async function rename(event: React.FormEvent) {
     event.preventDefault();
@@ -200,6 +225,21 @@ export function ProjectView({
                 Edit
               </button>
             ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  setDeleting((open) => !open);
+                  setConfirmName("");
+                  setDeleteError(null);
+                }}
+                title="Delete this project from the host"
+                aria-label="Delete this project"
+              >
+                Delete
+              </button>
+            ) : null}
           </h1>
         )}
         {renameError ? <p className="error">{renameError}</p> : null}
@@ -248,6 +288,53 @@ export function ProjectView({
           {project.settings.defaultStyleId ? " · project style" : ""}
         </p>
       </div>
+
+      {deleting && canDelete ? (
+        <div className="card stack" style={{ borderColor: "var(--red)" }}>
+          <strong>Delete “{project.name}”?</strong>
+          <p className="muted" style={{ margin: 0 }}>
+            The project is removed from this host.
+            {keepAssets
+              ? " Its folder — media, exports and documents — stays on disk."
+              : " Its folder and everything in it are deleted."}
+          </p>
+          <label className="row" style={{ gap: "0.4rem", alignItems: "center", fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={keepAssets}
+              onChange={(event) => setKeepAssets(event.target.checked)}
+              aria-label="Keep the project folder on disk"
+            />
+            Keep the folder on disk
+          </label>
+          <label className="stack" style={{ gap: "0.25rem" }}>
+            <span className="muted" style={{ fontSize: 12 }}>
+              Type {project.name} to confirm
+            </span>
+            <input
+              value={confirmName}
+              onChange={(event) => setConfirmName(event.target.value)}
+              placeholder={project.name}
+              aria-label="Type the project name to confirm"
+            />
+          </label>
+          {deleteError ? <p className="error">{deleteError}</p> : null}
+          <div className="row">
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void removeProject()}
+              disabled={deleteBusy || confirmName.trim() !== project.name}
+            >
+              {deleteBusy ? "Deleting…" : keepAssets ? "Delete and keep the folder" : "Delete everything"}
+            </button>
+            <button type="button" onClick={() => setDeleting(false)} disabled={deleteBusy}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "write"} onClick={() => setTab("write")}>
           Write
