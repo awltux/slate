@@ -311,7 +311,12 @@ function Activity({ projectId, me }: { projectId: string; me: string }) {
         commits.map((commit, index) => (
           <details className="commit" key={commit.id} style={{ paddingTop: "0.35rem" }}>
             <summary style={{ cursor: "pointer" }}>
-              <time>{new Date(commit.at).toLocaleString()}</time> {commit.intent}
+              <span className="line">
+                <time>{new Date(commit.at).toLocaleString()}</time>
+                <span className="intent" title={commit.intent}>
+                  {commit.intent}
+                </span>
+              </span>
             </summary>
             <div className="muted mono" style={{ fontSize: 12, marginTop: "0.25rem" }}>
               r{commit.revision} · {commit.actor} · {commit.id}

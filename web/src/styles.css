@@ -301,7 +301,34 @@ code,
   border-bottom: 1px solid var(--line);
 }
 
+/* A details row is its own layout: the summary is one line, and the message inside takes the full width when opened. */
+.commit:has(> summary) {
+  display: block;
+}
+
+.commit > summary {
+  /* One line, always: a log is scanned, and a wrapped entry makes the page jump about. The marker stays, because a row
+     that does not look openable is a row nobody opens. */
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.commit > summary .line {
+  /* Inline, so the marker and the message share one row instead of stacking. */
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.commit > summary .intent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .commit time {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  flex: none;
 }
