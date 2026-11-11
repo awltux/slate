@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, runOp } from "../api.js";
+import { readPreference, writePreference } from "../preferences.js";
 
 const ANGLES = [
   "front",
@@ -374,7 +375,8 @@ function EntityCard({
   const [prompt, setPrompt] = useState(entity.prompt);
   const [description, setDescription] = useState(entity.description);
   const [styleId, setStyleId] = useState(entity.styleId ?? "");
-  const [count, setCount] = useState("4");
+  // Remembered across reloads: how many candidates to make is a habit, not a property of the film.
+  const [count, setCount] = useState(() => readPreference("library.candidateCount", "4"));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** No image model is bound: the offer is to draw locally, said out loud rather than done quietly. */
@@ -625,7 +627,10 @@ function EntityCard({
           <div className="spacer" />
           <input
             value={count}
-            onChange={(event) => setCount(event.target.value)}
+            onChange={(event) => {
+              setCount(event.target.value);
+              writePreference("library.candidateCount", event.target.value);
+            }}
             aria-label="Candidate count"
             inputMode="numeric"
             style={{ width: 60 }}

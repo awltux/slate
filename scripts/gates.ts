@@ -3139,6 +3139,17 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.waitForSelector("text=The keeper", { timeout: 30_000 });
       await page.screenshot({ path: join(artifactDir, "queued-model.png"), fullPage: true });
 
+      // The candidate count is a habit, not a property of the film: it must survive a reload.
+      await page.fill('input[aria-label="Candidate count"]', "1");
+      await page.reload({ waitUntil: "networkidle" });
+      await page.selectOption('select[aria-label="Project"]', gate25Project);
+      await page.waitForSelector('main [role="tab"]', { timeout: 20_000 });
+      await page.click('main [role="tab"]:has-text("Library")');
+      await page.waitForSelector("text=The keeper", { timeout: 30_000 });
+      const remembered = await page.locator('input[aria-label="Candidate count"]').inputValue();
+      assert(remembered === "1", `the candidate count must survive a reload, got ${remembered}`);
+      steps.push("ui: the candidate count is remembered across a page reload");
+
       // Activity keeps the words the model was sent, closed until opened: the answer to "why does it look like that".
       await page.click('main [role="tab"]:has-text("Activity")');
       await page.waitForSelector("h2:has-text('Activity')", { timeout: 30_000 });
