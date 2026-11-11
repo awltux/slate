@@ -131,13 +131,13 @@ export const frameGenerate = defineOp({
 
     // What will make this frame: the bound image endpoint, or - only when asked - the local renderer.
     const aiConfig = await readAiConfig(context.home);
-    const resolution = resolveBinding(aiConfig, "image", project.aiBindingSetId ?? null);
+    const resolution = resolveBinding(aiConfig, "text-to-image", project.aiBindingSetId ?? null);
     const endpoint = resolution?.endpoint ?? null;
     if (!endpoint && !input.allowLocal) {
       throw new SlateError(
         "capability_missing",
-        "no image model is bound: add an image endpoint to a profile in Setup, or draw locally on purpose",
-        { detail: { capability: "image", allowLocal: false } },
+        "no text-to-image model is bound: add a text-to-image endpoint to a profile in Setup, or draw locally on purpose",
+        { detail: { capability: "text-to-image", allowLocal: false } },
       );
     }
     const via = endpoint ? `model:${endpoint.name}` : "local";

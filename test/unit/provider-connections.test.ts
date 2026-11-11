@@ -89,7 +89,7 @@ describe("provider connections", () => {
     const endpoint = expectOk(
       await registry.execute(
         "ai.endpoint.save",
-        { providerId: id, name: "FLUX dev", capability: "image", path: "/fal-ai/flux/dev" },
+        { providerId: id, name: "FLUX dev", capability: "text-to-image", path: "/fal-ai/flux/dev" },
         context,
       ),
     ).data as { id: string };
@@ -128,7 +128,7 @@ describe("endpoint connections", () => {
     const providerId = await fal();
     const endpoint = await addEndpoint(providerId, {
       name: "FLUX dev",
-      capability: "image",
+      capability: "text-to-image",
       path: "/fal-ai/flux/dev",
     });
 
@@ -157,7 +157,7 @@ describe("endpoint connections", () => {
     const providerId = await fal();
     const endpoint = await addEndpoint(providerId, {
       name: "FLUX dev",
-      capability: "image",
+      capability: "text-to-image",
       path: "/fal-ai/flux/dev",
     });
 
@@ -168,7 +168,7 @@ describe("endpoint connections", () => {
           id: endpoint.id,
           providerId,
           name: "FLUX dev 2",
-          capability: "image",
+          capability: "text-to-image",
           path: "/fal-ai/flux/dev-2",
           resultPath: "images[0].url",
         },
@@ -188,7 +188,7 @@ describe("endpoint connections", () => {
     const providerId = await fal();
     const result = await registry.execute(
       "ai.endpoint.save",
-      { id: "aie_missing", providerId, name: "ghost", capability: "image", path: "/ghost" },
+      { id: "aie_missing", providerId, name: "ghost", capability: "text-to-image", path: "/ghost" },
       context,
     );
     expect(result.ok).toBe(false);
@@ -199,7 +199,7 @@ describe("endpoint connections", () => {
     const providerId = await fal();
     const image = await addEndpoint(providerId, {
       name: "FLUX dev",
-      capability: "image",
+      capability: "text-to-image",
       path: "/fal-ai/flux/dev",
     });
     const text = await addEndpoint(providerId, {

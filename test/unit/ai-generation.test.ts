@@ -67,7 +67,7 @@ async function boundImageEndpoint(port: HttpPort): Promise<{ endpointId: string 
       {
         providerId: provider.id,
         name: "FLUX schnell",
-        capability: "image",
+        capability: "text-to-image",
         method: "POST",
         path: "/fal-ai/flux/schnell",
         body: { prompt: "{{prompt}}", seed: "{{param:seed}}", image_size: "landscape_16_9" },
@@ -353,5 +353,60 @@ describe("a text endpoint that declares no result path", () => {
       expect(failed.error.code).toBe("provider_error");
       expect(failed.error.message).toContain("set the result path in Setup");
     }
+  });
+});
+
+describe("a parameter nobody supplied", () => {
+  it("leaves no empty value in the body", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal", baseUrl: "https://fal.run", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    // A size given as an object, with the numbers supplied only by the generation path.
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "FLUX schnell",
+          capability: "text-to-image",
+          method: "POST",
+          path: "/fal-ai/flux/schnell",
+          body: {
+            prompt: "{{prompt}}",
+            image_size: { width: "{{param:width}}", height: "{{param:height}}" },
+          },
+          params: [
+            { key: "width", type: "integer", required: false },
+            { key: "height", type: "integer", required: false },
+          ],
+          resultPath: "images[0].url",
+        },
+        context,
+      ),
+    ).data as { id: string };
+
+    // The preview supplies no size, so the body must not claim one.
+    const preview = expectOk(await registry.execute("ai.preview", { endpointId: endpoint.id }, context))
+      .data as { body: unknown };
+    const shown = preview.body as { image_size?: unknown };
+    expect(JSON.stringify(shown)).not.toContain('"width":""');
+    expect(shown.image_size).toBeUndefined();
+
+    // When they are supplied they arrive as numbers, not strings.
+    const rendered = expectOk(
+      await registry.execute(
+        "ai.preview",
+        {
+          endpointId: endpoint.id,
+          values: { prompt: "x", image: "", image2: "", seconds: 5, params: { width: 1920, height: 1080 } },
+        },
+        context,
+      ),
+    ).data as { body: { image_size?: { width: number; height: number } } };
+    expect(rendered.body.image_size).toEqual({ width: 1920, height: 1080 });
   });
 });

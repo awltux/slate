@@ -37,14 +37,19 @@ beforeEach(async () => {
   const cheap = expectOk(
     await registry.execute(
       "ai.endpoint.save",
-      { providerId: provider.id, name: "FLUX schnell", capability: "image", path: "/fal-ai/flux/schnell" },
+      {
+        providerId: provider.id,
+        name: "FLUX schnell",
+        capability: "text-to-image",
+        path: "/fal-ai/flux/schnell",
+      },
       context,
     ),
   ).data as { id: string };
   const good = expectOk(
     await registry.execute(
       "ai.endpoint.save",
-      { providerId: provider.id, name: "FLUX dev", capability: "image", path: "/fal-ai/flux/dev" },
+      { providerId: provider.id, name: "FLUX dev", capability: "text-to-image", path: "/fal-ai/flux/dev" },
       context,
     ),
   ).data as { id: string };
@@ -85,15 +90,15 @@ describe("binding sets", () => {
     expect(finalId).toBeTruthy();
 
     // Without a project choice, resolution starts at the host default (the first saved set).
-    const fallback = resolveBinding(config, "image", null);
+    const fallback = resolveBinding(config, "text-to-image", null);
     expect(fallback?.via).toBe("host-default");
 
-    const chosen = resolveBinding(config, "image", finalId ?? null);
+    const chosen = resolveBinding(config, "text-to-image", finalId ?? null);
     expect(chosen?.endpoint.name).toBe("FLUX dev");
     expect(chosen?.via).toBe("project");
     expect(chosen?.bindingSetName).toBe("Final");
 
-    const other = resolveBinding(config, "image", draftId ?? null);
+    const other = resolveBinding(config, "text-to-image", draftId ?? null);
     expect(other?.endpoint.name).toBe("FLUX schnell");
     expect(other?.bindingSetId).toBe(draftId);
   });
@@ -103,7 +108,7 @@ describe("binding sets", () => {
     const finalId = config.bindingSets.find((set) => set.name === "Final")?.id ?? null;
 
     const preview = async () =>
-      expectOk(await registry.execute("ai.preview", { capability: "image" }, context)) as Envelope<{
+      expectOk(await registry.execute("ai.preview", { capability: "text-to-image" }, context)) as Envelope<{
         endpointName: string;
         bindingSetId: string | null;
         bindingSetName: string | null;

@@ -52,6 +52,9 @@ let gate18Archive = "";
 const gate24Bodies: Array<{ prompt?: string; seed?: number }> = [];
 /** The project gate 24 generated into, so its browser phase can open the same film. */
 let gate24Project = "";
+/** Gate 25's project and fixture base. */
+let gate25Project = "";
+let gate25Base = "";
 let gate24Assets = 0;
 /** One-pixel PNG: real bytes, so the download-and-ingest path is exercised rather than stubbed. */
 const gate24Png = Buffer.from(
@@ -2259,6 +2262,137 @@ async function hostOp<T>(name: string, input: unknown = {}): Promise<Envelope<T>
   return payload;
 }
 
+/** Gate 25: a known model added in one click, called through fal's queue, at the film's own shape. */
+async function gate25(steps: string[]): Promise<void> {
+  await signIn();
+  const projectId = await newProject("Queued by a model", 50);
+  gate25Project = projectId;
+
+  // fal's queue shape, on our own server: submit, status, result, bytes.
+  const asked: Array<{ prompt?: string; image_size?: { width?: number; height?: number } }> = [];
+  const fixture = createServer((request, response) => {
+    if (request.method === "POST" && request.url === "/fal-ai/flux/schnell") {
+      let raw = "";
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        const body = JSON.parse(raw || "{}") as {
+          prompt?: string;
+          image_size?: { width?: number; height?: number };
+        };
+        asked.push(body);
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            request_id: "req_gate25",
+            status_url: `${gate25Base}/status/req_gate25`,
+            response_url: `${gate25Base}/result/req_gate25`,
+            cancel_url: `${gate25Base}/cancel/req_gate25`,
+          }),
+        );
+      });
+      return;
+    }
+    if (request.method === "GET" && request.url?.startsWith("/status/")) {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ status: "COMPLETED", request_id: "req_gate25" }));
+      return;
+    }
+    if (request.method === "GET" && request.url?.startsWith("/result/")) {
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({
+          images: [{ url: `${gate25Base}/asset`, width: 1, height: 1 }],
+          seed: 1234,
+          has_nsfw_concepts: [false],
+          prompt: asked.at(-1)?.prompt ?? "",
+        }),
+      );
+      return;
+    }
+    if (request.method === "GET" && request.url === "/asset") {
+      response.setHeader("content-type", "image/png");
+      response.end(gate24Png);
+      return;
+    }
+    response.statusCode = 404;
+    response.end();
+  });
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  gate25Base = `http://127.0.0.1:${(fixture.address() as AddressInfo).port}`;
+
+  try {
+    // The model is added from the preset, pointed at this fixture instead of fal.
+    const added = await hostOp<{ endpointId: string; providerId: string }>("ai.preset.add", {
+      presetId: "fal-flux-schnell-queue",
+      baseUrl: gate25Base,
+    });
+    const catalog = await hostOp<{
+      endpoints: Array<{ id: string; capability: string; unitPriceUsd: number }>;
+    }>("ai.catalog", {});
+    const endpoint = catalog.data.endpoints.find((entry) => entry.id === added.data.endpointId);
+    assert(endpoint?.capability === "text-to-image", "the preset must declare text-to-image");
+    assert(
+      Math.abs((endpoint?.unitPriceUsd ?? 0) - 0.003) < 1e-9,
+      `the preset's price must be recorded, got ${endpoint?.unitPriceUsd}`,
+    );
+
+    const set = await hostOp<{ id: string }>("ai.bindingset.save", {
+      name: "gate queue profile",
+      bindings: { "text-to-image": [added.data.endpointId] },
+    });
+    await hostOp("ai.bindingset.use", { id: set.data.id });
+
+    const created = await op<{ entityId: string }>(projectId, "entity.create", {
+      kind: "character",
+      name: "The keeper",
+      description: "salt in his beard",
+    });
+    await op(projectId, "entity.update", {
+      entityId: created.data.entityId,
+      description: "salt in his beard, a lantern in one hand",
+      prompt: "a lighthouse keeper at night, amber light",
+    });
+
+    const generated = await op<{
+      via: string;
+      queue: Array<{ requestId: string | null; polls: number; elapsedMs: number }>;
+      candidates: Array<{ assetId: string; seed: number | null }>;
+      unitPriceUsd: number;
+    }>(projectId, "entity.generate", { entityId: created.data.entityId, count: 1 });
+
+    assert(
+      generated.data.via === "model:FLUX schnell (queued)",
+      `the sheet must come from the queued endpoint, got ${generated.data.via}`,
+    );
+    assert(
+      generated.data.queue[0]?.requestId === "req_gate25",
+      `the job id must be recorded, got ${generated.data.queue[0]?.requestId}`,
+    );
+    assert((generated.data.queue[0]?.polls ?? 0) >= 1, "the wait must be counted");
+    assert(
+      generated.data.candidates[0]?.seed === 1234,
+      `the seed the model used must be recorded, got ${generated.data.candidates[0]?.seed}`,
+    );
+
+    // The film's own shape is what the model was asked for, exactly.
+    assert(asked.length === 1, `the model must be called once, called ${asked.length}`);
+    assert(
+      asked[0]?.image_size?.width === 1920 && asked[0]?.image_size?.height === 1080,
+      `the project's size must be asked for, got ${JSON.stringify(asked[0]?.image_size)}`,
+    );
+    assert(
+      Boolean(asked[0]?.prompt?.includes("lighthouse keeper")),
+      "the prompt the person wrote must be what the model was asked",
+    );
+    steps.push("queue: the preset was added, submitted, polled and collected, at the film's exact size");
+    steps.push("provenance: the job id, the wait and the seed the model used are recorded");
+  } finally {
+    fixture.close();
+  }
+}
+
 async function gate24(steps: string[]): Promise<void> {
   await signIn();
   const projectId = await newProject("Made by a model", 50);
@@ -2988,6 +3122,27 @@ async function browserFlow(steps: string[]): Promise<void> {
     await page.click('button[type="submit"]');
     await page.waitForSelector("text=New project", { timeout: 15_000 });
     await page.screenshot({ path: join(artifactDir, "projects.png"), fullPage: true });
+
+    if (gateNumber === 25) {
+      await page.click('header [role="tab"]:has-text("Setup")');
+      await page.waitForSelector("text=Add a known model", { timeout: 20_000 });
+      const presets = await page.locator('select[aria-label="Known model"] option').allTextContents();
+      assert(
+        presets.some((label) => label.includes("FLUX schnell")),
+        `the presets must be offered, got: ${presets.join(" | ")}`,
+      );
+      await page.screenshot({ path: join(artifactDir, "known-models.png"), fullPage: true });
+
+      await page.selectOption('select[aria-label="Project"]', gate25Project);
+      await page.waitForSelector('main [role="tab"]', { timeout: 20_000 });
+      await page.click('main [role="tab"]:has-text("Library")');
+      await page.waitForSelector("text=The keeper", { timeout: 30_000 });
+      await page.screenshot({ path: join(artifactDir, "queued-model.png"), fullPage: true });
+      steps.push("ui: the known models are offered in Setup, and the queued generation appears in Library");
+
+      await instance.close();
+      return;
+    }
 
     if (gateNumber === 24) {
       await page.selectOption('select[aria-label="Project"]', gate24Project);
@@ -3915,6 +4070,7 @@ async function main(): Promise<number> {
     else if (gateNumber === 22) await gate22(steps);
     else if (gateNumber === 23) await gate23(steps);
     else if (gateNumber === 24) await gate24(steps);
+    else if (gateNumber === 25) await gate25(steps);
     else throw new Error(`no such gate: ${gateNumber}`);
   } catch (error) {
     steps.push(`FAILED: ${error instanceof Error ? error.message : String(error)}`);

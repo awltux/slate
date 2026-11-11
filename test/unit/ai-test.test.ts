@@ -104,7 +104,7 @@ describe("testing a provider", () => {
         {
           providerId,
           name: "FLUX schnell",
-          capability: "image",
+          capability: "text-to-image",
           method: "POST",
           path: "/generate",
           resultPath: "images[0].url",
@@ -242,7 +242,13 @@ describe("the provider's test path", () => {
     const endpoint = expectOk(
       await registry.execute(
         "ai.endpoint.save",
-        { providerId: provider.id, name: "image", capability: "image", method: "POST", path: "/generate" },
+        {
+          providerId: provider.id,
+          name: "image",
+          capability: "text-to-image",
+          method: "POST",
+          path: "/generate",
+        },
         context,
       ),
     ).data as { id: string };
@@ -399,7 +405,7 @@ describe("testing an endpoint", () => {
         {
           providerId: provider.id,
           name: "FLUX schnell",
-          capability: "image",
+          capability: "text-to-image",
           method: "POST",
           path: "/fal-ai/flux/schnell",
           body: { prompt: "{{prompt}}", image_size: "landscape_16_9", seed: "{{param:seed}}" },
@@ -449,7 +455,7 @@ describe("testing an endpoint", () => {
         {
           providerId: provider.id,
           name: "odd model",
-          capability: "image",
+          capability: "text-to-image",
           method: "POST",
           path: "/odd",
           resultPath: "images[0].url",

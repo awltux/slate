@@ -15,6 +15,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `ai.catalog` | read | project, owner | `ai_catalog` | AI providers, endpoints and capability bindings, with keys masked. |
 | `ai.endpoint.draft` | read | project, owner | `ai_endpoint_draft` | Ask the bound text model to draft an endpoint declaration from the provider's base url and a path. |
 | `ai.endpoint.save` | write | project, owner | `ai_endpoint_save` | Create or update an endpoint: one capability, one path, its parameters and request template. |
+| `ai.preset.add` | write | host, owner | `ai_preset_add` | Add a known model and the provider it needs. |
 | `ai.preview` | read | project, owner | `ai_preview` | Render the request an endpoint would send, without calling it. |
 | `ai.provider.save` | write | project, owner | `ai_provider_save` | Create or update an AI provider: one host, one auth scheme, one credential. |
 | `ai.reference.test` | read | project, owner | `ai_reference_test` | Upload a tiny test image through a provider's reference transport. |
@@ -251,11 +252,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "string",
       "enum": [
         "text",
-        "image",
+        "text-to-image",
         "video",
         "audio",
         "upscale",
-        "upload"
+        "upload",
+        "image"
       ]
     },
     "method": {
@@ -378,6 +380,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "minimum": 0,
       "default": 0
     },
+    "imagesPerCall": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "default": 1
+    },
     "timeoutMs": {
       "type": "integer",
       "minimum": 1000,
@@ -389,6 +397,31 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "providerId",
     "name",
     "capability"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
+```
+
+### `ai.preset.add`
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "presetId": {
+      "type": "string"
+    },
+    "providerId": {
+      "type": "string"
+    },
+    "baseUrl": {
+      "type": "string",
+      "format": "uri"
+    }
+  },
+  "required": [
+    "presetId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
@@ -408,11 +441,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "string",
       "enum": [
         "text",
-        "image",
+        "text-to-image",
         "video",
         "audio",
         "upscale",
-        "upload"
+        "upload",
+        "image"
       ]
     },
     "reference": {
@@ -501,6 +535,58 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "baseUrl": {
       "type": "string",
       "format": "uri"
+    },
+    "queue": {
+      "type": "object",
+      "properties": {
+        "statusUrlPath": {
+          "type": "string",
+          "default": "status_url"
+        },
+        "responseUrlPath": {
+          "type": "string",
+          "default": "response_url"
+        },
+        "cancelUrlPath": {
+          "type": "string",
+          "default": "cancel_url"
+        },
+        "requestIdPath": {
+          "type": "string",
+          "default": "request_id"
+        },
+        "statusPath": {
+          "type": "string",
+          "default": "status"
+        },
+        "completeValue": {
+          "type": "string",
+          "default": "COMPLETED"
+        },
+        "failureValues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "FAILED",
+            "CANCELLED"
+          ]
+        },
+        "pollMs": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 60000,
+          "default": 1000
+        },
+        "maxPollMs": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 120000,
+          "default": 8000
+        }
+      },
+      "additionalProperties": false
     },
     "testPath": {
       "type": "string",

@@ -2,6 +2,22 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Capabilities are a table, and a model can be queued
+
+- **`image` became `text-to-image`.** Capabilities now live in one table (`id`, `label`, `paid`, `requires`,
+  `produces`, `modes`) that the operations and the interface both read, so a new provider or a new model is data rather
+  than a rename through the codebase. An older config keeps working: the stored spelling is accepted and normalised on
+  read, because a parse failure would empty the whole catalogue.
+- **Asynchronous models work.** A provider declared `mode: queue` is called submit → poll → collect, with the field
+  names configurable (fal's queue is the default). A job that never finishes ends in `provider_timeout`, retryable,
+  after asking the host to cancel it — and the job id and the wait are recorded on the result.
+- **A known model is one click.** *Setup → Add a known model* adds FLUX schnell, synchronously (`fal.run`) or queued
+  (`queue.fal.run`), with its provider, body, price and result path filled in. Adding it twice adds nothing.
+- **The film's own pixel size is asked for**, because fal takes `{width, height}`; and a parameter nobody supplied is
+  left out of the body rather than sent as an empty string.
+- **A candidate records the seed the model used**, and a picture the model flagged is kept — it was paid for — with a
+  `content_flagged` warning naming it.
+
 ## A text endpoint that names no result path still works
 
 - **Expand no longer fails on an endpoint that declares no result path.** The words are read from where

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_QUEUE_SPEC,
   DEFAULT_REFERENCE_POLICY,
   type Endpoint,
   type Provider,
@@ -17,6 +18,7 @@ const fal: Provider = {
   reference: DEFAULT_REFERENCE_POLICY,
   testPath: "/",
   testMethod: "GET",
+  queue: DEFAULT_QUEUE_SPEC,
   notes: "",
 };
 
@@ -24,10 +26,11 @@ const flux: Endpoint = {
   id: "aie_flux",
   providerId: "aip_fal",
   name: "FLUX dev",
-  capability: "image",
+  capability: "text-to-image",
   method: "POST",
   path: "/fal-ai/flux/dev",
   unitPriceUsd: 0,
+  imagesPerCall: 1,
   timeoutMs: 120_000,
   params: [
     {

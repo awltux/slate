@@ -6,19 +6,26 @@ import { newId } from "../domain/ids.js";
 import { SlateError } from "../domain/result.js";
 import {
   type AiConfig,
+  CAPABILITY_IDS,
+  CAPABILITY_SPECS,
   CapabilitySchema,
+  DEFAULT_QUEUE_SPEC,
   DEFAULT_REFERENCE_POLICY,
   type Endpoint,
   EndpointSchema,
   HttpMethodSchema,
   ParamSpecSchema,
   type Provider,
+  QueueSpecSchema,
   ReferencePolicySchema,
   type RenderedRequest,
   ResponseFieldSchema,
+  StoredCapabilitySchema,
+  canonicalCapability,
   readResult,
   renderRequest,
 } from "../kernel/ai/declaration.js";
+import { MODEL_PRESETS, findPreset } from "../kernel/ai/presets.js";
 import { type ReferencePlan, httpPort, planReference, stageReference } from "../kernel/ai/reference.js";
 import { readAiConfig, readKeys, resolveBinding, writeAiConfig, writeKeys } from "../kernel/ai/store.js";
 import { assetFile } from "../kernel/production/assets.js";
@@ -48,6 +55,7 @@ const ProviderViewSchema = z
     hasKey: z.boolean(),
     testPath: z.string(),
     testMethod: z.string(),
+    queue: z.record(z.string(), z.unknown()),
     notes: z.string(),
     endpointCount: z.number().int(),
     reference: ReferenceViewSchema,
@@ -67,6 +75,7 @@ const EndpointViewSchema = z
     resultPath: z.string(),
     response: z.record(z.string(), z.object({ path: z.string(), type: z.string(), description: z.string() })),
     unitPriceUsd: z.number(),
+    imagesPerCall: z.number().int(),
     timeoutMs: z.number().int(),
   })
   .strict();
@@ -302,7 +311,23 @@ export const aiCatalog = defineOp({
           .strict(),
       ),
       defaultBindingSetId: z.string().nullable(),
-      capabilities: z.array(z.string()),
+      /** The models Slate can add in one click. */
+      presets: z.array(
+        z.object({ id: z.string(), label: z.string(), summary: z.string(), capability: z.string() }).strict(),
+      ),
+      /** The capability table, so the interface renders it rather than keeping its own list. */
+      capabilities: z.array(
+        z
+          .object({
+            id: z.string(),
+            label: z.string(),
+            paid: z.boolean(),
+            requires: z.array(z.string()),
+            produces: z.string(),
+            modes: z.array(z.string()),
+          })
+          .strict(),
+      ),
     })
     .strict(),
   run: async (_input, context) => {
@@ -318,6 +343,7 @@ export const aiCatalog = defineOp({
           baseUrl: provider.baseUrl,
           testPath: provider.testPath,
           testMethod: provider.testMethod,
+          queue: provider.queue,
           authHeader: provider.auth.header,
           authScheme: provider.auth.scheme,
           hasKey: Boolean(keys[provider.id]),
@@ -344,6 +370,7 @@ export const aiCatalog = defineOp({
           resultPath: endpoint.resultPath,
           response: endpoint.response,
           unitPriceUsd: endpoint.unitPriceUsd,
+          imagesPerCall: endpoint.imagesPerCall,
           timeoutMs: endpoint.timeoutMs,
         })),
         bindingSets: config.bindingSets.map((set) => ({
@@ -354,7 +381,20 @@ export const aiCatalog = defineOp({
           createdAt: set.createdAt,
         })),
         defaultBindingSetId: config.defaultBindingSetId,
-        capabilities: CapabilitySchema.options,
+        presets: MODEL_PRESETS.map((preset) => ({
+          id: preset.id,
+          label: preset.label,
+          summary: preset.summary,
+          capability: preset.endpoint.capability,
+        })),
+        capabilities: CAPABILITY_SPECS.map((spec) => ({
+          id: spec.id,
+          label: spec.label,
+          paid: spec.paid,
+          requires: [...spec.requires],
+          produces: spec.produces,
+          modes: [...spec.modes],
+        })),
       },
       version: 0,
       next: ["ai.provider.save", "ai.endpoint.save", "ai.bind"],
@@ -376,6 +416,8 @@ export const aiProviderSave = defineOp({
       /** "sync" if a call returns the result; "queue" if it returns a request to come back for. */
       mode: z.enum(["sync", "queue"]).default("sync"),
       baseUrl: z.string().url(),
+      /** How to follow a submitted job; only read when mode is "queue". */
+      queue: QueueSpecSchema.optional(),
       /** Appended to the base url for a connection test. "/models" for an OpenAI-compatible host, "/" for most others. */
       testPath: z.string().default("/"),
       /** GET for a host with a readable path, POST for the POST-only generation hosts. */
@@ -407,6 +449,7 @@ export const aiProviderSave = defineOp({
       baseUrl: input.baseUrl,
       auth: { header: input.authHeader, scheme: input.authScheme },
       reference: input.reference ?? existing?.reference ?? DEFAULT_REFERENCE_POLICY,
+      queue: input.queue ?? existing?.queue ?? DEFAULT_QUEUE_SPEC,
       testPath: input.testPath,
       testMethod: input.testMethod,
       notes: input.notes,
@@ -440,7 +483,8 @@ export const aiEndpointSave = defineOp({
       id: z.string().optional(),
       providerId: z.string(),
       name: z.string().trim().min(1),
-      capability: CapabilitySchema,
+      /** Any stored spelling; saved as the canonical capability. */
+      capability: StoredCapabilitySchema,
       method: HttpMethodSchema.default("POST"),
       path: z.string().default("/"),
       params: z.array(ParamSpecSchema).default([]),
@@ -450,6 +494,8 @@ export const aiEndpointSave = defineOp({
       response: z.record(z.string(), ResponseFieldSchema).default({}),
       /** What the provider charges for one call; a batch is priced from it. 0 means unpriced. */
       unitPriceUsd: z.number().min(0).default(0),
+      /** How many media one call returns. Slate asks for one per candidate. */
+      imagesPerCall: z.number().int().min(1).max(4).default(1),
       timeoutMs: z.number().int().min(1000).max(3_600_000).default(120_000),
     })
     .strict(),
@@ -469,7 +515,7 @@ export const aiEndpointSave = defineOp({
       id,
       providerId: input.providerId,
       name: input.name,
-      capability: input.capability,
+      capability: canonicalCapability(input.capability) ?? input.capability,
       method: input.method,
       path: input.path,
       params: input.params,
@@ -477,6 +523,7 @@ export const aiEndpointSave = defineOp({
       resultPath: input.resultPath,
       response: input.response,
       unitPriceUsd: input.unitPriceUsd,
+      imagesPerCall: input.imagesPerCall,
       timeoutMs: input.timeoutMs,
     };
     await writeAiConfig(context.home, {
@@ -546,10 +593,13 @@ export const aiBindingSetSave = defineOp({
   run: async (input, context) => {
     const config = await readAiConfig(context.home);
     const known = new Set(config.endpoints.map((endpoint) => endpoint.id));
+    const bindings: Record<string, string[]> = {};
     for (const [capability, ids] of Object.entries(input.bindings)) {
-      if (!CapabilitySchema.options.includes(capability as never)) {
+      const canonical = canonicalCapability(capability);
+      if (!canonical) {
         throw new SlateError("invalid_input", `unknown capability: ${capability}`);
       }
+      bindings[canonical] = ids;
       for (const id of ids) {
         if (!known.has(id)) throw new SlateError("not_found", `no endpoint ${id}`);
       }
@@ -688,7 +738,8 @@ export const aiPreview = defineOp({
   input: z
     .object({
       endpointId: z.string().optional(),
-      capability: CapabilitySchema.optional(),
+      /** Any stored spelling; resolved as the canonical capability. */
+      capability: StoredCapabilitySchema.optional(),
       /** A local asset named as the reference, so the preview can say how it would actually be sent. */
       reference: z.object({ assetId: z.string() }).strict().optional(),
       values: z
@@ -925,7 +976,7 @@ const DRAFT_INSTRUCTIONS = `You are declaring one endpoint of a REST API for a f
 Reply with a single JSON object and nothing else. It must have exactly these keys:
 {
   "name": string,                        // short human label, e.g. "FLUX dev"
-  "capability": "text" | "image" | "video" | "audio" | "upscale" | "upload",
+  "capability": ${CAPABILITY_IDS.map((id) => `"${id}"`).join(" | ")},
   "method": "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   "path": string,                        // path only, starting with /, appended to the base url
   "params": [ { "key": string, "label": string, "type": "string"|"number"|"integer"|"boolean"|"enum",
@@ -1074,6 +1125,113 @@ export const aiEndpointDraft = defineOp({
       version: project?.revision ?? 0,
       via: resolution.via,
       next: ["ai.endpoint.save"],
+    };
+  },
+});
+
+/**
+ * Add a model Slate already knows how to call: its provider (reused when one with the same base url exists) and its
+ * endpoint. Idempotent for the same preset and provider, so pressing the button twice cannot make two FLUX schnell
+ * endpoints that then disagree.
+ */
+export const aiPresetAdd = defineOp({
+  name: "ai.preset.add",
+  ownerOnly: true,
+  hostLevel: true,
+  policy: "write",
+  summary: "Add a known model and the provider it needs.",
+  input: z
+    .object({
+      presetId: z.string(),
+      /** Reuse this provider instead of looking one up by base url. */
+      providerId: z.string().optional(),
+      /** Use the preset's shape against another host: a staging endpoint, or a fixture in a gate. */
+      baseUrl: z.string().url().optional(),
+    })
+    .strict(),
+  output: z
+    .object({
+      providerId: z.string(),
+      endpointId: z.string(),
+      created: z.object({ provider: z.boolean(), endpoint: z.boolean() }).strict(),
+      name: z.string(),
+    })
+    .strict(),
+  touched: () => ["ai"],
+  run: async (input, context) => {
+    const preset = findPreset(input.presetId);
+    if (!preset) throw new SlateError("not_found", `no preset ${input.presetId}`);
+
+    const config = await readAiConfig(context.home);
+    const wantedBase = (input.baseUrl ?? preset.provider.baseUrl).replace(/\/$/, "");
+    const existingProvider =
+      (input.providerId ? config.providers.find((entry) => entry.id === input.providerId) : null) ??
+      config.providers.find((entry) => entry.baseUrl.replace(/\/$/, "") === wantedBase) ??
+      null;
+
+    let providerId: string;
+    let providerCreated = false;
+    if (existingProvider) {
+      providerId = existingProvider.id;
+    } else {
+      providerId = newId("aip");
+      providerCreated = true;
+      const provider: Provider = {
+        id: providerId,
+        name: preset.provider.name,
+        kind: preset.provider.kind,
+        mode: preset.provider.mode,
+        baseUrl: wantedBase,
+        auth: preset.provider.auth,
+        reference: DEFAULT_REFERENCE_POLICY,
+        queue: { ...DEFAULT_QUEUE_SPEC, ...(preset.provider.queue ?? {}) },
+        testPath: preset.provider.testPath,
+        testMethod: preset.provider.testMethod,
+        notes: `Added from the ${preset.label} preset`,
+      };
+      await writeAiConfig(context.home, {
+        ...config,
+        providers: [...config.providers, provider],
+      });
+    }
+
+    const after = await readAiConfig(context.home);
+    const existingEndpoint =
+      after.endpoints.find(
+        (entry) =>
+          entry.providerId === providerId &&
+          entry.capability === preset.endpoint.capability &&
+          entry.path === preset.endpoint.path,
+      ) ?? null;
+
+    if (existingEndpoint) {
+      return {
+        data: {
+          providerId,
+          endpointId: existingEndpoint.id,
+          created: { provider: providerCreated, endpoint: false },
+          name: existingEndpoint.name,
+        },
+        version: 0,
+        next: ["ai.bind"],
+      };
+    }
+
+    const endpoint: Endpoint = { ...preset.endpoint, id: newId("aie"), providerId };
+    await writeAiConfig(context.home, {
+      ...after,
+      endpoints: [...after.endpoints, endpoint],
+    });
+
+    return {
+      data: {
+        providerId,
+        endpointId: endpoint.id,
+        created: { provider: providerCreated, endpoint: true },
+        name: endpoint.name,
+      },
+      version: 0,
+      next: ["ai.bind"],
     };
   },
 });

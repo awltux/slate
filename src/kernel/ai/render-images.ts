@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { SlateError } from "../../domain/result.js";
 import { callEndpoint, downloadTo, readValue } from "./call.js";
-import type { Endpoint, Provider } from "./declaration.js";
+import { type Endpoint, type Provider, readResult } from "./declaration.js";
 import { type HttpPort, stageReference } from "./reference.js";
 
 /**
@@ -20,6 +20,12 @@ export interface GeneratedFile {
   bytes: number;
   /** The url the model gave, kept so a failure later can say where it pointed. */
   url: string;
+  /** The seed the model actually used, when its answer names it: the same prompt and seed make the same picture. */
+  seed: number | null;
+  /** True when the model flagged the image as unsafe: fal returns a black picture in that case. */
+  flagged: boolean;
+  /** Present when the call was queued, so a slow job is visible rather than magical. */
+  queue?: { requestId: string | null; polls: number; elapsedMs: number };
 }
 
 /** Does the endpoint's template ask for a reference? Only then is one staged, because staging can cost an upload. */
@@ -43,6 +49,13 @@ export async function generateImages(input: {
   key: string | null;
 }): Promise<GeneratedFile[]> {
   const { endpoint } = input;
+  if (endpoint.imagesPerCall !== 1) {
+    throw new SlateError(
+      "invalid_input",
+      `${endpoint.name} is declared to return ${endpoint.imagesPerCall} images per call, but Slate asks for one per candidate: set imagesPerCall to 1, or split the model into separate candidates`,
+      { detail: { endpointId: endpoint.id, imagesPerCall: endpoint.imagesPerCall } },
+    );
+  }
   const work = await mkdtemp(join(tmpdir(), "slate-candidate-"));
 
   // A reference is staged once for the batch: it is the same bytes for every candidate, and an upload per candidate
@@ -100,6 +113,14 @@ export async function generateImages(input: {
       });
 
       const url = readValue(call, endpoint);
+      if (typeof url === "string" && !url.startsWith("http")) {
+        // A data: URI is what sync_mode returns; the bytes are inline and there is nothing to download.
+        throw new SlateError(
+          "provider_error",
+          `${endpoint.name} returned an inline ${url.slice(0, 24)}… instead of a url: turn off sync_mode for this model`,
+          { detail: { endpointId: endpoint.id } },
+        );
+      }
       if (typeof url !== "string") {
         throw new SlateError(
           "provider_error",
@@ -112,7 +133,24 @@ export async function generateImages(input: {
       const suffix = extname(basename(new URL(url, "https://placeholder.invalid").pathname)) || ".png";
       const file = join(work, `candidate-${index}${suffix}`);
       const saved = await downloadTo({ url, file, http: input.http, endpointName: endpoint.name });
-      files.push({ file, bytes: saved.bytes, url });
+
+      // The endpoint declares the other named values it answers with; reading them here is what lets a sheet record
+      // the seed it was made with and notice a picture the model itself flagged.
+      const named = (name: string): unknown => {
+        const field = endpoint.response[name];
+        return field ? readResult(call.parsed, field.path) : undefined;
+      };
+      const seedValue = named("seed");
+      const flaggedValue = named("flagged");
+
+      files.push({
+        file,
+        bytes: saved.bytes,
+        url,
+        seed: typeof seedValue === "number" ? seedValue : null,
+        flagged: flaggedValue === true,
+        ...(call.queue ? { queue: call.queue } : {}),
+      });
     }
     return files;
   } catch (error) {

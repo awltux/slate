@@ -54,8 +54,18 @@ interface Catalog {
   providers: ProviderView[];
   endpoints: EndpointView[];
   bindingSets: BindingSetView[];
+  /** Models Slate can add in one click. */
+  presets: Array<{ id: string; label: string; summary: string; capability: string }>;
   defaultBindingSetId: string | null;
-  capabilities: string[];
+  /** The capability table, as the host reports it. */
+  capabilities: Array<{
+    id: string;
+    label: string;
+    paid: boolean;
+    requires: string[];
+    produces: string;
+    modes: string[];
+  }>;
 }
 
 interface Preview {
@@ -68,7 +78,6 @@ interface Preview {
   missing: string[];
 }
 
-const CAPABILITIES = ["text", "image", "video", "audio", "upscale", "upload"] as const;
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
 function message(caught: unknown): string {
@@ -91,6 +100,7 @@ export function Setup() {
   const [editingEndpoint, setEditingEndpoint] = useState<string | null>(null);
   const [confirmDeleteEndpoint, setConfirmDeleteEndpoint] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [presetId, setPresetId] = useState("");
   /** The last connection test, kept so a bad answer can be read rather than guessed at. */
   const [testDetail, setTestDetail] = useState<ConnectionTest | null>(null);
   const [busy, setBusy] = useState(false);
@@ -105,6 +115,7 @@ export function Setup() {
         endpoints: result.data.endpoints ?? [],
         bindingSets: result.data.bindingSets ?? [],
         defaultBindingSetId: result.data.defaultBindingSetId ?? null,
+        presets: result.data.presets ?? [],
         capabilities: result.data.capabilities ?? [],
       });
     } catch (caught) {
@@ -137,6 +148,30 @@ export function Setup() {
    * Deleting a provider takes its endpoints and any profile bindings that named them, so the confirmation says how
    * much goes with it and the notice afterwards reports what actually did.
    */
+  /** Add a model Slate already knows how to call: its provider (reused when the base url matches) and its endpoint. */
+  async function addPreset() {
+    const presets = catalog?.presets ?? [];
+    const chosen = presets.find((preset) => preset.id === (presetId || presets[0]?.id));
+    if (!chosen) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await runGlobalOp<{ name: string; created: { provider: boolean; endpoint: boolean } }>(
+        "ai.preset.add",
+        { presetId: chosen.id },
+      );
+      setNotice(
+        `${result.data.name} added ${result.data.created.provider ? "with its provider" : "using the host already configured"}. Save its key, then bind it in a profile.`,
+      );
+      await load();
+    } catch (caught) {
+      setError(message(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function deleteProvider(provider: ProviderView) {
     await run(async () => {
       const result = await runGlobalOp<{ endpointsRemoved: number; bindingsCleared: number }>("ai.remove", {
@@ -274,6 +309,40 @@ export function Setup() {
           </div>
         </details>
       ) : null}
+
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Add a known model</h2>
+        <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>
+          A model Slate already knows how to call: the provider, its address, its body, its price and its
+          queue, filled in for you.
+        </p>
+        <div className="row">
+          <select
+            value={presetId || catalog.presets[0]?.id || ""}
+            onChange={(event) => setPresetId(event.target.value)}
+            aria-label="Known model"
+            style={{ flex: 1 }}
+          >
+            {catalog.presets.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void addPreset()}
+            disabled={busy || catalog.presets.length === 0}
+          >
+            {busy ? "Adding…" : "Add model"}
+          </button>
+        </div>
+        <p className="muted" style={{ margin: "0.4rem 0 0", fontSize: 12 }}>
+          {catalog.presets.find((preset) => preset.id === (presetId || catalog.presets[0]?.id))?.summary ??
+            ""}
+        </p>
+      </div>
 
       <div className="card">
         <div className="row">
@@ -547,6 +616,7 @@ export function Setup() {
                     <EndpointForm
                       key={editingEndpoint}
                       busy={busy}
+                      capabilities={catalog.capabilities}
                       providerId={provider.id}
                       endpoint={endpoints.find((entry) => entry.id === editingEndpoint)}
                       onSubmit={async (values) => {
@@ -575,6 +645,7 @@ export function Setup() {
                 {addingFor === provider.id ? (
                   <EndpointForm
                     busy={busy}
+                    capabilities={catalog.capabilities}
                     providerId={provider.id}
                     onSubmit={async (values) => {
                       await run(() => runGlobalOp("ai.endpoint.save", values));
@@ -660,7 +731,7 @@ export function Setup() {
               </button>
             </div>
 
-            {CAPABILITIES.map((capability) => {
+            {catalog.capabilities.map(({ id: capability, label }) => {
               const options = catalog.endpoints.filter((endpoint) => endpoint.capability === capability);
               const selected = set.bindings[capability]?.[0] ?? "";
               return (
@@ -956,6 +1027,7 @@ function EndpointForm({
   busy,
   providerId,
   endpoint,
+  capabilities,
   onSubmit,
   onCancel,
 }: {
@@ -963,12 +1035,14 @@ function EndpointForm({
   providerId: string;
   /** Present when editing: the form starts from the stored call and keeps its id. */
   endpoint?: EndpointView;
+  /** The host's capability table, so the choice cannot drift from what the operations understand. */
+  capabilities: Array<{ id: string; label: string }>;
   onSubmit: (values: unknown) => Promise<void>;
   onCancel?: () => void;
 }) {
   const editing = Boolean(endpoint);
   const [name, setName] = useState(endpoint?.name ?? "");
-  const [capability, setCapability] = useState(endpoint?.capability ?? "image");
+  const [capability, setCapability] = useState(endpoint?.capability ?? "text-to-image");
   const [method, setMethod] = useState(endpoint?.method ?? "POST");
   const [path, setPath] = useState(endpoint?.path ?? "/");
   const [body, setBody] = useState(
@@ -1027,9 +1101,9 @@ function EndpointForm({
           onChange={(event) => setCapability(event.target.value)}
           aria-label="Endpoint capability"
         >
-          {CAPABILITIES.map((entry) => (
-            <option key={entry} value={entry}>
-              {entry}
+          {capabilities.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.label}
             </option>
           ))}
         </select>

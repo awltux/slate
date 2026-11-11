@@ -68,7 +68,7 @@ const modelReply = (proposal: unknown): string =>
 
 const goodProposal = {
   name: "FLUX dev",
-  capability: "image",
+  capability: "text-to-image",
   method: "POST",
   path: "/fal-ai/flux/dev",
   params: [{ key: "steps", label: "Steps", type: "integer", required: false, choices: [], help: "" }],
@@ -129,7 +129,7 @@ describe("ai.endpoint.draft", () => {
     expect(drafted.data).toMatchObject({
       textEndpointId: endpointId,
       model: "A small text model",
-      proposal: { capability: "image", path: "/fal-ai/flux/dev", resultPath: "images[0].url" },
+      proposal: { capability: "text-to-image", path: "/fal-ai/flux/dev", resultPath: "images[0].url" },
     });
     expect(drafted.via).toBe("host-default");
 
@@ -147,7 +147,7 @@ describe("ai.endpoint.draft", () => {
     const { providerId } = await seedTextModel();
     const drafting = testContext(root, {
       home,
-      http: async () => ({ status: 200, body: modelReply({ name: "FLUX", capability: "image" }) }),
+      http: async () => ({ status: 200, body: modelReply({ name: "FLUX", capability: "text-to-image" }) }),
     });
 
     const refused = await registry.execute(

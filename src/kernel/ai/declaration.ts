@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { StoredCapabilitySchema } from "./capabilities.js";
 
 /**
  * The AI layer is declared, not coded. A **provider** owns a transport and a credential; an **endpoint** owns a
@@ -9,8 +10,19 @@ import { z } from "zod";
  * arbitrary REST shape is expressible without a bespoke adapter per API.
  */
 
-export const CapabilitySchema = z.enum(["text", "image", "video", "audio", "upscale", "upload"]);
-export type Capability = z.infer<typeof CapabilitySchema>;
+// The capability list lives in one table; the schema here accepts every spelling that may be stored, so a host
+// configured before a rename keeps its providers, and normalisation happens on read and on save.
+export {
+  CAPABILITY_IDS,
+  CAPABILITY_SPECS,
+  canonicalCapability,
+  capabilitySpec,
+  CapabilitySchema,
+  StoredCapabilitySchema,
+  type Capability,
+  type CapabilitySpec,
+  type CallMode,
+} from "./capabilities.js";
 
 /** Methods an endpoint may use. Bodies go with POST/PUT/PATCH; GET and DELETE carry their values in the query. */
 export const HttpMethodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]);
@@ -67,6 +79,32 @@ export const ReferencePolicySchema = z
 export const DEFAULT_REFERENCE_POLICY = ReferencePolicySchema.parse({});
 
 /** A provider is one host, one auth scheme and one credential. `keyRef` names an entry in the keys file. */
+/**
+ * How a queue provider answers. fal's queue API is the default because it is the one we know, but every name here is
+ * configurable: a provider whose submit answer calls it "jobId" is a setting, not a new code path.
+ */
+export const QueueSpecSchema = z
+  .object({
+    /** Where the submitted request's polling and result addresses sit in the submit answer. */
+    statusUrlPath: z.string().default("status_url"),
+    responseUrlPath: z.string().default("response_url"),
+    cancelUrlPath: z.string().default("cancel_url"),
+    requestIdPath: z.string().default("request_id"),
+    /** Where the state sits in the status answer, and the value that means "comes next". */
+    statusPath: z.string().default("status"),
+    completeValue: z.string().default("COMPLETED"),
+    failureValues: z.array(z.string()).default(["FAILED", "CANCELLED"]),
+    /** First wait between polls, doubling up to the cap, until the endpoint's timeout ends the wait. */
+    pollMs: z.number().int().min(10).max(60_000).default(1000),
+    maxPollMs: z.number().int().min(10).max(120_000).default(8000),
+  })
+  .strict();
+
+export type QueueSpec = z.infer<typeof QueueSpecSchema>;
+
+/** The defaults a provider without queue settings reads as. */
+export const DEFAULT_QUEUE_SPEC: QueueSpec = QueueSpecSchema.parse({});
+
 export const ProviderSchema = z
   .object({
     id: z.string().startsWith("aip_"),
@@ -87,6 +125,8 @@ export const ProviderSchema = z
       })
       .strict(),
     reference: ReferencePolicySchema.default({}),
+    /** Read only when mode is "queue": how to follow a submitted job to its result. */
+    queue: QueueSpecSchema.default({}),
     /**
      * Appended to the base url to form the address a connection test asks for. A generic GET on a base url often 404s
      * while the host is perfectly healthy, so the path that actually proves it belongs in the declaration.
@@ -125,7 +165,8 @@ export const EndpointSchema = z
     id: z.string().startsWith("aie_"),
     providerId: z.string().startsWith("aip_"),
     name: z.string().min(1),
-    capability: CapabilitySchema,
+    // Stored spelling: an endpoint saved as image still parses and is normalised on read.
+    capability: StoredCapabilitySchema,
     method: HttpMethodSchema,
     path: z.string().default("/"),
     /** How long a call may take before it is considered failed. */
@@ -141,6 +182,8 @@ export const EndpointSchema = z
      * this, so the budget ceiling means something against a real model instead of one number for every model.
      */
     unitPriceUsd: z.number().min(0).default(0),
+    /** How many media this call returns. Slate asks for one per candidate, so >1 is refused rather than half-used. */
+    imagesPerCall: z.number().int().min(1).max(4).default(1),
   })
   .strict();
 
@@ -211,7 +254,8 @@ function renderValue(value: unknown, values: CallValues, params: Map<string, Par
         return Number.isFinite(parsed) ? parsed : raw;
       }
       if (spec?.type === "boolean") return raw === true || raw === "true" || raw === 1 || raw === "1";
-      return raw ?? "";
+      // No value means the key is not sent at all: an endpoint that asks for a size should not receive an empty one.
+      return raw;
     }
     return value.replace(/\{\{\s*([A-Za-z0-9_:.-]+)\s*\}\}/g, (_match, key: string) => {
       if (key === "prompt") return values.prompt ?? "";
@@ -225,14 +269,21 @@ function renderValue(value: unknown, values: CallValues, params: Map<string, Par
       return "";
     });
   }
-  if (Array.isArray(value)) return value.map((item) => renderValue(item, values, params));
+  if (Array.isArray(value)) {
+    return value.map((item) => renderValue(item, values, params)).filter((item) => item !== undefined);
+  }
   if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
-        key,
-        renderValue(item, values, params),
-      ]),
-    );
+    const entries = Object.entries(value as Record<string, unknown>);
+    const rendered: Record<string, unknown> = {};
+    for (const [key, item] of entries) {
+      const next = renderValue(item, values, params);
+      // A parameter nobody supplied leaves no empty string behind, so the body says what it means.
+      if (next !== undefined) rendered[key] = next;
+    }
+    // A template object whose every value was an unsupplied parameter is absent entirely; an intentionally empty
+    // object (a template with no keys at all) is still sent as {}.
+    if (entries.length > 0 && Object.keys(rendered).length === 0) return undefined;
+    return rendered;
   }
   return value;
 }

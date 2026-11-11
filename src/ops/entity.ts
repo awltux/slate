@@ -65,7 +65,15 @@ const EntityViewSchema = z
         .strict(),
     ),
     candidates: z.array(
-      z.object({ id: z.string(), assetId: z.string(), variantId: z.string().nullable() }).strict(),
+      z
+        .object({
+          id: z.string(),
+          assetId: z.string(),
+          variantId: z.string().nullable(),
+          /** The seed the model used, so a sheet can be reproduced. */
+          seed: z.number().int().nullable(),
+        })
+        .strict(),
     ),
     createdAt: z.string(),
   })
@@ -113,6 +121,7 @@ function entityView(entity: Entity) {
       id: candidate.id,
       assetId: candidate.assetId,
       variantId: candidate.variantId,
+      seed: candidate.seed,
     })),
     createdAt: entity.createdAt,
   };

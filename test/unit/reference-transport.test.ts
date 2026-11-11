@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Endpoint, Provider } from "../../src/kernel/ai/declaration.js";
+import { DEFAULT_QUEUE_SPEC } from "../../src/kernel/ai/declaration.js";
 import {
   type HttpPort,
   UPLOAD_RESPONSE,
@@ -22,6 +23,7 @@ const fal: Provider = {
   reference: { transport: "upload", maxInlineBytes: 1_000 },
   testPath: "/",
   testMethod: "GET",
+  queue: DEFAULT_QUEUE_SPEC,
   notes: "",
 };
 
@@ -41,6 +43,7 @@ const uploadEndpoint: Endpoint = {
     [UPLOAD_RESPONSE.fileUrl]: { path: "file_url", type: "string", description: "" },
   },
   unitPriceUsd: 0,
+  imagesPerCall: 1,
   timeoutMs: 120_000,
 };
 

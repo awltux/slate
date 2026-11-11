@@ -51,7 +51,15 @@ export const entityGenerate = defineOp({
     .object({
       entityId: z.string(),
       candidates: z.array(
-        z.object({ id: z.string(), assetId: z.string(), variantId: z.string().nullable() }).strict(),
+        z
+          .object({
+            id: z.string(),
+            assetId: z.string(),
+            variantId: z.string().nullable(),
+            /** The seed the model used, when it names one: enough to make the same picture again. */
+            seed: z.number().int().nullable(),
+          })
+          .strict(),
       ),
       /** The exact text the images were generated from: a costume's prompt names its body, and this proves it. */
       prompt: z.string(),
@@ -64,6 +72,12 @@ export const entityGenerate = defineOp({
       endpointId: z.string().nullable(),
       /** The price per image that was reserved, from the endpoint when it declares one. */
       unitPriceUsd: z.number(),
+      /** One entry per queued candidate; empty for a synchronous model. */
+      queue: z.array(
+        z
+          .object({ requestId: z.string().nullable(), polls: z.number().int(), elapsedMs: z.number().int() })
+          .strict(),
+      ),
     })
     .strict(),
   touched: (input) => [`entity:${input.entityId}`, "ledger"],
@@ -130,13 +144,13 @@ export const entityGenerate = defineOp({
 
     // What will make these images: the bound image endpoint, or - only when the caller says so - the local renderer.
     const aiConfig = await readAiConfig(context.home);
-    const resolution = resolveBinding(aiConfig, "image", project.aiBindingSetId ?? null);
+    const resolution = resolveBinding(aiConfig, "text-to-image", project.aiBindingSetId ?? null);
     const endpoint = resolution?.endpoint ?? null;
     if (!endpoint && !input.allowLocal) {
       throw new SlateError(
         "capability_missing",
-        "no image model is bound: add an image endpoint to a profile in Setup, or draw locally on purpose",
-        { detail: { capability: "image", allowLocal: false } },
+        "no text-to-image model is bound: add a text-to-image endpoint to a profile in Setup, or draw locally on purpose",
+        { detail: { capability: "text-to-image", allowLocal: false } },
       );
     }
     const unitPriceUsd = endpoint && endpoint.unitPriceUsd > 0 ? endpoint.unitPriceUsd : UNPRICED_IMAGE_USD;
@@ -169,7 +183,15 @@ export const entityGenerate = defineOp({
     });
 
     const promptHash = hashValue({ prompt, styleId: style?.id ?? null, seed: input.seed });
-    const created: Array<{ id: string; asset: Asset; variantId: string | null }> = [];
+    const created: Array<{
+      id: string;
+      asset: Asset;
+      variantId: string | null;
+      seed: number | null;
+      flagged: boolean;
+    }> = [];
+    /** What the queue did, when the model was queued: a job id and a wait, so a slow model is visible. */
+    const queue: Array<{ requestId: string | null; polls: number; elapsedMs: number }> = [];
     const work = await mkdtemp(join(tmpdir(), "slate-candidate-"));
 
     try {
@@ -206,7 +228,14 @@ export const entityGenerate = defineOp({
             sourcePath: file.file,
             clock: context.clock,
           });
-          created.push({ id: newId("cnd"), asset, variantId: variant?.id ?? null });
+          created.push({
+            id: newId("cnd"),
+            asset,
+            variantId: variant?.id ?? null,
+            seed: file.seed,
+            flagged: file.flagged,
+          });
+          if (file.queue) queue.push(file.queue);
         }
       } else {
         for (let index = 0; index < input.count; index += 1) {
@@ -227,7 +256,13 @@ export const entityGenerate = defineOp({
             sourcePath: outputFile,
             clock: context.clock,
           });
-          created.push({ id: newId("cnd"), asset, variantId: variant?.id ?? null });
+          created.push({
+            id: newId("cnd"),
+            asset,
+            variantId: variant?.id ?? null,
+            seed: null,
+            flagged: false,
+          });
         }
       }
     } finally {
@@ -252,6 +287,7 @@ export const entityGenerate = defineOp({
             role: null,
             variantId: item.variantId,
             promptHash,
+            seed: item.seed,
             createdAt: context.clock.now(),
           });
         }
@@ -278,11 +314,13 @@ export const entityGenerate = defineOp({
           id: item.id,
           assetId: item.asset.id,
           variantId: item.variantId,
+          seed: item.seed,
         })),
         prompt,
         via,
         endpointId: endpoint?.id ?? null,
         unitPriceUsd,
+        queue,
         spentUsd: cost,
         remainingUsd: remainingUsd(project.budget.ceilingUsd, await readLedger(paths)),
         promptUsed: prompt,
@@ -291,6 +329,16 @@ export const entityGenerate = defineOp({
       version: result.project.revision,
       commit: result.commit.id,
       via,
+      warnings: created
+        .map((item, index) =>
+          item.flagged
+            ? {
+                code: "content_flagged",
+                message: `candidate ${index + 1} was flagged by the model's safety checker and is likely a black image`,
+              }
+            : null,
+        )
+        .filter((entry): entry is { code: string; message: string } => entry !== null),
       next: ["sheet.edit", "sheet.publish"],
     };
   },

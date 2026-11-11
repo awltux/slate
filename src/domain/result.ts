@@ -15,6 +15,8 @@ export const ERROR_CODES = [
   "pair_invalid",
   "policy_rejected",
   "provider_error",
+  /** The model accepted the job and did not finish in the time allowed; the job was asked to stop. */
+  "provider_timeout",
   "conflict",
   "unauthorized",
   "forbidden",

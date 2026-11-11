@@ -210,6 +210,6 @@ SLATE_HEADLESS=1 pnpm gate:1   # same slice with no daemon
 
 ## 13. Current work
 
-See `docs/PROGRESS.md`. Slices 1–24 are done, each with its gate and screenshots: boot through to uploads as declared endpoints with AI-drafted declarations, a project's configuration tab, host health, project
+See `docs/PROGRESS.md`. Slices 1–25 are done, each with its gate and screenshots: boot through to uploads as declared endpoints with AI-drafted declarations, a project's configuration tab, host health, project
 backup and restore, references that can reach a remote model, guarded deletion, editable sheets and a project created
 with its shape and look. The next slice comes from the backlog at the end of that file, not from this line.

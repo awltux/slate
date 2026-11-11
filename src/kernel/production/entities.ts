@@ -115,6 +115,8 @@ export const CandidateSchema = z
     role: SheetRoleSchema.nullable(),
     variantId: z.string().nullable(),
     promptHash: z.string(),
+    /** The seed the model actually used, when its answer names it: the same seed and prompt make the same picture. */
+    seed: z.number().int().nullable().default(null),
     createdAt: z.string(),
   })
   .strict();
