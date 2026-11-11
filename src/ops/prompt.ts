@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SlateError } from "../domain/result.js";
 import { callEndpoint, readValue } from "../kernel/ai/call.js";
+import { readResult } from "../kernel/ai/declaration.js";
 import { type HttpPort, httpPort } from "../kernel/ai/reference.js";
 import { readAiConfig, readKeys, resolveBinding } from "../kernel/ai/store.js";
 import { readConfig } from "../kernel/config.js";
@@ -28,6 +29,56 @@ const CAMERA_AND_LIGHT: Record<string, string[]> = {
  * host config. The order matters: the endpoint is the thing a person configured in Setup, with its own body, key and
  * result path, and an llm block nobody can reach from the interface should not win over it.
  */
+/** The paths a text answer conventionally lives at, tried only when the endpoint declares none. */
+const CONVENTIONAL_TEXT_PATHS = [
+  "choices[0].message.content",
+  "text",
+  "response",
+  "output_text",
+  "output",
+  "content",
+  "result",
+];
+
+/**
+ * Pull the words out of an answer. An endpoint that declares a result path is held to it; one that declares none is read
+ * from the conventional homes, because "DeepSeek LLM" and its kin put the sentence at choices[0].message.content and
+ * refusing them for not declaring it would be pedantry.
+ */
+function readTextAnswer(
+  call: Awaited<ReturnType<typeof callEndpoint>>,
+  endpoint: { name: string; resultPath: string; id: string },
+): { text: string; path: string } {
+  if (endpoint.resultPath) {
+    const value = readValue(call, endpoint as never);
+    if (typeof value === "string" && value.trim() !== "")
+      return { text: value.trim(), path: endpoint.resultPath };
+    throw new SlateError(
+      "provider_error",
+      `${endpoint.name} answered but nothing at "${endpoint.resultPath}" was text`,
+      { detail: { endpointId: endpoint.id, resultPath: endpoint.resultPath } },
+    );
+  }
+
+  for (const candidate of CONVENTIONAL_TEXT_PATHS) {
+    const value = readResult(call.parsed, candidate);
+    if (typeof value === "string" && value.trim() !== "") return { text: value.trim(), path: candidate };
+  }
+
+  throw new SlateError(
+    "provider_error",
+    `${endpoint.name} declares no result path and its answer had text at none of ${CONVENTIONAL_TEXT_PATHS.join(", ")}: set the result path in Setup`,
+    {
+      detail: {
+        endpointId: endpoint.id,
+        resultPath: "",
+        tried: CONVENTIONAL_TEXT_PATHS,
+        body: call.body.slice(0, 500),
+      },
+    },
+  );
+}
+
 async function askTextModel(input: {
   kind: "character" | "location" | "prop" | "style" | "costume" | "body";
   system: string;
@@ -35,7 +86,7 @@ async function askTextModel(input: {
   project: { aiBindingSetId?: string | null; systemPrompts: Record<string, string> };
   home: string;
   http: HttpPort;
-}): Promise<{ prompt: string; via: string } | null> {
+}): Promise<{ prompt: string; via: string; inferredPath?: string | null } | null> {
   const ai = await readAiConfig(input.home);
   const resolution = resolveBinding(ai, "text", input.project.aiBindingSetId ?? null);
   if (resolution) {
@@ -51,15 +102,14 @@ async function askTextModel(input: {
           // The words the model needs travel as values, so an OpenAI-shaped template and a bespoke one both work.
           values: { prompt: input.user, params: { system: input.system } },
         });
-        const value = resolution.endpoint.resultPath ? readValue(call, resolution.endpoint) : call.parsed;
-        if (typeof value === "string" && value.trim() !== "") {
-          return { prompt: value.trim(), via: `model:${resolution.endpoint.name}` };
-        }
-        throw new SlateError(
-          "provider_error",
-          `${resolution.endpoint.name} answered but nothing at "${resolution.endpoint.resultPath}" was text`,
-          { detail: { endpointId: resolution.endpoint.id, resultPath: resolution.endpoint.resultPath } },
-        );
+        const found = readTextAnswer(call, resolution.endpoint);
+        return {
+          prompt: found.text,
+          via: `model:${resolution.endpoint.name}`,
+          // Named when the path had to be inferred, so a screen can say so rather than implying a declaration that
+          // does not exist.
+          inferredPath: resolution.endpoint.resultPath ? null : found.path,
+        };
       } catch (error) {
         // A broken text endpoint must not silently become a local prompt the person believes a model wrote: the caller
         // gets the failure, and can choose the local path by clearing the binding.
@@ -195,6 +245,8 @@ export const promptExpand = defineOp({
     const style = styleEntity ? { name: styleEntity.name, description: styleEntity.description } : null;
 
     let result: ModelResult;
+    /** Set when the endpoint declared no result path and the answer was read from a conventional one. */
+    let inferredPath: string | null = null;
     {
       // The instructions belong to the library type, not to this file: a character and a location are not written the
       // same way, and a project may have its own words for either.
@@ -225,6 +277,7 @@ export const promptExpand = defineOp({
         prompt: composePrompt({ kind: entity.kind, name: entity.name, description, style, variant }),
         via: "local",
       };
+      if (written?.inferredPath) inferredPath = written.inferredPath;
     }
 
     const committed = await commitDocuments({
@@ -256,8 +309,8 @@ export const promptExpand = defineOp({
       version: committed.project.revision,
       commit: committed.commit.id,
       via: result.via,
-      warnings:
-        result.via === "local"
+      warnings: [
+        ...(result.via === "local"
           ? [
               {
                 code: "no_model",
@@ -265,7 +318,16 @@ export const promptExpand = defineOp({
                   "No model is configured, so the prompt was composed locally rather than written by AI.",
               },
             ]
-          : [],
+          : []),
+        ...(inferredPath
+          ? [
+              {
+                code: "result_path_inferred",
+                message: `${result.via} declares no result path; the answer was read from ${inferredPath}`,
+              },
+            ]
+          : []),
+      ],
       next: ["entity.generate"],
     };
   },
@@ -334,7 +396,14 @@ export const promptExpandText = defineOp({
         : { prompt: local, via: "local", styleId: styleEntity?.id ?? null },
       version: project.revision,
       warnings: written
-        ? []
+        ? written.inferredPath
+          ? [
+              {
+                code: "result_path_inferred",
+                message: `${written.via} declares no result path; the answer was read from ${written.inferredPath}`,
+              },
+            ]
+          : []
         : [
             {
               code: "no_model",

@@ -2,6 +2,15 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## A text endpoint that names no result path still works
+
+- **Expand no longer fails on an endpoint that declares no result path.** The words are read from where
+  OpenAI-compatible hosts put them — `choices[0].message.content` first, then `text`, `response`, `output_text`,
+  `output`, `content`, `result` — and the outcome carries a `result_path_inferred` warning naming the path it used, so
+  nobody believes the endpoint declared one.
+- **When the answer is in none of them the refusal is useful**: it lists the paths it tried and says to set the result
+  path in Setup, instead of reporting "nothing at \"\" was text".
+
 ## Library items are made by the model you configured
 
 - **Generate candidates now calls the bound image endpoint** and ingests what comes back: one request per candidate,

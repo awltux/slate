@@ -243,3 +243,115 @@ describe("a prompt written by a model", () => {
     expect(body.prompt).toContain("description: salt in his beard");
   });
 });
+
+describe("a text endpoint that declares no result path", () => {
+  it("reads the answer from where OpenAI-compatible hosts put it, and says it did", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "deepseek", baseUrl: "https://api.deepseek.com", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    // No resultPath: the shape of the "DeepSeek LLM" endpoint that failed in the interface.
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "DeepSeek LLM",
+          capability: "text",
+          method: "POST",
+          path: "/chat/completions",
+          body: { messages: [{ role: "user", content: "{{prompt}}" }] },
+        },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Default", bindings: { text: [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const port: HttpPort = async () => ({
+      status: 200,
+      body: JSON.stringify({
+        choices: [{ message: { content: "a keeper, salt in his beard, amber light" } }],
+      }),
+    });
+
+    const result = expectOk(
+      await registry.execute(
+        "prompt.expand",
+        { entityId: entity.entityId },
+        testContext(root, { home, http: port }),
+      ),
+    );
+    const data = result.data as { prompt: string; via: string };
+    expect(data.via).toBe("model:DeepSeek LLM");
+    expect(data.prompt).toContain("salt in his beard");
+    // The warning names the path that was used, so nobody believes the endpoint declared one.
+    const warning = result.warnings?.find((entry) => entry.code === "result_path_inferred");
+    expect(warning?.message).toContain("choices[0].message.content");
+  });
+
+  it("refuses with the paths it tried when the answer is in none of them", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "odd", baseUrl: "https://odd.example", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        { providerId: provider.id, name: "Odd LLM", capability: "text", method: "POST", path: "/odd" },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Default", bindings: { text: [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const port: HttpPort = async () => ({
+      status: 200,
+      body: JSON.stringify({ payload: { deep: { thing: 1 } } }),
+    });
+    const failed = await registry.execute(
+      "prompt.expand",
+      { entityId: entity.entityId },
+      testContext(root, { home, http: port }),
+    );
+    expect(failed.ok).toBe(false);
+    if (!failed.ok) {
+      expect(failed.error.code).toBe("provider_error");
+      expect(failed.error.message).toContain("set the result path in Setup");
+    }
+  });
+});
