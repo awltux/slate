@@ -474,3 +474,50 @@ describe("testing an endpoint", () => {
     expect(data.resultPathFound).toBe(false);
   });
 });
+
+describe("an endpoint test posts JSON", () => {
+  it("sends a content-type with the body it renders", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal", baseUrl: "https://fal.run", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "FLUX schnell",
+          capability: "text-to-image",
+          method: "POST",
+          path: "/fal-ai/flux/schnell",
+          body: { prompt: "{{prompt}}" },
+          resultPath: "images[0].url",
+        },
+        context,
+      ),
+    ).data as { id: string };
+
+    let sent: Record<string, string> = {};
+    const port: HttpPort = async (request) => {
+      sent = request.headers ?? {};
+      // A host that cannot read the body as JSON answers 422 with the bytes it saw; that is the failure this guards.
+      return sent["content-type"] === "application/json"
+        ? { status: 200, body: JSON.stringify({ images: [{ url: "https://fal.example/out.png" }] }) }
+        : {
+            status: 422,
+            body: JSON.stringify({ detail: [{ loc: ["body"], msg: "Input should be a valid dictionary" }] }),
+          };
+    };
+
+    const data = expectOk(
+      await registry.execute("ai.test", { endpointId: endpoint.id }, testContext(root, { home, http: port })),
+    ).data as { status: number | null; resultPathFound: boolean | null };
+
+    expect(sent["content-type"]).toBe("application/json");
+    expect(data.status).toBe(200);
+    expect(data.resultPathFound).toBe(true);
+  });
+});

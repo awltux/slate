@@ -197,6 +197,8 @@ export const aiTest = defineOp({
         method = request.method.toUpperCase();
         renderedBody = request.body ?? null;
         sentBody = renderedBody === null ? "" : JSON.stringify(renderedBody);
+        // The renderer already worked out the auth header; take its headers so the content-type comes with them.
+        Object.assign(headers, request.headers);
         // The endpoint's capability decides whether asking it can cost money; every generating one can.
         chargesPossible = endpoint.capability !== "upload";
       } catch (error) {
