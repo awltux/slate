@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, runOp } from "../api.js";
 import { readPreference, writePreference } from "../preferences.js";
+import { ImageReview } from "./ImageReview.js";
 
 const ANGLES = [
   "front",
@@ -383,6 +384,8 @@ function EntityCard({
   const [needsLocal, setNeedsLocal] = useState(false);
   /** What the last generation actually asked, so the prompt and the look are visible rather than assumed. */
   const [notice, setNotice] = useState<string | null>(null);
+  /** The picture being looked at, if any: clicking a thumbnail opens it at the size of the window. */
+  const [review, setReview] = useState<{ src: string; alt: string; caption?: string } | null>(null);
 
   useEffect(() => {
     setPrompt(entity.prompt);
@@ -659,11 +662,25 @@ function EntityCard({
       {entity.compositeAssetId ? (
         <div className="row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
           <figure style={{ margin: 0 }}>
-            <img
-              src={media(entity.compositeAssetId)}
-              alt={`${entity.name} reference sheet`}
-              style={{ width: 192, height: 128, objectFit: "contain", borderRadius: 6 }}
-            />
+            <button
+              type="button"
+              className="thumb"
+              aria-label={`Review the reference sheet for ${entity.name}`}
+              onClick={() =>
+                entity.compositeAssetId &&
+                setReview({
+                  src: media(entity.compositeAssetId),
+                  alt: `${entity.name} reference sheet`,
+                  caption: `reference sheet v${entity.version} — what a shot is conditioned on`,
+                })
+              }
+            >
+              <img
+                src={media(entity.compositeAssetId)}
+                alt={`${entity.name} reference sheet`}
+                style={{ width: 192, height: 128, objectFit: "contain", borderRadius: 6 }}
+              />
+            </button>
             <figcaption className="muted" style={{ fontSize: 11 }}>
               reference sheet v{entity.version} — what a shot is conditioned on
             </figcaption>
@@ -678,17 +695,30 @@ function EntityCard({
             <div className="row" style={{ alignItems: "flex-start" }}>
               {entity.images.map((image) => (
                 <figure key={image.assetId} style={{ margin: 0 }}>
-                  <img
-                    src={media(image.assetId)}
-                    alt={`${entity.name} ${image.role ?? "unassigned"}`}
-                    style={{
-                      width: 72,
-                      height: 72,
-                      objectFit: "cover",
-                      borderRadius: 4,
-                      opacity: image.status === "disabled" ? 0.4 : 1,
-                    }}
-                  />
+                  <button
+                    type="button"
+                    className="thumb"
+                    aria-label={`Review ${entity.name} ${image.role ?? "unassigned"}`}
+                    onClick={() =>
+                      setReview({
+                        src: media(image.assetId),
+                        alt: `${entity.name} ${image.role ?? "unassigned"}`,
+                        caption: `${image.role ?? "unassigned"}${image.status === "disabled" ? " · kept out of the sheet" : ""}`,
+                      })
+                    }
+                  >
+                    <img
+                      src={media(image.assetId)}
+                      alt={`${entity.name} ${image.role ?? "unassigned"}`}
+                      style={{
+                        width: 72,
+                        height: 72,
+                        objectFit: "cover",
+                        borderRadius: 4,
+                        opacity: image.status === "disabled" ? 0.4 : 1,
+                      }}
+                    />
+                  </button>
                   <figcaption className="muted" style={{ fontSize: 10, textAlign: "center" }}>
                     {image.role ?? "unassigned"}
                   </figcaption>
@@ -722,17 +752,40 @@ function EntityCard({
             <div className="row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
               {entity.draft.items.map((item, index) => (
                 <div key={item.assetId} className="stack" style={{ gap: "0.25rem", width: 150 }}>
-                  <img
-                    src={media(item.assetId)}
-                    alt={`${entity.name} item ${index + 1}`}
-                    style={{
-                      width: 120,
-                      height: 120,
-                      objectFit: "cover",
-                      borderRadius: 6,
-                      opacity: item.status === "disabled" || item.status === "deleted" ? 0.4 : 1,
-                    }}
-                  />
+                  <button
+                    type="button"
+                    className="thumb"
+                    aria-label={`Review ${entity.name} item ${index + 1}`}
+                    onClick={() =>
+                      setReview({
+                        src: media(item.assetId),
+                        alt: `${entity.name} item ${index + 1}`,
+                        caption: [
+                          `item ${index + 1}`,
+                          item.role ? item.role : "unassigned",
+                          item.status === "disabled"
+                            ? "kept out of the sheet"
+                            : item.status === "deleted"
+                              ? "removed on publish"
+                              : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · "),
+                      })
+                    }
+                  >
+                    <img
+                      src={media(item.assetId)}
+                      alt={`${entity.name} item ${index + 1}`}
+                      style={{
+                        width: 120,
+                        height: 120,
+                        objectFit: "cover",
+                        borderRadius: 6,
+                        opacity: item.status === "disabled" || item.status === "deleted" ? 0.4 : 1,
+                      }}
+                    />
+                  </button>
                   <select
                     value={itemValue(item)}
                     onChange={(event) => void setItem(index, event.target.value)}
@@ -790,6 +843,14 @@ function EntityCard({
       ) : null}
 
       {error ? <p className="error">{error}</p> : null}
+      {review ? (
+        <ImageReview
+          src={review.src}
+          alt={review.alt}
+          caption={review.caption}
+          onClose={() => setReview(null)}
+        />
+      ) : null}
     </div>
   );
 }

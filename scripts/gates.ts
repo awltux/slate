@@ -3139,6 +3139,16 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.waitForSelector("text=The keeper", { timeout: 30_000 });
       await page.screenshot({ path: join(artifactDir, "queued-model.png"), fullPage: true });
 
+      // Clicking a picture opens it for review, and Escape puts it away again.
+      const thumb = page.locator('button[aria-label^="Review "]').first();
+      await thumb.click();
+      const dialog = page.locator('[aria-label="Image review"]');
+      await dialog.waitFor({ timeout: 20_000 });
+      await page.screenshot({ path: join(artifactDir, "image-review.png"), fullPage: false });
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "detached", timeout: 20_000 });
+      steps.push("ui: a picture opens in a review on click, and closes with Escape");
+
       // The candidate count is a habit, not a property of the film: it must survive a reload.
       await page.fill('input[aria-label="Candidate count"]', "1");
       await page.reload({ waitUntil: "networkidle" });

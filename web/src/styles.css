@@ -332,3 +332,20 @@ code,
   font-variant-numeric: tabular-nums;
   flex: none;
 }
+
+/* A thumbnail is a handle: clicking it opens the picture at the size of the window. */
+.thumb {
+  display: block;
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  cursor: zoom-in;
+  border-radius: 6px;
+  line-height: 0;
+}
+
+.thumb:hover,
+.thumb:focus-visible {
+  border-color: var(--accent, #c9a227);
+  outline: none;
+}
