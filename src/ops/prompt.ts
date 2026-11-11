@@ -242,7 +242,9 @@ export const promptExpand = defineOp({
     // An entity's own style wins; otherwise the film's default look applies, so a look is chosen once.
     const styleId = entity.styleId ?? project.settings.defaultStyleId;
     const styleEntity: Entity | null = styleId ? (production.entities[styleId] ?? null) : null;
-    const style = styleEntity ? { name: styleEntity.name, description: styleEntity.description } : null;
+    const style = styleEntity
+      ? { name: styleEntity.name, description: styleEntity.prompt.trim() || styleEntity.description }
+      : null;
 
     let result: ModelResult;
     /** Set when the endpoint declared no result path and the answer was read from a conventional one. */
@@ -358,7 +360,9 @@ export const promptExpandText = defineOp({
     const { project, production } = await loadDocuments(context);
     const styleId = input.styleId ?? project.settings.defaultStyleId;
     const styleEntity: Entity | null = styleId ? (production.entities[styleId] ?? null) : null;
-    const style = styleEntity ? { name: styleEntity.name, description: styleEntity.description } : null;
+    const style = styleEntity
+      ? { name: styleEntity.name, description: styleEntity.prompt.trim() || styleEntity.description }
+      : null;
 
     const system = resolveTypePrompt({
       kind: input.kind,

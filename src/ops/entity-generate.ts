@@ -114,9 +114,11 @@ export const entityGenerate = defineOp({
     const style = styleId ? (before.entities[styleId] ?? null) : null;
     // A look only reaches the model if it is in the words sent. Expanding folds it in, but an edited prompt may not, and
     // changing the style afterwards must change the request - so it is stated here, in the same shape composePrompt uses.
-    const styleLine = style
-      ? `style: ${style.name}${style.description.trim() ? ` (${style.description.trim()})` : ""}`
-      : "";
+    // A style has two fields: the director's description, and the prompt written from it. The prompt is what an image
+    // model was told to understand, so it goes first - the description is the fallback for a style nobody expanded yet.
+    const styleText = style ? style.prompt.trim() || style.description.trim() : "";
+    const styleLine =
+      style && styleText !== "" ? `style: ${style.name} (${styleText})` : style ? `style: ${style.name}` : "";
 
     const composed =
       entity.kind === "body" && character
@@ -295,7 +297,7 @@ export const entityGenerate = defineOp({
         prompt,
         via,
         ...(endpoint ? { endpoint: endpoint.name } : {}),
-        ...(style ? { style: `${style.name} — ${style.description}`.trim() } : { style: "none" }),
+        ...(style ? { style: `${style.name} — ${styleText}`.trim() } : { style: "none" }),
         ...(answers.length > 0 ? { response: answers.join("\n---\n").slice(0, 2_000) } : {}),
       },
       mutate: ({ production }) => {

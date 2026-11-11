@@ -504,3 +504,101 @@ describe("the look reaches the model", () => {
     expect(data.promptUsed.match(/Claymation/g)?.length).toBe(1);
   });
 });
+
+describe("a style with both fields", () => {
+  it("sends the style's prompt, not its description", async () => {
+    await boundImageEndpoint(modelPort({}));
+    const style = expectOk(
+      await registry.execute(
+        "entity.create",
+        {
+          kind: "style",
+          name: "Claymation",
+          description: "Use model-making claymation style as seen in stop-motion films.",
+        },
+        context,
+      ),
+    ).data as { entityId: string };
+    // The expanded look: shorter, sharper, and what an image model was actually told to understand.
+    expectOk(
+      await registry.execute(
+        "entity.update",
+        {
+          entityId: style.entityId,
+          prompt: "claymation, plasticine, thumbprints, matte, warm tungsten, stop-motion",
+        },
+        context,
+      ),
+    );
+
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt" },
+        context,
+      ),
+    ).data as { entityId: string };
+    expectOk(
+      await registry.execute(
+        "entity.update",
+        { entityId: entity.entityId, prompt: "a lighthouse keeper at night", styleId: style.entityId },
+        context,
+      ),
+    );
+
+    const bodies: string[] = [];
+    const port: HttpPort = async (request) => {
+      if (request.as === "bytes") return { status: 200, body: "", bytes: new Uint8Array(PNG) };
+      bodies.push(String(request.body ?? ""));
+      return { status: 200, body: JSON.stringify({ images: [{ url: "https://fal.example/out.png" }] }) };
+    };
+
+    const data = expectOk(
+      await registry.execute(
+        "entity.generate",
+        { entityId: entity.entityId, count: 1 },
+        testContext(root, { home, http: port }),
+      ),
+    ).data as { promptUsed: string };
+
+    expect(data.promptUsed).toContain("thumbprints");
+    expect(data.promptUsed).not.toContain("stop-motion films.");
+    const sent = JSON.parse(bodies[0] ?? "{}") as { prompt: string };
+    expect(sent.prompt).toContain("thumbprints");
+  });
+
+  it("falls back to the description when the style has no prompt", async () => {
+    await boundImageEndpoint(modelPort({}));
+    const style = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "style", name: "Test noir", description: "low key, hard shadows" },
+        context,
+      ),
+    ).data as { entityId: string };
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt" },
+        context,
+      ),
+    ).data as { entityId: string };
+    expectOk(
+      await registry.execute(
+        "entity.update",
+        { entityId: entity.entityId, prompt: "a keeper", styleId: style.entityId },
+        context,
+      ),
+    );
+
+    const data = expectOk(
+      await registry.execute(
+        "entity.generate",
+        { entityId: entity.entityId, count: 1 },
+        testContext(root, { home, http: modelPort({}) }),
+      ),
+    ).data as { promptUsed: string };
+
+    expect(data.promptUsed).toContain("low key, hard shadows");
+  });
+});
