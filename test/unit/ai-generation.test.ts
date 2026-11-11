@@ -410,3 +410,97 @@ describe("a parameter nobody supplied", () => {
     expect(rendered.body.image_size).toEqual({ width: 1920, height: 1080 });
   });
 });
+
+describe("the look reaches the model", () => {
+  it("puts the style sheet in the prompt, and in the body that is sent", async () => {
+    await boundImageEndpoint(modelPort({}));
+    const style = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "style", name: "Claymation", description: "plasticine, thumbprints, warm tungsten" },
+        context,
+      ),
+    ).data as { entityId: string };
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+    // The style is chosen on the item, which is what the Library's dropdown writes.
+    expectOk(
+      await registry.execute(
+        "entity.update",
+        { entityId: entity.entityId, prompt: "a lighthouse keeper at night", styleId: style.entityId },
+        context,
+      ),
+    );
+
+    const bodies: string[] = [];
+    const port: HttpPort = async (request) => {
+      if (request.as === "bytes") return { status: 200, body: "", bytes: new Uint8Array(PNG) };
+      bodies.push(String(request.body ?? ""));
+      return {
+        status: 200,
+        body: JSON.stringify({ images: [{ url: "https://fal.example/out.png" }], seed: 3 }),
+      };
+    };
+
+    const data = expectOk(
+      await registry.execute(
+        "entity.generate",
+        { entityId: entity.entityId, count: 1 },
+        testContext(root, { home, http: port }),
+      ),
+    ).data as { promptUsed: string; styleId: string | null };
+
+    expect(data.styleId).toBe(style.entityId);
+    // The prompt says the look, and the request carries it: a style nobody sends is a style nobody applied.
+    expect(data.promptUsed).toContain("Claymation");
+    expect(data.promptUsed).toContain("thumbprints");
+    const sent = JSON.parse(bodies[0] ?? "{}") as { prompt: string };
+    expect(sent.prompt).toContain("Claymation");
+    expect(sent.prompt).toContain("lighthouse keeper");
+  });
+
+  it("does not repeat a look the expanded prompt already states", async () => {
+    await boundImageEndpoint(modelPort({}));
+    const style = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "style", name: "Claymation", description: "plasticine" },
+        context,
+      ),
+    ).data as { entityId: string };
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt" },
+        context,
+      ),
+    ).data as { entityId: string };
+    expectOk(
+      await registry.execute(
+        "entity.update",
+        {
+          entityId: entity.entityId,
+          prompt: "a keeper. style: Claymation (plasticine)",
+          styleId: style.entityId,
+        },
+        context,
+      ),
+    );
+
+    const data = expectOk(
+      await registry.execute(
+        "entity.generate",
+        { entityId: entity.entityId, count: 1 },
+        testContext(root, { home, http: modelPort({}) }),
+      ),
+    ).data as { promptUsed: string };
+
+    // Counted once, not twice: the expand step already folded it in.
+    expect(data.promptUsed.match(/Claymation/g)?.length).toBe(1);
+  });
+});

@@ -108,7 +108,17 @@ export const entityGenerate = defineOp({
       : null;
 
     const written = (variant?.prompt || entity.prompt || entity.description).trim();
-    const prompt =
+
+    // The entity's own style, else the film's default look: a style chosen at creation applies to every entry.
+    const styleId = entity.styleId ?? project.settings.defaultStyleId;
+    const style = styleId ? (before.entities[styleId] ?? null) : null;
+    // A look only reaches the model if it is in the words sent. Expanding folds it in, but an edited prompt may not, and
+    // changing the style afterwards must change the request - so it is stated here, in the same shape composePrompt uses.
+    const styleLine = style
+      ? `style: ${style.name}${style.description.trim() ? ` (${style.description.trim()})` : ""}`
+      : "";
+
+    const composed =
       entity.kind === "body" && character
         ? [
             written,
@@ -130,6 +140,12 @@ export const entityGenerate = defineOp({
               .filter(Boolean)
               .join(". ")
           : written;
+
+    // Appended last, and only when it is not already in the words: an expanded prompt often contains it.
+    const prompt =
+      styleLine !== "" && !composed.toLowerCase().includes(styleLine.toLowerCase())
+        ? `${composed}. ${styleLine}`
+        : composed;
     if (prompt === "") {
       throw new SlateError("readiness_failed", "this entity has no prompt yet", {
         detail: {
@@ -137,10 +153,6 @@ export const entityGenerate = defineOp({
         },
       });
     }
-
-    // The entity's own style, else the film's default look: a style chosen at creation applies to every entry.
-    const styleId = entity.styleId ?? project.settings.defaultStyleId;
-    const style = styleId ? (before.entities[styleId] ?? null) : null;
 
     // What will make these images: the bound image endpoint, or - only when the caller says so - the local renderer.
     const aiConfig = await readAiConfig(context.home);

@@ -379,6 +379,8 @@ function EntityCard({
   const [error, setError] = useState<string | null>(null);
   /** No image model is bound: the offer is to draw locally, said out loud rather than done quietly. */
   const [needsLocal, setNeedsLocal] = useState(false);
+  /** What the last generation actually asked, so the prompt and the look are visible rather than assumed. */
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setPrompt(entity.prompt);
@@ -435,13 +437,37 @@ function EntityCard({
 
   async function generate(allowLocal = false) {
     setNeedsLocal(false);
+    setNotice(null);
     await run(async () => {
       try {
-        await runOp(projectId, "entity.generate", {
-          entityId: entity.id,
-          count: Number(count) || 4,
-          allowLocal,
-        });
+        // Save first, so the words in the boxes - including the expanded prompt - are what the model is asked.
+        if (
+          description !== entity.description ||
+          prompt !== entity.prompt ||
+          (styleId || null) !== entity.styleId
+        ) {
+          await runOp(projectId, "entity.update", {
+            entityId: entity.id,
+            description,
+            prompt,
+            styleId: styleId || null,
+          });
+        }
+        const result = await runOp<{ via: string; promptUsed: string; styleId: string | null }>(
+          projectId,
+          "entity.generate",
+          {
+            entityId: entity.id,
+            count: Number(count) || 4,
+            allowLocal,
+          },
+        );
+        // Say what was actually asked, so nobody has to guess whether the look travelled.
+        setNotice(
+          `Generated ${Number(count) || 4} via ${result.data.via}${
+            result.data.styleId ? " with the style applied" : ", no style applied"
+          }`,
+        );
       } catch (caught) {
         // No image model bound: say so, and offer the local renderer as a deliberate choice rather than drawing anyway.
         if (caught instanceof ApiError && caught.code === "capability_missing") setNeedsLocal(true);
@@ -608,6 +634,11 @@ function EntityCard({
             {busy ? "Working…" : "Generate candidates"}
           </button>
         </div>
+        {notice ? (
+          <p className="muted" style={{ fontSize: 12 }}>
+            {notice}
+          </p>
+        ) : null}
         {needsLocal ? (
           <p className="muted" style={{ fontSize: 12 }}>
             No image model is bound to this film, so nothing was generated. Add one in <strong>Setup</strong>,

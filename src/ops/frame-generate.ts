@@ -121,11 +121,17 @@ export const frameGenerate = defineOp({
       input.prompt.trim() === ""
         ? `${shot.size} ${shot.angle}, ${shot.description || "the scene"}. ${subject}`.trim()
         : `${input.prompt.trim()}. ${subject}`.trim();
+    // The film's look applies to a frame as much as to a sheet: a shot that ignored it would not match its own scene.
+    const styleEntity = project.settings.defaultStyleId
+      ? (production.entities[project.settings.defaultStyleId] ?? null)
+      : null;
+    const style = styleEntity ? { name: styleEntity.name, description: styleEntity.description } : null;
+
     const prompt = composePrompt({
       kind: "location",
       name: `Shot ${shot.number}`,
       description,
-      style: null,
+      style,
       variant: null,
     });
 
