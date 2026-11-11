@@ -3138,7 +3138,26 @@ async function browserFlow(steps: string[]): Promise<void> {
       await page.click('main [role="tab"]:has-text("Library")');
       await page.waitForSelector("text=The keeper", { timeout: 30_000 });
       await page.screenshot({ path: join(artifactDir, "queued-model.png"), fullPage: true });
-      steps.push("ui: the known models are offered in Setup, and the queued generation appears in Library");
+
+      // Activity keeps the words the model was sent, closed until opened: the answer to "why does it look like that".
+      await page.click('main [role="tab"]:has-text("Activity")');
+      await page.waitForSelector("h2:has-text('Activity')", { timeout: 30_000 });
+      const openEntries = await page.locator("details.commit[open]").count();
+      assert(openEntries === 0, "every activity entry must start minimised");
+      const firstEntry = page.locator("details.commit").first();
+      assert(
+        (await firstEntry.textContent())?.includes("generate"),
+        "the newest entry must be the generation",
+      );
+      await firstEntry.locator("summary").click();
+      const expanded = (await firstEntry.textContent()) ?? "";
+      assert(
+        expanded.includes("prompt"),
+        `the entry must show what was sent, got: ${expanded.slice(0, 200)}`,
+      );
+      assert(expanded.includes("lighthouse keeper"), "the prompt the person wrote must be in the entry");
+      await page.screenshot({ path: join(artifactDir, "activity-message.png"), fullPage: true });
+      steps.push("ui: an activity entry is minimised, and opens to show the prompt and the answer");
 
       await instance.close();
       return;

@@ -2,6 +2,15 @@
 
 User-visible changes per slice. Internal refactors are not listed.
 
+## Activity keeps the words, and pages
+
+- **An activity entry carries what was sent and what came back**: the prompt, the model, the endpoint, the style and the
+  answer. "Why does this picture not look like the film" is answered by the words, not by a hash.
+- **Every entry is minimised** — a time and a sentence — and opens to show the exchange. Entries that called no model say
+  so instead of pretending to be empty.
+- **Activity is paged**, twenty at a time with a *Load older activity* button, because the log grows with every decision
+  and a page that loads all of it gets slower every day.
+
 ## Capabilities are a table, and a model can be queued
 
 - **`image` became `text-to-image`.** Capabilities now live in one table (`id`, `label`, `paid`, `requires`,

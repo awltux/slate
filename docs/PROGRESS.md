@@ -29,9 +29,14 @@ four surfaces exist.
 | 22 | Each library type has instructions, in three layers | `pnpm gate:22` | **done** | [film's copy](../artifacts/22/type-prompts.png) · [report](../artifacts/22/type-prompts-host.png) |
 | 23 | Test a provider and each endpoint, from the interface | `pnpm gate:23` | **done** | [provider test](../artifacts/23/provider-test.png) · [report](../artifacts/23/report.json) |
 | 24 | Library items are made by the model the profile binds | `pnpm gate:24` | **done** | [generated item](../artifacts/24/library-by-model.png) · [report](../artifacts/24/report.json) |
-| 25 | A known model, called synchronously or through a queue | `pnpm gate:25` | **done** | [known models](../artifacts/25/known-models.png) · [queued item](../artifacts/25/queued-model.png) · [report](../artifacts/25/report.json) |
+| 25 | A known model, called synchronously or through a queue | `pnpm gate:25` | **done** | [known models](../artifacts/25/known-models.png) · [queued item](../artifacts/25/queued-model.png) · [activity message](../artifacts/25/activity-message.png) · [report](../artifacts/25/report.json) |
 
 ## Slice 25 — what it proves
+
+- **The activity log keeps the exchange**: the prompt, the model, the endpoint, the style and the answer are written onto
+  the commit, minimised in the interface and opened on demand. The gate opens the newest entry and finds the prompt in it.
+- **Activity is paged**, with a cursor, so the page does not grow without bound.
+
 
 - **A model is added in one click and called through fal's queue.** The gate stands up a queue-shaped server, adds
   FLUX schnell from the preset (pointed at that server), binds it, and generates. It asserts the job id, the polls, the

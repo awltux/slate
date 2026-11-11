@@ -57,7 +57,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `project.delete` | destructive | project, owner | `project_delete` | Delete a project from this host, keeping its folder unless told otherwise. |
 | `project.export` | read | project, owner | `project_export` | Write the project to a 7z archive with a manifest describing it. |
 | `project.export-folder` | read | project | `project_export-folder` | The folder this project's archives are written to, as a label rather than a host path. |
-| `project.history` | read | project | `project_history` | Recent commits: what changed, who changed it and why. |
+| `project.history` | read | project | `project_history` | A page of commits: what changed, who changed it, why, and what was sent. |
 | `project.import` | write | host, owner | `project_import` | Restore a project from a 7z archive written by project.export. |
 | `project.set-export-folder` | write | project | `project_set-export-folder` | Choose, or reset, the folder this project's archives are written to. |
 | `project.update` | write | project | `project_update` | Change the project's configuration: name, shape, rate, runtime, budget, model profile and look. |
@@ -1629,8 +1629,11 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
     "limit": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 200,
+      "maximum": 100,
       "default": 20
+    },
+    "before": {
+      "type": "string"
     }
   },
   "additionalProperties": false,

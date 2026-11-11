@@ -12,6 +12,11 @@ export const CommitRecordSchema = z
     intent: z.string(),
     revision: z.number().int().nonnegative(),
     touched: z.array(z.string()),
+    /**
+     * What the operation actually sent or received, as labelled strings: a prompt, a response, the model that answered.
+     * Kept on the commit because "why does this picture not look like the film" is answered by the words, not the hash.
+     */
+    detail: z.record(z.string(), z.string()).optional(),
     projectHash: z.string().nullable(),
     productionHash: z.string().nullable(),
   })

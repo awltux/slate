@@ -13,10 +13,13 @@ import { defineOp } from "./registry.js";
 export const projectHistory = defineOp({
   name: "project.history",
   policy: "read",
-  summary: "Recent commits: what changed, who changed it and why.",
+  summary: "A page of commits: what changed, who changed it, why, and what was sent.",
   input: z
     .object({
-      limit: z.number().int().min(1).max(200).default(20),
+      /** How many entries this page holds. A page, not the whole log: activity grows with every decision. */
+      limit: z.number().int().min(1).max(100).default(20),
+      /** The oldest commit of the previous page: this page continues below it. */
+      before: z.string().optional(),
     })
     .strict(),
   output: z
@@ -30,28 +33,41 @@ export const projectHistory = defineOp({
             intent: z.string(),
             revision: z.number().int(),
             touched: z.array(z.string()),
+            /** What was sent and what came back, when the change was a model call. */
+            detail: z.record(z.string(), z.string()).optional(),
           })
           .strict(),
       ),
+      /** The cursor for the next page, or null when this is the end of the log. */
+      nextBefore: z.string().nullable(),
     })
     .strict(),
   run: async (input, context) => {
     const project = await readProjectDocument(context.root);
     const commits = await readCommits(projectPaths(context.root));
 
+    // Newest first, and paged from the top: the page before this one ended at `before`, so everything newer than it
+    // is already on screen and this page starts below.
+    const all = [...commits].reverse();
+    const start = input.before ? all.findIndex((commit) => commit.id === input.before) + 1 : 0;
+    if (input.before && start === 0) {
+      throw new SlateError("not_found", `no commit ${input.before}`);
+    }
+    const page = all.slice(start, start + input.limit);
+    const hasMore = start + input.limit < all.length;
+
     return {
       data: {
-        commits: commits
-          .slice(-input.limit)
-          .reverse()
-          .map((commit) => ({
-            id: commit.id,
-            at: commit.at,
-            actor: commit.actor,
-            intent: commit.intent,
-            revision: commit.revision,
-            touched: commit.touched,
-          })),
+        commits: page.map((commit) => ({
+          id: commit.id,
+          at: commit.at,
+          actor: commit.actor,
+          intent: commit.intent,
+          revision: commit.revision,
+          touched: commit.touched,
+          ...(commit.detail ? { detail: commit.detail } : {}),
+        })),
+        nextBefore: hasMore ? (page.at(-1)?.id ?? null) : null,
       },
       version: project.revision,
       next: ["capabilities.get"],

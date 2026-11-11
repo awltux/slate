@@ -59,6 +59,8 @@ interface Commit {
   intent: string;
   revision: number;
   touched: string[];
+  /** What was sent and what came back, when the change was a model call. */
+  detail?: Record<string, string>;
 }
 
 type Tab =
@@ -233,14 +235,38 @@ function Activity({ projectId, me }: { projectId: string; me: string }) {
   const [error, setError] = useState<string | null>(null);
   const [undoing, setUndoing] = useState(false);
 
+  /** The cursor for the next page; null when the log ends. Activity grows with every decision, so it is paged. */
+  const [nextBefore, setNextBefore] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     try {
-      const envelope = await runOp<{ commits: Commit[] }>(projectId, "project.history", { limit: 50 });
+      const envelope = await runOp<{ commits: Commit[]; nextBefore: string | null }>(
+        projectId,
+        "project.history",
+        { limit: 20 },
+      );
       setCommits(envelope.data.commits);
+      setNextBefore(envelope.data.nextBefore);
     } catch (caught) {
       setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
     }
   }, [projectId]);
+
+  /** Append the page below the oldest entry on screen rather than reloading what is already there. */
+  async function loadOlder() {
+    if (!nextBefore) return;
+    try {
+      const envelope = await runOp<{ commits: Commit[]; nextBefore: string | null }>(
+        projectId,
+        "project.history",
+        { limit: 20, before: nextBefore },
+      );
+      setCommits((current) => [...(current ?? []), ...envelope.data.commits]);
+      setNextBefore(envelope.data.nextBefore);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+    }
+  }
 
   useEffect(() => {
     void load();
@@ -283,24 +309,49 @@ function Activity({ projectId, me }: { projectId: string; me: string }) {
         <p className="empty">Nothing has changed yet.</p>
       ) : (
         commits.map((commit, index) => (
-          <div className="commit" key={commit.id}>
-            <time>{new Date(commit.at).toLocaleString()}</time>
-            <div>
-              <div>{commit.intent}</div>
-              <div className="muted mono" style={{ fontSize: 12 }}>
-                r{commit.revision} Â· {commit.actor} Â· {commit.id}
+          <details className="commit" key={commit.id} style={{ paddingTop: "0.35rem" }}>
+            <summary style={{ cursor: "pointer" }}>
+              <time>{new Date(commit.at).toLocaleString()}</time> {commit.intent}
+            </summary>
+            <div className="muted mono" style={{ fontSize: 12, marginTop: "0.25rem" }}>
+              r{commit.revision} · {commit.actor} · {commit.id}
+              {commit.touched.length > 0 ? ` · touches ${commit.touched.join(", ")}` : ""}
+            </div>
+            {commit.detail ? (
+              <div style={{ marginTop: "0.35rem" }}>
+                {Object.entries(commit.detail).map(([label, value]) => (
+                  <div key={label} style={{ marginTop: "0.3rem" }}>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {label}
+                    </div>
+                    <pre className="mono" style={{ margin: 0, fontSize: 12, whiteSpace: "pre-wrap" }}>
+                      {value}
+                    </pre>
+                  </div>
+                ))}
               </div>
-            </div>
-            <div>
-              {index === 0 && commit.actor === me ? (
+            ) : (
+              <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: 12 }}>
+                Nothing was sent: this change did not call a model.
+              </p>
+            )}
+            {index === 0 && commit.actor === me ? (
+              <div style={{ marginTop: "0.35rem" }}>
                 <button type="button" onClick={() => void undo(commit.id)} disabled={undoing}>
-                  {undoing ? "Undoingâ€¦" : "Undo"}
+                  {undoing ? "Undoing…" : "Undo"}
                 </button>
-              ) : null}
-            </div>
-          </div>
+              </div>
+            ) : null}
+          </details>
         ))
       )}
+      {nextBefore ? (
+        <div className="row" style={{ marginTop: "0.5rem" }}>
+          <button type="button" onClick={() => void loadOlder()}>
+            Load older activity
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

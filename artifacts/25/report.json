@@ -1,10 +1,10 @@
 {
   "gate": 25,
   "status": "passed",
-  "base": "http://127.0.0.1:49311",
+  "base": "http://127.0.0.1:56957",
   "steps": [
     "queue: the preset was added, submitted, polled and collected, at the film's exact size",
     "provenance: the job id, the wait and the seed the model used are recorded",
-    "ui: the known models are offered in Setup, and the queued generation appears in Library"
+    "ui: an activity entry is minimised, and opens to show the prompt and the answer"
   ]
 }

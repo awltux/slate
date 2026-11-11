@@ -26,6 +26,8 @@ export interface GeneratedFile {
   flagged: boolean;
   /** Present when the call was queued, so a slow job is visible rather than magical. */
   queue?: { requestId: string | null; polls: number; elapsedMs: number };
+  /** The answer, trimmed: enough to see what the model said when the picture is not what was asked for. */
+  answer: string;
 }
 
 /** Does the endpoint's template ask for a reference? Only then is one staged, because staging can cost an upload. */
@@ -147,6 +149,7 @@ export async function generateImages(input: {
         file,
         bytes: saved.bytes,
         url,
+        answer: call.body.slice(0, 800),
         seed: typeof seedValue === "number" ? seedValue : null,
         flagged: flaggedValue === true,
         ...(call.queue ? { queue: call.queue } : {}),

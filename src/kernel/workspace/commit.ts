@@ -30,6 +30,8 @@ export interface CommitDocumentsRequest {
   clock: Clock;
   /** Revision the caller read. A mismatch is a conflict, never an overwrite. */
   expectedRevision?: number;
+  /** Labelled strings worth keeping about how this change was made: a prompt, a response, a model. */
+  detail?: Record<string, string>;
   mutate: (documents: { project: ProjectDocument; production: ProductionDocument }) => void;
 }
 
@@ -106,6 +108,7 @@ export async function commitDocuments(request: CommitDocumentsRequest): Promise<
     intent: request.intent,
     revision,
     touched: request.touched,
+    ...(request.detail ? { detail: request.detail } : {}),
     projectHash: hashValue(project.data),
     productionHash: hashValue(production.data),
   };

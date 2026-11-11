@@ -204,6 +204,8 @@ export const entityGenerate = defineOp({
     }> = [];
     /** What the queue did, when the model was queued: a job id and a wait, so a slow model is visible. */
     const queue: Array<{ requestId: string | null; polls: number; elapsedMs: number }> = [];
+    /** The model's own words, so a picture that ignored the prompt can be explained rather than guessed at. */
+    const answers: string[] = [];
     const work = await mkdtemp(join(tmpdir(), "slate-candidate-"));
 
     try {
@@ -248,6 +250,7 @@ export const entityGenerate = defineOp({
             flagged: file.flagged,
           });
           if (file.queue) queue.push(file.queue);
+          answers.push(file.answer);
         }
       } else {
         for (let index = 0; index < input.count; index += 1) {
@@ -287,6 +290,14 @@ export const entityGenerate = defineOp({
       intent: `generate ${created.length} candidate(s) for ${entity.name}${variant ? ` / ${variant.name}` : ""} via ${via}`,
       touched: [`entity:${entity.id}`],
       clock: context.clock,
+      // Why a sheet looks the way it does is answered by the words sent, so they travel with the commit.
+      detail: {
+        prompt,
+        via,
+        ...(endpoint ? { endpoint: endpoint.name } : {}),
+        ...(style ? { style: `${style.name} — ${style.description}`.trim() } : { style: "none" }),
+        ...(answers.length > 0 ? { response: answers.join("\n---\n").slice(0, 2_000) } : {}),
+      },
       mutate: ({ production }) => {
         const target = production.entities[input.entityId];
         if (!target) return;
