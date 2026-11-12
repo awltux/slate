@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
+import type { HttpPort } from "../../src/kernel/ai/reference.js";
 import { readProjectDocument } from "../../src/kernel/workspace/project-doc.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
 import { testContext } from "../helpers/context.js";
@@ -55,7 +56,7 @@ describe("prompt.expand", () => {
     expect(expanded.warnings?.[0]?.code).toBe("no_model");
   });
 
-  it("folds the style sheet into the prompt", async () => {
+  it("leaves the style out, and says which one generation would apply", async () => {
     const style = expectOk(
       await registry.execute(
         "entity.create",
@@ -73,13 +74,14 @@ describe("prompt.expand", () => {
     await registry.execute("entity.update", { entityId: entity.entityId, styleId: style.entityId }, context);
 
     const expanded = expectOk(await registry.execute("prompt.expand", { entityId: entity.entityId }, context))
-      .data as {
-      prompt: string;
-      styleId: string | null;
-    };
+      .data as { prompt: string; styleId: string | null };
+
+    // The look is a decision for the frame, not for the sentence: baking it in here would style a prompt that may be
+    // re-styled later, and would make the same description expand differently per style.
+    expect(expanded.prompt).not.toContain("Sodium noir");
+    expect(expanded.prompt).not.toContain("Amber practicals");
+    // Reported, so a screen can still say what generation will apply.
     expect(expanded.styleId).toBe(style.entityId);
-    expect(expanded.prompt).toContain("Sodium noir");
-    expect(expanded.prompt).toContain("Amber practicals");
   });
 
   it("is deterministic, so a sheet can be reproduced", async () => {
@@ -130,5 +132,135 @@ describe("expanding text that is not an entity", () => {
   it("refuses empty words rather than inventing a prompt", async () => {
     const refused = await registry.execute("prompt.expand-text", { description: "   " }, context);
     expect(refused.ok).toBe(false);
+  });
+});
+
+describe("the type instructions reach the model", () => {
+  it("folds them into the prompt when the endpoint has no system slot", async () => {
+    // A text endpoint whose body is only the prompt: nothing in it can carry a system message.
+    const sent: string[] = [];
+    const port: HttpPort = async (request) => {
+      sent.push(String(request.body ?? ""));
+      return { status: 200, body: JSON.stringify({ text: "a keeper on a stool, salt in his beard" }) };
+    };
+
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "Plain", baseUrl: "https://llm.example", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "Plain text",
+          capability: "text",
+          method: "POST",
+          path: "/v1/text",
+          body: { prompt: "{{prompt}}" },
+          resultPath: "text",
+          timeoutMs: 30_000,
+        },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Plain", bindings: { text: [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const expanded = expectOk(
+      await registry.execute(
+        "prompt.expand",
+        { entityId: entity.entityId },
+        testContext(root, { home, http: port }),
+      ),
+    );
+    const data = expanded.data as { prompt: string; via: string; systemInlined: boolean };
+
+    // The instructions for a character are in the request even though the template never mentioned them.
+    const body = sent.join(" ");
+    expect(body).toContain("headshot reference sheet");
+    expect(body).toContain("salt in his beard");
+    expect(data.systemInlined).toBe(true);
+    expect(expanded.warnings?.some((warning) => warning.code === "system_inlined")).toBe(true);
+  });
+
+  it("sends them as a system message when the endpoint declares one", async () => {
+    const sent: Array<{ system?: string; prompt?: string }> = [];
+    const port: HttpPort = async (request) => {
+      sent.push(JSON.parse(String(request.body ?? "{}")) as { system?: string; prompt?: string });
+      return { status: 200, body: JSON.stringify({ text: "a keeper on a stool" }) };
+    };
+
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "Shaped", baseUrl: "https://llm.example", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "Shaped text",
+          capability: "text",
+          method: "POST",
+          path: "/v1/chat",
+          body: { system: "{{param:system}}", prompt: "{{prompt}}" },
+          resultPath: "text",
+          timeoutMs: 30_000,
+        },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Shaped", bindings: { text: [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const expanded = expectOk(
+      await registry.execute(
+        "prompt.expand",
+        { entityId: entity.entityId },
+        testContext(root, { home, http: port }),
+      ),
+    );
+    const data = expanded.data as { systemInlined: boolean };
+
+    // When the template has a slot, the instructions stay in it and the prompt text stays clean.
+    expect(sent[0]?.system).toContain("headshot reference sheet");
+    expect(sent[0]?.prompt).not.toContain("headshot reference sheet");
+    expect(sent[0]?.prompt).toContain("salt in his beard");
+    expect(data.systemInlined).toBe(false);
   });
 });

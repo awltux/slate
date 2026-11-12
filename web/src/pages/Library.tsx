@@ -584,7 +584,7 @@ function EntityCard({
             className="primary"
             onClick={() => void expand()}
             disabled={busy || description.trim() === ""}
-            title="Write a generation prompt from this description, using the style sheet"
+            title="Write a generation prompt from this description, using the instructions for this type. The style is applied when the image is made, not here."
           >
             {busy ? "Expanding…" : "Expand"}
           </button>

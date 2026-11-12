@@ -159,8 +159,12 @@ describe("project settings at creation", () => {
       ),
     ).data as { entityId: string };
     const expanded = expectOk(await registry.execute("prompt.expand", { entityId: entity.entityId }, context))
-      .data as { prompt: string };
-    expect(expanded.prompt).toContain("Claymation");
+      .data as { prompt: string; styleId: string | null };
+    // The look is the project default and it is reported — but it is applied when a picture is made, not baked into
+    // the words. Folding it in here would make the same description expand differently per style.
+    expect(expanded.styleId).toBe(created.styleId);
+    expect(expanded.prompt).not.toContain("Claymation");
+    expect(expanded.prompt).toContain("Salt in his beard");
 
     await rm(source, { recursive: true, force: true });
   });

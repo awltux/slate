@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SlateError } from "../domain/result.js";
 import { callEndpoint, readValue } from "../kernel/ai/call.js";
-import { readResult } from "../kernel/ai/declaration.js";
+import { readResult, renderRequest } from "../kernel/ai/declaration.js";
 import { type HttpPort, httpPort } from "../kernel/ai/reference.js";
 import { readAiConfig, readKeys, resolveBinding } from "../kernel/ai/store.js";
 import { readConfig } from "../kernel/config.js";
@@ -86,21 +86,39 @@ async function askTextModel(input: {
   project: { aiBindingSetId?: string | null; systemPrompts: Record<string, string> };
   home: string;
   http: HttpPort;
-}): Promise<{ prompt: string; via: string; inferredPath?: string | null } | null> {
+}): Promise<{ prompt: string; via: string; inferredPath?: string | null; systemInlined?: boolean } | null> {
   const ai = await readAiConfig(input.home);
   const resolution = resolveBinding(ai, "text", input.project.aiBindingSetId ?? null);
   if (resolution) {
     const provider = ai.providers.find((entry) => entry.id === resolution.endpoint.providerId);
     if (provider) {
       const keys = await readKeys(input.home);
+      const apiKey = keys[provider.id] ?? null;
       try {
+        // The words the model needs travel as values, so an OpenAI-shaped template and a bespoke one both work.
+        // But a template that never mentions {{param:system}} would drop the type instructions silently, and the model
+        // would write a prompt with no idea what a character sheet looks like. So the rendered request is checked first
+        // and, when the instructions are absent, they are folded into the prompt text and reported.
+        const values: { prompt: string; params: Record<string, string> } = {
+          prompt: input.user,
+          params: { system: input.system },
+        };
+        let systemInlined = false;
+        const probe = renderRequest(provider, resolution.endpoint, values, apiKey);
+        const marker = input.system.trim().slice(0, 40);
+        // The rendered body is an object, not a string: serialise before looking for the instructions in it.
+        const rendered = typeof probe.body === "string" ? probe.body : JSON.stringify(probe.body ?? "");
+        if (marker !== "" && !rendered.includes(marker)) {
+          values.prompt = `${input.system}\n\n${input.user}`;
+          systemInlined = true;
+        }
+
         const call = await callEndpoint({
           provider,
           endpoint: resolution.endpoint,
-          apiKey: keys[provider.id] ?? null,
+          apiKey,
           http: input.http,
-          // The words the model needs travel as values, so an OpenAI-shaped template and a bespoke one both work.
-          values: { prompt: input.user, params: { system: input.system } },
+          values,
         });
         const found = readTextAnswer(call, resolution.endpoint);
         return {
@@ -109,6 +127,7 @@ async function askTextModel(input: {
           // Named when the path had to be inferred, so a screen can say so rather than implying a declaration that
           // does not exist.
           inferredPath: resolution.endpoint.resultPath ? null : found.path,
+          systemInlined,
         };
       } catch (error) {
         // A broken text endpoint must not silently become a local prompt the person believes a model wrote: the caller
@@ -219,6 +238,8 @@ export const promptExpand = defineOp({
       prompt: z.string(),
       via: z.string(),
       styleId: z.string().nullable(),
+      /** A warning when the endpoint could not take the type instructions as a system message. */
+      systemInlined: z.boolean(),
     })
     .strict(),
   touched: (input) => [`entity:${input.entityId}`],
@@ -249,6 +270,8 @@ export const promptExpand = defineOp({
     let result: ModelResult;
     /** Set when the endpoint declared no result path and the answer was read from a conventional one. */
     let inferredPath: string | null = null;
+    /** Set when the endpoint's body had no system slot, so the type instructions were folded into the prompt text. */
+    let systemInlined = false;
     {
       // The instructions belong to the library type, not to this file: a character and a location are not written the
       // same way, and a project may have its own words for either.
@@ -257,11 +280,12 @@ export const promptExpand = defineOp({
         project: project.systemPrompts,
         global: (await readGlobalLibrary(context.home)).systemPrompts,
       }).prompt;
+      // The description is the whole input. A style is applied when a picture is made, not when words are written:
+      // folding the look in here would bake one style into a prompt that may be re-styled later.
       const user = [
         `kind: ${entity.kind}`,
         `name: ${entity.name}`,
         `description: ${description}`,
-        style ? `style sheet: ${style.name} — ${style.description}` : "no style sheet",
         variant ? `variant: ${variant.name}` : "",
       ]
         .filter(Boolean)
@@ -276,10 +300,11 @@ export const promptExpand = defineOp({
         http: context.http ?? httpPort,
       });
       result = written ?? {
-        prompt: composePrompt({ kind: entity.kind, name: entity.name, description, style, variant }),
+        prompt: composePrompt({ kind: entity.kind, name: entity.name, description, style: null, variant }),
         via: "local",
       };
       if (written?.inferredPath) inferredPath = written.inferredPath;
+      if (written?.systemInlined) systemInlined = true;
     }
 
     const committed = await commitDocuments({
@@ -295,8 +320,13 @@ export const promptExpand = defineOp({
         prompt: result.prompt,
         via: result.via,
         kind: entity.kind,
-        ...(style ? { style: `${style.name} — ${style.description}`.trim() } : { style: "none" }),
         ...(inferredPath ? { resultPath: inferredPath } : {}),
+        ...(systemInlined
+          ? {
+              systemInlined:
+                "the endpoint has no system slot, so the type instructions were sent with the description",
+            }
+          : {}),
       },
       expectedRevision: input.expectedRevision,
       mutate: ({ production: target }) => {
@@ -316,12 +346,23 @@ export const promptExpand = defineOp({
         entityId: entity.id,
         prompt: result.prompt,
         via: result.via,
+        // Reported, not applied: the style belongs to generation, and the caller is told which one would apply.
         styleId: styleEntity?.id ?? null,
+        systemInlined,
       },
       version: committed.project.revision,
       commit: committed.commit.id,
       via: result.via,
       warnings: [
+        ...(systemInlined
+          ? [
+              {
+                code: "system_inlined",
+                message:
+                  "this text endpoint has no system slot, so the type instructions were sent with the description instead",
+              },
+            ]
+          : []),
         ...(result.via === "local"
           ? [
               {

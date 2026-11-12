@@ -459,3 +459,13 @@ User-visible changes per slice. Internal refactors are not listed.
   answered. It used to say "nothing was sent", which was exactly wrong — Expand *is* the model call.
 - **A rendered frame records the same thing**: prompt, model, and the answers, so a frame that ignored its prompt can be
   explained rather than guessed at.
+
+## Expand reads the type's instructions, and leaves the look alone
+
+- **The type instructions now always reach the model.** They were sent as `{{param:system}}`, which a body template only
+  renders when the endpoint declares that parameter — so on an endpoint without a system slot they were silently
+  dropped and the model wrote a character prompt with no idea what a character sheet is. When the rendered request does
+  not carry them, they are folded into the prompt text and the result says `system_inlined`.
+- **Expand no longer applies the style.** The look belongs to the frame, not to the sentence: a prompt written per style
+  would have to be rewritten when the style changed. The style is still reported (`styleId`) so a screen can say what
+  generation will apply.
