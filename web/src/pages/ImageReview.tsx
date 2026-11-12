@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Look at one picture properly. A review, not an editor: the image at the size the window allows, what it is called,
@@ -91,5 +91,45 @@ export function ImageReview({
         </figcaption>
       </figure>
     </section>
+  );
+}
+
+/**
+ * A picture that opens itself. The review is per thumbnail rather than per page, so a table of frames needs no state
+ * threaded through its rows to get the same behaviour the library has.
+ */
+export function Thumb({
+  src,
+  alt,
+  caption,
+  width,
+  height,
+  radius = 4,
+}: {
+  src: string;
+  alt: string;
+  caption?: string;
+  width: number;
+  height: number;
+  radius?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="thumb"
+        aria-label={`Review ${alt}`}
+        title={alt}
+        onClick={() => setOpen(true)}
+      >
+        <img
+          src={src}
+          alt={alt}
+          style={{ width, height, objectFit: "cover", borderRadius: radius, background: "#000" }}
+        />
+      </button>
+      {open ? <ImageReview src={src} alt={alt} caption={caption} onClose={() => setOpen(false)} /> : null}
+    </>
   );
 }

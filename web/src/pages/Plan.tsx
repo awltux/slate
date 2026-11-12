@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, runOp } from "../api.js";
 import { FrameDialog } from "./FrameDialog.js";
+import { Thumb } from "./ImageReview.js";
 
 interface ShotSummary {
   id: string;
@@ -530,18 +531,13 @@ function SceneCard({
                               const item = scene.entities.find((entity) => entity.entityId === id);
                               if (!item) return null;
                               return item.coverAssetId ? (
-                                <img
+                                <Thumb
                                   key={id}
                                   src={`/p/${projectId}/media/${item.coverAssetId}`}
                                   alt={`${item.name} in shot ${shot.number}`}
-                                  title={item.name}
-                                  style={{
-                                    width: 44,
-                                    height: 44,
-                                    objectFit: "cover",
-                                    borderRadius: 4,
-                                    background: "#000",
-                                  }}
+                                  caption={`${item.name} - the sheet shot ${shot.number} is conditioned on`}
+                                  width={44}
+                                  height={44}
                                 />
                               ) : (
                                 <span
@@ -560,16 +556,12 @@ function SceneCard({
                       <td>
                         <div className="row" style={{ gap: "0.25rem" }}>
                           {shot.frames.first ? (
-                            <img
+                            <Thumb
                               src={`/p/${projectId}/media/${shot.frames.first}`}
                               alt={`Start frame for shot ${shot.number}`}
-                              style={{
-                                width: 70,
-                                height: 40,
-                                objectFit: "cover",
-                                borderRadius: 4,
-                                background: "#000",
-                              }}
+                              caption={`Shot ${shot.number} - start frame`}
+                              width={70}
+                              height={40}
                             />
                           ) : (
                             <span className="muted" style={{ fontSize: 12 }}>
@@ -577,16 +569,12 @@ function SceneCard({
                             </span>
                           )}
                           {shot.frames.last ? (
-                            <img
+                            <Thumb
                               src={`/p/${projectId}/media/${shot.frames.last}`}
                               alt={`End frame for shot ${shot.number}`}
-                              style={{
-                                width: 70,
-                                height: 40,
-                                objectFit: "cover",
-                                borderRadius: 4,
-                                background: "#000",
-                              }}
+                              caption={`Shot ${shot.number} - end frame`}
+                              width={70}
+                              height={40}
                             />
                           ) : (
                             <span className="muted" style={{ fontSize: 12 }}>

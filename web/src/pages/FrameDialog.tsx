@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { ApiError, runOp } from "../api.js";
+import { Thumb } from "./ImageReview.js";
 import { type Mention, applyMention, findMention, matchMentions } from "./mention.js";
 
 interface Entity {
@@ -348,10 +349,13 @@ export function FrameDialog({
         <div className="row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
           {current ? (
             <figure style={{ margin: 0 }}>
-              <img
+              <Thumb
                 src={`/p/${projectId}/media/${current}`}
                 alt={`Current ${role === "first" ? "start" : "end"} frame for shot ${shotNumber}`}
-                style={{ width: 220, borderRadius: 6 }}
+                caption={`Shot ${shotNumber} - current ${role === "first" ? "start" : "end"} frame`}
+                width={220}
+                height={124}
+                radius={6}
               />
               <figcaption className="muted" style={{ fontSize: 12 }}>
                 current {role === "first" ? "start" : "end"} frame
@@ -361,14 +365,13 @@ export function FrameDialog({
           {made && made.role === role
             ? made.assetIds.map((assetId, index) => (
                 <figure key={assetId} style={{ margin: 0 }}>
-                  <img
+                  <Thumb
                     src={`/p/${projectId}/media/${assetId}`}
                     alt={`New ${role === "first" ? "start" : "end"} frame for shot ${shotNumber}, option ${index + 1}`}
-                    style={{
-                      width: 180,
-                      borderRadius: 6,
-                      border: index === 0 ? "2px solid var(--accent, #c9a227)" : "1px solid var(--line)",
-                    }}
+                    caption={`Shot ${shotNumber} - option ${index + 1}${index === 0 ? " (used now)" : " (made, not kept)"}`}
+                    width={180}
+                    height={101}
+                    radius={6}
                   />
                   <figcaption className="muted" style={{ fontSize: 12 }}>
                     {index === 0 ? "used now" : "made, not kept"}

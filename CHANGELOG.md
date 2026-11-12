@@ -500,3 +500,9 @@ User-visible changes per slice. Internal refactors are not listed.
   character, so the two can never disagree about who wears it. `entity.create` and `entity.update` take `forBody`, and
   generation uses the named body as the mannequin instead of picking the character's first one.
 - **A body with a published sheet offers *Create costume***, the same shortcut a published character offers for its body.
+
+## A frame opens when you click it
+
+- **Every picture in Plan opens for review**: the scene item sheets beside each shot, and the start and end frames. The
+  frame dialog's current frame and its new options open the same way. Same popup as the Library: the image at the size of
+  the window, what it is, and Escape to close.
