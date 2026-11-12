@@ -175,6 +175,8 @@ export const MODEL_PRESETS: ModelPreset[] = [
 const MUSE_EDIT_BODY = {
   prompt: "{{prompt}}",
   image_urls: "{{images}}",
+  // Without this Muse chooses its own shape, and a 16:9 film gets frames that do not fit its own cut.
+  aspect_ratio: "{{param:aspect}}",
   num_images: "{{param:num_images}}",
   output_format: "png",
   // A returned url can be downloaded and kept; an inline data uri cannot, and would be thrown away.

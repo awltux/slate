@@ -30,6 +30,13 @@ export interface GeneratedFile {
   answer: string;
 }
 
+/** The film's shape as "16:9", reduced: a model that renders at its own size still renders the right shape. */
+function aspectOf(width: number, height: number): string {
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const divisor = gcd(width, height) || 1;
+  return `${Math.round(width / divisor)}:${Math.round(height / divisor)}`;
+}
+
 /** Does the endpoint's template ask for a reference? Only then is one staged, because staging can cost an upload. */
 function templateWants(endpoint: Endpoint, token: "image" | "image2" | "images"): boolean {
   return JSON.stringify(endpoint.body ?? "").includes(`{{${token}}}`);
@@ -124,6 +131,8 @@ export async function generateImages(input: {
             seed: input.seed + index,
             width: input.width,
             height: input.height,
+            // The film's shape as a ratio, for models that choose their own resolution from one.
+            aspect: aspectOf(input.width, input.height),
             index,
           },
         },
