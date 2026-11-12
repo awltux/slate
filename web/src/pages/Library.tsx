@@ -199,7 +199,7 @@ export function Library({ projectId }: { projectId: string }) {
         </div>
         <p className="muted" style={{ marginBottom: 0 }}>
           Describe the thing in your own words, let an agent turn that into a prompt, generate options, and
-          pick the images that become the sheet. A character sheet is six head rotations; outfits and states
+          pick the images that become the sheet — one composed reference image per entry. Outfits and states
           are variants with their own prompt and sheet.
         </p>
       </div>
@@ -525,9 +525,7 @@ function EntityCard({
         <span className="chip">{entity.kind}</span>
         <span className="chip">{entity.version === 0 ? "no sheet" : `v${entity.version}`}</span>
         {entity.heightM !== null ? <span className="chip">{entity.heightM.toFixed(2)} m</span> : null}
-        {entity.kind === "character" && entity.missingAngles.length > 0 && entity.version > 0 ? (
-          <span className="chip warn">missing {entity.missingAngles.join(", ")}</span>
-        ) : null}
+        {/* A sheet is one composed reference now: there are no rotations to be missing, so no warning chip. */}
         {link ? (
           <span className={`chip${link.newer ? " warn" : ""}`}>
             global v{link.globalVersion}

@@ -592,6 +592,16 @@ export const sheetPublish = defineOp({
       });
     }
     const active = kept.filter((image) => image.status === "active");
+    // What readiness means now: one active image, because the reference is one composed picture. Roles are labels.
+    if (active.length === 0) {
+      throw new SlateError(
+        "readiness_failed",
+        "every item is kept out of the reference image, so there would be none",
+        {
+          detail: { checks: [{ id: "active", status: "fail", detail: "no active item" }] },
+        },
+      );
+    }
 
     const rights = {
       licence: input.rights?.licence ?? draft.rights.licence,

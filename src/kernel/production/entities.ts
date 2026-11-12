@@ -174,17 +174,16 @@ export function sheetReference(sheet: SheetVersion | null): string | null {
   return sheet.compositeAssetId ?? activeItems(sheet)[0]?.assetId ?? null;
 }
 
-/** Whether a character's identity sheet covers all six head rotations. */
+/**
+ * Roles a sheet still owes. None: a sheet is now written as one composed reference image, so the six rotations are
+ * labels a view may carry rather than slots that must all be filled. Readiness is "there is at least one active image",
+ * which `sheet.publish` enforces. Kept as a function so the shape of the API does not churn for callers that display it.
+ */
 export function missingAngles(sheet: SheetVersion | null, kind: EntityKind = "character"): string[] {
-  const required = kind === "costume" ? [...COSTUME_POSES] : [...HEADSHOT_ANGLES];
-  if (!sheet) return required;
-  // A disabled view still belongs to the sheet; a deleted one is on its way out, so it covers nothing.
-  const covered = new Set(
-    sheet.images
-      .filter((image) => image.role !== null && image.status !== "deleted")
-      .map((image) => image.role as string),
-  );
-  return required.filter((angle) => !covered.has(angle));
+  if (sheet === null) return [];
+  void kind;
+  // Nothing is owed: a view's role labels what the person chose, it is not a slot the sheet has to fill.
+  return [];
 }
 
 /** A fresh draft of a sheet: the next version, holding the published items exactly as they stood. */

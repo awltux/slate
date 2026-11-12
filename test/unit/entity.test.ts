@@ -93,7 +93,7 @@ describe("generating and selecting", () => {
     expect(generated.remainingUsd).toBeCloseTo(4.92, 2);
   });
 
-  it("publishes an identity sheet from chosen candidates and reports missing angles", async () => {
+  it("publishes an identity sheet from chosen candidates", async () => {
     const entity = await defineCharacter();
     const generated = await generate(entity.entityId, 6);
     const items = generated.candidates.slice(0, 4).map((candidate, index) => ({
@@ -112,9 +112,60 @@ describe("generating and selecting", () => {
 
     expect(sheet.version).toBe(1);
     expect(sheet.images).toHaveLength(4);
-    expect(sheet.missingAngles).toEqual(["profile-right", "three-quarter-right"]);
+    // A sheet is one composed reference now: the roles label what was chosen, they are not slots to fill.
+    expect(sheet.missingAngles).toEqual([]);
     // Publishing composes the items into the one image a reference passes on.
     expect(sheet.compositeAssetId).toBeTruthy();
+  });
+
+  it("publishes a character sheet made of a single image", async () => {
+    const entity = await defineCharacter();
+    const generated = await generate(entity.entityId, 1);
+    const only = generated.candidates[0];
+    if (!only) throw new Error("expected a candidate");
+    // One image, no role at all: the type prompt now asks for the whole reference in a single picture.
+    await registry.execute(
+      "sheet.edit",
+      { entityId: entity.entityId, items: [{ assetId: only.assetId, role: null }] },
+      context,
+    );
+
+    const sheet = expectOk(await registry.execute("sheet.publish", { entityId: entity.entityId }, context))
+      .data as {
+      version: number;
+      images: Array<{ role: string | null }>;
+      missingAngles: string[];
+      compositeAssetId: string | null;
+    };
+
+    expect(sheet.version).toBe(1);
+    expect(sheet.images).toHaveLength(1);
+    expect(sheet.missingAngles).toEqual([]);
+    // The one image is the reference, so publishing still vouches for something.
+    expect(sheet.compositeAssetId).toBeTruthy();
+  });
+
+  it("refuses to publish a sheet whose every item is kept out", async () => {
+    const entity = await defineCharacter();
+    const generated = await generate(entity.entityId, 1);
+    const only = generated.candidates[0];
+    if (!only) throw new Error("expected a candidate");
+    await registry.execute(
+      "sheet.edit",
+      { entityId: entity.entityId, items: [{ assetId: only.assetId, role: null }] },
+      context,
+    );
+
+    const refused = await registry.execute(
+      "sheet.edit",
+      { entityId: entity.entityId, items: [{ assetId: only.assetId, role: null, status: "disabled" }] },
+      context,
+    );
+    expect(refused.ok).toBe(true);
+
+    const published = await registry.execute("sheet.publish", { entityId: entity.entityId }, context);
+    expect(published.ok).toBe(false);
+    if (!published.ok) expect(published.error.code).toBe("readiness_failed");
   });
 
   it("publishes a variant sheet for an outfit, with its own prompt", async () => {

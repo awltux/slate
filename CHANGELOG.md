@@ -469,3 +469,11 @@ User-visible changes per slice. Internal refactors are not listed.
 - **Expand no longer applies the style.** The look belongs to the frame, not to the sentence: a prompt written per style
   would have to be rewritten when the style changed. The style is still reported (`styleId`) so a screen can say what
   generation will apply.
+
+## A character sheet is one reference image, so no rotations are required
+
+- **The six-rotation requirement is gone.** A character sheet is written as a single composed reference picture now, so
+  the "missing front, three-quarter-left, …" warning was asking for slots the type prompt no longer produces. Roles
+  still label what was chosen; they are no longer owed.
+- **Publishing asks for one active image instead**, which is what a reference actually needs: a sheet whose every item
+  is kept out of the image refuses to publish with `readiness_failed` rather than composing nothing.
