@@ -604,3 +604,66 @@ describe("a sheet item can say it is a reference sheet", () => {
     expect(published.images[0]?.role).toBe("reference-sheet");
   });
 });
+
+describe("a costume and the body it is cut for", () => {
+  it("takes its character from the body it names", async () => {
+    const character = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "Keeper", description: "salt" },
+        context,
+      ),
+    ).data as { entityId: string };
+    const body = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "body", name: "Keeper body", forCharacter: character.entityId },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const costume = expectOk(
+      await registry.execute(
+        "entity.create",
+        // No forCharacter: the body names it, so the two cannot disagree about who wears the garment.
+        { kind: "costume", name: "Keeper coat", forBody: body.entityId },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const listed = expectOk(await registry.execute("entity.list", {}, context)).data as {
+      entities: Array<{ id: string; forCharacter: string | null; forBody: string | null }>;
+    };
+    const created = listed.entities.find((entry) => entry.id === costume.entityId);
+    expect(created?.forBody).toBe(body.entityId);
+    expect(created?.forCharacter).toBe(character.entityId);
+  });
+
+  it("refuses a body that is not a body, and a body on the wrong kind", async () => {
+    const character = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "Keeper", description: "salt" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    // A character is not a body: pointing a costume at one is a reasonable mistake to name rather than to accept.
+    const notABody = await registry.execute(
+      "entity.create",
+      { kind: "costume", name: "Coat", forBody: character.entityId },
+      context,
+    );
+    expect(notABody.ok).toBe(false);
+    if (!notABody.ok) expect(notABody.error.code).toBe("invalid_input");
+
+    // A location is not cut for a body either.
+    const wrongKind = await registry.execute(
+      "entity.create",
+      { kind: "location", name: "Room", forBody: character.entityId },
+      context,
+    );
+    expect(wrongKind.ok).toBe(false);
+    if (!wrongKind.ok) expect(wrongKind.error.code).toBe("invalid_input");
+  });
+});

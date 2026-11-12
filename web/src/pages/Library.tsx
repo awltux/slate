@@ -80,6 +80,10 @@ interface EntityView {
   prompt: string;
   aliases: string[];
   styleId: string | null;
+  /** Whose body or costume this is. */
+  forCharacter: string | null;
+  /** The body a costume is cut for, when one was chosen. */
+  forBody: string | null;
   libraryId: string | null;
   libraryVersion: number | null;
   version: number;
@@ -384,6 +388,9 @@ function EntityCard({
   const [prompt, setPrompt] = useState(entity.prompt);
   const [description, setDescription] = useState(entity.description);
   const [styleId, setStyleId] = useState(entity.styleId ?? "");
+  /** A body's character, and a costume's body: the two links a garment or a mannequin actually has. */
+  const [forCharacter, setForCharacter] = useState(entity.forCharacter ?? "");
+  const [forBody, setForBody] = useState(entity.forBody ?? "");
   // Remembered across reloads: how many candidates to make is a habit, not a property of the film.
   const [count, setCount] = useState(() => readPreference("library.candidateCount", "4"));
   const [busy, setBusy] = useState(false);
@@ -399,9 +406,14 @@ function EntityCard({
     setPrompt(entity.prompt);
     setDescription(entity.description);
     setStyleId(entity.styleId ?? "");
-  }, [entity.prompt, entity.description, entity.styleId]);
+    setForCharacter(entity.forCharacter ?? "");
+    setForBody(entity.forBody ?? "");
+  }, [entity.prompt, entity.description, entity.styleId, entity.forCharacter, entity.forBody]);
 
   const styles = entities.filter((item) => item.kind === "style");
+  const characters = entities.filter((item) => item.kind === "character");
+  /** Only bodies that say whose they are: an unattributed mannequin cannot be a costume's body. */
+  const bodies = entities.filter((item) => item.kind === "body" && item.forCharacter);
 
   async function run(action: () => Promise<unknown>): Promise<void> {
     setBusy(true);
@@ -444,6 +456,9 @@ function EntityCard({
         description,
         prompt,
         styleId: styleId || null,
+        // Only sent when the item is the kind that has the relationship, so a location never sends a stray null.
+        ...(entity.kind === "body" ? { forCharacter: forCharacter || null } : {}),
+        ...(entity.kind === "costume" ? { forBody: forBody || null } : {}),
       }),
     );
   }
@@ -571,6 +586,16 @@ function EntityCard({
           <span className="chip">not published</span>
         )}
         <div className="spacer" />
+        {entity.kind === "body" && entity.version > 0 ? (
+          <button
+            type="button"
+            onClick={() => void createCompanion("costume")}
+            disabled={busy}
+            title="Create a costume cut for this body, conditioned on its sheet"
+          >
+            Create costume
+          </button>
+        ) : null}
         {entity.kind === "character" && entity.version > 0 ? (
           <>
             <button
@@ -678,6 +703,34 @@ function EntityCard({
                 ))}
             </select>
           )}
+          {entity.kind === "body" ? (
+            <select
+              value={forCharacter}
+              onChange={(event) => setForCharacter(event.target.value)}
+              aria-label="Character this body belongs to"
+            >
+              <option value="">whose body?</option>
+              {characters.map((character) => (
+                <option key={character.id} value={character.id}>
+                  {character.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {entity.kind === "costume" ? (
+            <select
+              value={forBody}
+              onChange={(event) => setForBody(event.target.value)}
+              aria-label="Body this costume is cut for"
+            >
+              <option value="">cut for the character's build</option>
+              {bodies.map((body) => (
+                <option key={body.id} value={body.id}>
+                  {body.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <button type="button" onClick={() => void saveDetails()} disabled={busy}>
             Save
           </button>

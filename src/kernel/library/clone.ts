@@ -56,6 +56,7 @@ export async function cloneLibraryItem(input: {
     styleId: null,
     // A cloned costume is not yet cut for anyone: the project picks the body it is worn on.
     forCharacter: null,
+    forBody: null,
     libraryId: input.item.id,
     libraryVersion: input.item.version,
     identity:

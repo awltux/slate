@@ -142,6 +142,11 @@ export const EntitySchema = z
      * is made from that character's build, so the two cannot drift into a garment that fits nobody.
      */
     forCharacter: z.string().startsWith("ent_").nullable().default(null),
+    /**
+     * Set on a costume when it is cut for one body: the mannequin is then a choice rather than a lookup, so a
+     * character with two builds gets the garment on the right one.
+     */
+    forBody: z.string().startsWith("ent_").nullable().default(null),
     /** Set when this entity is a clone of a global library item; null means it was authored here. */
     libraryId: z.string().startsWith("lib_").nullable().default(null),
     /** The global version this clone was last pushed from or to; null when never linked. */

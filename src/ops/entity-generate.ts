@@ -101,11 +101,15 @@ export const entityGenerate = defineOp({
 
     // A costume is shown on the body made for its character, when one exists: the garment and the mannequin are one
     // reference, not two guesses.
-    const bodyFor = character
-      ? (Object.values(before.entities).find(
-          (entry) => entry.kind === "body" && entry.forCharacter === character.id,
-        ) ?? null)
-      : null;
+    // A costume that names its body gets that one; otherwise the character's first body stands in, as before.
+    const namedBody = entity.forBody ? (before.entities[entity.forBody] ?? null) : null;
+    const bodyFor = namedBody
+      ? namedBody
+      : character
+        ? (Object.values(before.entities).find(
+            (entry) => entry.kind === "body" && entry.forCharacter === character.id,
+          ) ?? null)
+        : null;
 
     const written = (variant?.prompt || entity.prompt || entity.description).trim();
 

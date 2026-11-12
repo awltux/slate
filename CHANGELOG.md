@@ -492,3 +492,11 @@ User-visible changes per slice. Internal refactors are not listed.
 - **"reference-sheet" is a role** in the *Type for item* dropdown, beside the head rotations and the detail roles. It says
   the picture holds several views of the same subject at once, rather than one view per image — which is what a
   character sheet is now written as.
+
+## A body names its character, a costume names its body
+
+- **A body offers a Character picker**: whose mannequin it is, changeable after creation instead of only at birth.
+- **A costume offers a Body picker**: the garment is cut for one body, and that body's character becomes the costume's
+  character, so the two can never disagree about who wears it. `entity.create` and `entity.update` take `forBody`, and
+  generation uses the named body as the mannequin instead of picking the character's first one.
+- **A body with a published sheet offers *Create costume***, the same shortcut a published character offers for its body.

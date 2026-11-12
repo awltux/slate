@@ -34,6 +34,8 @@ const EntityViewSchema = z
     styleId: z.string().nullable(),
     /** Whose body or costume this is, so a list can name the character instead of showing a bare mannequin. */
     forCharacter: z.string().nullable(),
+    /** The body a costume is cut for, when one was chosen. */
+    forBody: z.string().nullable(),
     libraryId: z.string().nullable(),
     libraryVersion: z.number().int().nullable(),
     version: z.number().int(),
@@ -95,6 +97,7 @@ function entityView(entity: Entity) {
     aliases: entity.aliases,
     styleId: entity.styleId,
     forCharacter: entity.forCharacter ?? null,
+    forBody: entity.forBody ?? null,
     libraryId: entity.libraryId,
     libraryVersion: entity.libraryVersion,
     version: entity.identity?.version ?? 0,
@@ -144,6 +147,8 @@ export const entityCreate = defineOp({
       forCharacter: z.string().startsWith("ent_").nullable().default(null),
       /** The look this item inherits; null means the film's default applies at generation. */
       styleId: z.string().startsWith("ent_").nullable().default(null),
+      /** The body a costume is cut for; its character is then the costume's character too. */
+      forBody: z.string().startsWith("ent_").nullable().default(null),
       expectedRevision: z.number().int().optional(),
     })
     .strict(),
@@ -152,20 +157,37 @@ export const entityCreate = defineOp({
   run: async (input, context) => {
     const { production: existing } = await loadDocuments(context);
 
+    // A costume cut for a body inherits that body's character, so the two can never disagree about who wears it.
+    // Resolved before the requirement below: choosing the body is how a costume answers "who is this for".
+    let forCharacter = input.forCharacter;
+    if (input.kind === "costume" && input.forBody) {
+      const body = existing.entities[input.forBody];
+      if (!body) throw new SlateError("not_found", `no entity ${input.forBody}`);
+      if (body.kind !== "body") {
+        throw new SlateError("invalid_input", `${body.name} is a ${body.kind}, not a body`);
+      }
+      if (!body.forCharacter) {
+        throw new SlateError("invalid_input", `${body.name} does not say whose body it is`);
+      }
+      forCharacter = body.forCharacter;
+    } else if (input.forBody) {
+      throw new SlateError("invalid_input", "only a costume is cut for a body");
+    }
+
     // A costume is clothes on a body: without the character it is cut for, the reference could fit anyone - which is to
     // say no one. The character must exist and must be a character, not a prop.
     if (input.kind === "costume" || input.kind === "body") {
-      if (!input.forCharacter) {
+      if (!forCharacter) {
         throw new SlateError(
           "invalid_input",
           input.kind === "costume"
-            ? "choose the character this costume is worn by"
+            ? "choose the character this costume is worn by, or the body it is cut for"
             : "choose the character this body belongs to",
           { detail: { field: "forCharacter" } },
         );
       }
-      const character = existing.entities[input.forCharacter];
-      if (!character) throw new SlateError("not_found", `no entity ${input.forCharacter}`);
+      const character = existing.entities[forCharacter];
+      if (!character) throw new SlateError("not_found", `no entity ${forCharacter}`);
       if (character.kind !== "character") {
         throw new SlateError("invalid_input", `${character.name} is a ${character.kind}, not a character`);
       }
@@ -199,7 +221,8 @@ export const entityCreate = defineOp({
           aliases: input.aliases,
           styleId: input.styleId,
           // Only a costume is worn by anyone; the others are their own thing.
-          forCharacter: input.kind === "costume" || input.kind === "body" ? input.forCharacter : null,
+          forCharacter: input.kind === "costume" || input.kind === "body" ? forCharacter : null,
+          forBody: input.kind === "costume" ? input.forBody : null,
           libraryId: null,
           libraryVersion: null,
           identity: null,
@@ -236,6 +259,8 @@ export const entityUpdate = defineOp({
       styleId: z.string().nullable().optional(),
       /** Re-cut a costume for a different body. */
       forCharacter: z.string().nullable().optional(),
+      /** Point a costume at the body it is cut for; that body's character becomes the costume's character. */
+      forBody: z.string().nullable().optional(),
       expectedRevision: z.number().int().optional(),
     })
     .strict(),
@@ -248,8 +273,20 @@ export const entityUpdate = defineOp({
     if (input.styleId && !before.entities[input.styleId]) {
       throw new SlateError("not_found", `no style ${input.styleId}`);
     }
-    if (input.forCharacter) {
-      const character = before.entities[input.forCharacter];
+    let nextCharacter = input.forCharacter;
+    if (input.forBody) {
+      const body = before.entities[input.forBody];
+      if (!body) throw new SlateError("not_found", `no entity ${input.forBody}`);
+      if (entity.kind !== "costume") {
+        throw new SlateError("invalid_input", "only a costume is cut for a body");
+      }
+      if (body.kind !== "body") {
+        throw new SlateError("invalid_input", `${body.name} is a ${body.kind}, not a body`);
+      }
+      if (body.forCharacter) nextCharacter = body.forCharacter;
+    }
+    if (nextCharacter) {
+      const character = before.entities[nextCharacter];
       if (!character) throw new SlateError("not_found", `no entity ${input.forCharacter}`);
       if (entity.kind !== "costume" && entity.kind !== "body") {
         throw new SlateError("invalid_input", "only a costume or a body belongs to a character");
