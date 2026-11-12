@@ -6,6 +6,10 @@ interface Entity {
   id: string;
   name: string;
   kind: string;
+  /** A published sheet of its own, and for a costume the character's too: without both there is nothing to condition on. */
+  ready: boolean;
+  /** Why it cannot be used, in words worth showing. */
+  missing: string[];
 }
 
 interface Props {
@@ -41,7 +45,10 @@ export function FrameDialog({
 }: Props) {
   const [role, setRole] = useState<"first" | "last">("first");
   const [prompt, setPrompt] = useState(basePrompt);
-  const [picked, setPicked] = useState<string[]>(sceneEntities.map((entity) => entity.id));
+  // Only the items that can actually condition a frame start ticked; the rest are shown, disabled, with the reason.
+  const [picked, setPicked] = useState<string[]>(
+    sceneEntities.filter((entity) => entity.ready).map((entity) => entity.id),
+  );
   // An end frame is made from where the shot began: on by default, and only meaningful once a start frame exists.
   const [useStartFrame, setUseStartFrame] = useState(true);
   const [count, setCount] = useState(3);
@@ -315,6 +322,10 @@ export function FrameDialog({
                 <input
                   type="checkbox"
                   checked={picked.includes(entity.id)}
+                  // A sheet that is not published cannot be shown to a model, so ticking it would promise a reference
+                  // that never travels. The reason is in the label rather than a silent no-op.
+                  disabled={!entity.ready}
+                  title={entity.ready ? undefined : entity.missing.join("; ")}
                   onChange={(event) =>
                     setPicked((current) =>
                       event.target.checked

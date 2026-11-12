@@ -22,7 +22,8 @@
       "args": ["--restart"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "restart": true
     },
     {
       "name": "slate: run one op",

@@ -61,6 +61,11 @@ export const FrameSourceSchema = z
     startFrameAssetId: z.string().nullable().default(null),
     /** Every image the generator was given. */
     referenceAssetIds: z.array(z.string()).default([]),
+    /**
+     * Entities the frame used without being told to: the character behind an attached costume, the body it is cut for.
+     * Kept apart from entityIds so a frame can say what was chosen and what was inferred from it.
+     */
+    impliedEntityIds: z.array(z.string()).default([]),
     /** Every image the call made, so a different one can be kept later. */
     candidateAssetIds: z.array(z.string()).default([]),
     /** What the person asked for, when they wrote it themselves. */

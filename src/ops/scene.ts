@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { newId } from "../domain/ids.js";
 import { SlateError } from "../domain/result.js";
-import { sheetReference } from "../kernel/production/entities.js";
+import { type Entity, sheetReference } from "../kernel/production/entities.js";
 import { isShotStale } from "../kernel/production/graph.js";
 import { readinessSummary, shotReadiness } from "../kernel/production/readiness.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
@@ -39,6 +39,22 @@ export function shotSummary(shot: Shot, production: ProductionDocument) {
   };
 }
 
+/**
+ * Whether an item can condition a frame. A costume is ready only when its own sheet and the sheet of the character
+ * wearing it are both published: the garment without the person is half a reference.
+ */
+export function referenceReadiness(entity: Entity, production: ProductionDocument) {
+  const missing: string[] = [];
+  if (!sheetReference(entity.identity)) missing.push(`${entity.name} has no published sheet`);
+  if (entity.kind === "costume") {
+    const characterId = entity.forCharacter ?? null;
+    const character = characterId ? (production.entities[characterId] ?? null) : null;
+    if (!character) missing.push(`${entity.name} does not say whose it is`);
+    else if (!sheetReference(character.identity)) missing.push(`${character.name} has no published sheet`);
+  }
+  return { ready: missing.length === 0, missing };
+}
+
 export function sceneSummary(sceneId: string, production: ProductionDocument) {
   const scene = production.scenes[sceneId];
   if (!scene) throw new SlateError("not_found", `no scene ${sceneId}`);
@@ -58,6 +74,9 @@ export function sceneSummary(sceneId: string, production: ProductionDocument) {
       name: entity.name,
       kind: entity.kind,
       coverAssetId: sheetReference(entity.identity),
+      // A frame can only be conditioned on published sheets, and a costume also needs the character inside it: a
+      // garment with nobody to wear it is not a reference, it is half of one.
+      ...referenceReadiness(entity, production),
     })),
     location: location
       ? {

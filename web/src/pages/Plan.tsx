@@ -23,6 +23,9 @@ interface SceneEntity {
   name: string;
   kind: string;
   coverAssetId: string | null;
+  /** Whether this item can condition a frame, and why not when it cannot. */
+  ready: boolean;
+  missing: string[];
 }
 
 interface SceneLocation {
@@ -173,6 +176,8 @@ export function Plan({ projectId }: { projectId: string }) {
                   id: entity.entityId,
                   name: entity.name,
                   kind: entity.kind,
+                  ready: entity.ready,
+                  missing: entity.missing,
                 }))}
                 frames={shot.frames}
                 revision={revision}

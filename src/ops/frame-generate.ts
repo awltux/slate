@@ -10,6 +10,7 @@ import { readAiConfig, readKeys, resolveBinding } from "../kernel/ai/store.js";
 import { renderStill } from "../kernel/catalog/fake-gateway.js";
 import { appendLedger, readLedger, remainingUsd } from "../kernel/ledger/ledger.js";
 import { assetFile, ingestAsset } from "../kernel/production/assets.js";
+import type { Entity } from "../kernel/production/entities.js";
 import { sheetReference } from "../kernel/production/entities.js";
 import { frameSize } from "../kernel/production/format.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
@@ -108,19 +109,55 @@ export const frameGenerate = defineOp({
     const startFrameAssetId =
       input.role === "last" && input.useStartFrame ? (shot.frames.first ?? null) : null;
 
-    // Everything the generator is given to look at, in one list: the sheet of each asset, the blockout, the start frame.
+    // A costume names who wears it, and a body names whose it is: a frame that was given the garment should not also
+    // need to be told the person inside it. The chain is costume → body → character, each step only when it is known.
+    const implied = new Map<string, Entity>();
+    for (const entity of attached) {
+      const body =
+        entity.kind === "costume" && entity.forBody ? (production.entities[entity.forBody] ?? null) : null;
+      if (body) implied.set(body.id, body);
+      if (entity.kind === "costume" || entity.kind === "body") {
+        const characterId = entity.forCharacter ?? body?.forCharacter ?? null;
+        const character = characterId ? (production.entities[characterId] ?? null) : null;
+        if (character) implied.set(character.id, character);
+      }
+    }
+    // What was chosen wins: an entity attached on purpose is not also an inference.
+    for (const entity of attached) implied.delete(entity.id);
+    const cast = [...attached, ...implied.values()];
+    /** Items that were attached but have no published sheet: named in the prompt, absent from the references. */
+    const unreferenced = cast
+      .filter((entity) => !sheetReference(entity.identity))
+      .map((entity) => entity.name);
+
+    // Everything the generator is given to look at: the sheet of each cast member, the blockout, the start frame.
     const referenceAssetIds = [
-      ...attached.map((entity) => sheetReference(entity.identity)).filter((id): id is string => Boolean(id)),
+      ...cast.map((entity) => sheetReference(entity.identity)).filter((id): id is string => Boolean(id)),
       ...(blockoutAssetId ? [blockoutAssetId] : []),
       ...(startFrameAssetId ? [startFrameAssetId] : []),
     ];
 
-    const subject = attached.map((entity) => `${entity.name}: ${entity.description}`).join("; ");
-    // A prompt from the dialog is the description; the shot's own framing still shapes it, so style rules keep applying.
-    const description =
-      input.prompt.trim() === ""
-        ? `${shot.size} ${shot.angle}, ${shot.description || "the scene"}. ${subject}`.trim()
-        : `${input.prompt.trim()}. ${subject}`.trim();
+    // The description names the place, the garment and the person wearing it, so the model is not left to guess the
+    // relationship between three sheets that arrive side by side.
+    const subject = [...attached, ...implied.values()]
+      .map((entity) => {
+        if (entity.kind === "costume") {
+          const wearerId =
+            entity.forCharacter ??
+            (entity.forBody ? production.entities[entity.forBody]?.forCharacter : null);
+          const wearer = wearerId ? (production.entities[wearerId] ?? null) : null;
+          return wearer
+            ? `${entity.name} worn by ${wearer.name}: ${entity.description}`
+            : `${entity.name}: ${entity.description}`;
+        }
+        return `${entity.name}: ${entity.description}`;
+      })
+      .join("; ");
+    // The shot's framing is not optional: it is what makes this frame belong to this shot. The director's words, from the
+    // dialog or from the shot itself, say what is happening inside that framing. Both travel, then the cast.
+    const framing = `${shot.size} ${shot.angle}`;
+    const director = input.prompt.trim() || shot.description.trim() || "the scene";
+    const description = `${framing}, ${director}. ${subject}`.trim();
     // The film's look applies to a frame as much as to a sheet: a shot that ignored it would not match its own scene.
     const styleEntity = project.settings.defaultStyleId
       ? (production.entities[project.settings.defaultStyleId] ?? null)
@@ -245,7 +282,8 @@ export const frameGenerate = defineOp({
     if (!asset) throw new SlateError("internal", "the frame was not ingested");
     const source = {
       entityIds: attached.map((entity) => entity.id),
-      entityPins: Object.fromEntries(attached.map((entity) => [entity.id, entity.identity?.version ?? 0])),
+      entityPins: Object.fromEntries(cast.map((entity) => [entity.id, entity.identity?.version ?? 0])),
+      impliedEntityIds: [...implied.keys()],
       blockoutAssetId,
       /** Every image this call made, so a different one can be kept later. */
       candidateAssetIds: made.map((entry) => entry.id),
@@ -336,7 +374,14 @@ export const frameGenerate = defineOp({
                     "This scene has no library items attached, so the frame was generated from the description alone.",
                 },
               ]
-            : [],
+            : unreferenced.length > 0
+              ? [
+                  {
+                    code: "reference_missing",
+                    message: `${unreferenced.join(", ")} have no published sheet, so they were named but not shown.`,
+                  },
+                ]
+              : [],
       next: ["frame.generate", "take.generate"],
     };
   },

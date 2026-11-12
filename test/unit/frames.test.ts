@@ -3,9 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
+import type { HttpPort } from "../../src/kernel/ai/reference.js";
 import { readProjectDocument } from "../../src/kernel/workspace/project-doc.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
 import { testContext } from "../helpers/context.js";
+
+/** One transparent pixel: enough for the local renderer and the ingest path to accept a PNG. */
+const PNG_BYTES = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
 import { fakeFfmpeg } from "../helpers/fake-ffmpeg.js";
 
 function expectOk<T>(result: Envelope<T> | FailureEnvelope): Envelope<T> {
@@ -388,5 +395,177 @@ describe("keeping a frame from the images that were made", () => {
     );
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.error.code).toBe("invalid_input");
+  });
+});
+
+describe("a frame reads who is wearing what", () => {
+  it("infers the character from an attached costume, and takes the sheets of location and costume", async () => {
+    const room = await sheeted("location", "Lantern room");
+    const keeper = await sheeted("character", "The keeper");
+    const costume = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "costume", name: "Oilskin coat", description: "heavy waxed canvas", forCharacter: keeper },
+        context,
+      ),
+    ).data as { entityId: string };
+    // A costume only reaches the frame through its own sheet.
+    const costumeCandidate = expectOk(
+      await registry.execute(
+        "entity.generate",
+        { allowLocal: true, entityId: costume.entityId, count: 1 },
+        context,
+      ),
+    ).data as { candidates: Array<{ assetId: string }> };
+    await registry.execute(
+      "sheet.edit",
+      {
+        entityId: costume.entityId,
+        items: [{ assetId: costumeCandidate.candidates[0]?.assetId, role: null }],
+      },
+      context,
+    );
+    await registry.execute("sheet.publish", { entityId: costume.entityId }, context);
+
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LAMP ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    expectOk(
+      await registry.execute(
+        "scene.set-entities",
+        { sceneId: scene.sceneId, entityIds: [room, costume.entityId] },
+        context,
+      ),
+    );
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "MS", angle: "EYE", movement: "STATIC", durationSec: 3 },
+        context,
+      ),
+    ).data as { shotId: string };
+
+    // What the model is asked, and what it is shown.
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "Images", baseUrl: "https://images.example", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "Image model",
+          capability: "text-to-image",
+          method: "POST",
+          path: "/v1/images",
+          body: { prompt: "{{prompt}}" },
+          resultPath: "images[0].url",
+          unitPriceUsd: 0.01,
+          timeoutMs: 30_000,
+        },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Images", bindings: { image: [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    const bodies: string[] = [];
+    const port: HttpPort = async (request) => {
+      if (request.as === "bytes") return { status: 200, body: "", bytes: Buffer.from(PNG_BYTES) };
+      bodies.push(String(request.body ?? ""));
+      return {
+        status: 200,
+        body: JSON.stringify({ images: [{ url: "https://fal.example/frame.png" }], seed: 7 }),
+      };
+    };
+
+    const frame = expectOk(
+      await registry.execute(
+        "frame.generate",
+        { shotId: shot.shotId, role: "first", prompt: "the keeper mops the floor, rain on the windows" },
+        testContext(root, { home, http: port, run: fakeFfmpeg().run, tool: fakeFfmpeg().tool }),
+      ),
+    ).data as { referenceAssetIds: string[] };
+
+    const prompt = bodies.join(" ");
+    // The director's words and the framing both travel; the garment is named with the person inside it.
+    expect(prompt).toContain("mops the floor");
+    expect(prompt).toContain("MS EYE");
+    expect(prompt).toContain("Oilskin coat worn by The keeper");
+    // Three sheets were given: the place, the garment, and the character behind the costume.
+    expect(frame.referenceAssetIds.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("what a frame can be conditioned on", () => {
+  it("says which items are usable, and why the others are not", async () => {
+    const room = await sheeted("location", "Lantern room");
+    const keeper = await sheeted("character", "The keeper");
+    // A character with no published sheet: nothing to show a model.
+    const bare = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "Bare", description: "no sheet yet" },
+        context,
+      ),
+    ).data as { entityId: string };
+    const bareId = bare.entityId;
+    const costume = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "costume", name: "Oilskin coat", description: "heavy canvas", forCharacter: bareId },
+        context,
+      ),
+    ).data as { entityId: string };
+    const costumeId = costume.entityId;
+
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LAMP ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    expectOk(
+      await registry.execute(
+        "scene.set-entities",
+        { sceneId: scene.sceneId, entityIds: [room, keeper, bareId, costumeId] },
+        context,
+      ),
+    );
+
+    // scene.list is the view the Plan page reads, so the readiness a person sees comes from here.
+    const listed = expectOk(await registry.execute("scene.list", {}, context)).data as {
+      scenes: Array<{
+        id: string;
+        entities: Array<{ entityId: string; name: string; ready: boolean; missing: string[] }>;
+      }>;
+    };
+    const sceneView = listed.scenes.find((entry) => entry.id === scene.sceneId);
+    const find = (id: string) => sceneView?.entities.find((entity) => entity.entityId === id);
+
+    // A published sheet is what a frame can be shown.
+    expect(find(room)?.ready).toBe(true);
+    expect(find(keeper)?.ready).toBe(true);
+    // A character with no sheet is not usable, and says why.
+    expect(find(bareId)?.ready).toBe(false);
+    expect(find(bareId)?.missing.join(" ")).toContain("no published sheet");
+    // A costume is only half a reference without its character: the garment needs somebody inside it.
+    expect(find(costumeId)?.ready).toBe(false);
+    expect(find(costumeId)?.missing.join(" ")).toContain("Bare has no published sheet");
   });
 });
