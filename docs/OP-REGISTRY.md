@@ -948,6 +948,18 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       ],
       "default": null
     },
+    "styleId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^ent\\_"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "expectedRevision": {
       "type": "integer"
     }

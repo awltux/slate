@@ -32,6 +32,8 @@ const EntityViewSchema = z
     prompt: z.string(),
     aliases: z.array(z.string()),
     styleId: z.string().nullable(),
+    /** Whose body or costume this is, so a list can name the character instead of showing a bare mannequin. */
+    forCharacter: z.string().nullable(),
     libraryId: z.string().nullable(),
     libraryVersion: z.number().int().nullable(),
     version: z.number().int(),
@@ -92,6 +94,7 @@ function entityView(entity: Entity) {
     prompt: entity.prompt,
     aliases: entity.aliases,
     styleId: entity.styleId,
+    forCharacter: entity.forCharacter ?? null,
     libraryId: entity.libraryId,
     libraryVersion: entity.libraryVersion,
     version: entity.identity?.version ?? 0,
@@ -139,6 +142,8 @@ export const entityCreate = defineOp({
       aliases: z.array(z.string()).default([]),
       /** The character this item is about: a costume is worn by them, a body is a mannequin of them. */
       forCharacter: z.string().startsWith("ent_").nullable().default(null),
+      /** The look this item inherits; null means the film's default applies at generation. */
+      styleId: z.string().startsWith("ent_").nullable().default(null),
       expectedRevision: z.number().int().optional(),
     })
     .strict(),
@@ -166,6 +171,15 @@ export const entityCreate = defineOp({
       }
     }
 
+    // A style that does not exist would fail at generation time with a confusing message; it is checked here instead.
+    if (input.styleId) {
+      const style = existing.entities[input.styleId];
+      if (!style) throw new SlateError("not_found", `no entity ${input.styleId}`);
+      if (style.kind !== "style") {
+        throw new SlateError("invalid_input", `${style.name} is a ${style.kind}, not a style`);
+      }
+    }
+
     const entityId = newId("ent");
 
     const result = await commitDocuments({
@@ -183,7 +197,7 @@ export const entityCreate = defineOp({
           description: input.description,
           prompt: "",
           aliases: input.aliases,
-          styleId: null,
+          styleId: input.styleId,
           // Only a costume is worn by anyone; the others are their own thing.
           forCharacter: input.kind === "costume" || input.kind === "body" ? input.forCharacter : null,
           libraryId: null,

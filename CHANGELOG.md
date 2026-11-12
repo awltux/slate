@@ -477,3 +477,12 @@ User-visible changes per slice. Internal refactors are not listed.
   still label what was chosen; they are no longer owed.
 - **Publishing asks for one active image instead**, which is what a reference actually needs: a sheet whose every item
   is kept out of the image refuses to publish with `readiness_failed` rather than composing nothing.
+
+## A published character offers its body and its costume
+
+- **Two shortcuts appear on a character with a published sheet**: *Create body* and *Create costume*. Each is the
+  ordinary create, pre-filled with the character's name, description and look, and pointed at that character's sheet —
+  no new behaviour, fewer keystrokes.
+- **`entity.create` now takes a `styleId`**, so an item can be born with the look it inherits instead of needing a
+  follow-up update; a style that is not a style is refused at creation rather than at generation.
+- **`entity.list` reports `forCharacter`**, so a body or costume can name the character it belongs to.

@@ -506,6 +506,34 @@ function EntityCard({
     await run(() => runOp(projectId, "sheet.publish", { entityId: entity.id }));
   }
 
+  /**
+   * The two shortcuts a character with a published sheet earns: a body to wear things on, and a costume to put on it.
+   * Each is the same create the New entry form makes, pre-filled with this character's name, look and sheet - no new
+   * behaviour, just fewer keystrokes.
+   */
+  async function createCompanion(kind: "body" | "costume") {
+    await run(async () => {
+      try {
+        const created = await runOp<{ entityId: string; name: string }>(projectId, "entity.create", {
+          kind,
+          name: `${entity.name} ${kind}`,
+          // The character's own words, so the mannequin starts from who they are rather than from nothing.
+          description: entity.description,
+          forCharacter: entity.id,
+          // The look is inherited here; a style chosen at creation travels with the item to generation.
+          styleId: entity.styleId,
+        });
+        setNotice(
+          `Created "${created.data.name}" - open it below to generate its sheet${
+            entity.styleId ? " with this character's style" : ""
+          }`,
+        );
+      } catch (caught) {
+        setError(message(caught));
+      }
+    });
+  }
+
   async function remove() {
     await run(() => runOp(projectId, "entity.delete", { entityId: entity.id }));
   }
@@ -535,6 +563,26 @@ function EntityCard({
           <span className="chip">not published</span>
         )}
         <div className="spacer" />
+        {entity.kind === "character" && entity.version > 0 ? (
+          <>
+            <button
+              type="button"
+              onClick={() => void createCompanion("body")}
+              disabled={busy}
+              title="Create a bare body for this character: its name and look, conditioned on this sheet"
+            >
+              Create body
+            </button>
+            <button
+              type="button"
+              onClick={() => void createCompanion("costume")}
+              disabled={busy}
+              title="Create a bare costume for this character: its look, cut for this body"
+            >
+              Create costume
+            </button>
+          </>
+        ) : null}
         <button
           type="button"
           onClick={() => void push()}

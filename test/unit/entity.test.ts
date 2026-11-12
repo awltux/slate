@@ -499,3 +499,70 @@ describe("costumes", () => {
     expect(generated.prompt.toLowerCase()).toContain("no head");
   });
 });
+
+describe("the shortcuts a published character earns", () => {
+  it("creates a body that inherits the character's name, description and style", async () => {
+    const style = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "style", name: "Claymation", description: "plasticine" },
+        context,
+      ),
+    ).data as { entityId: string };
+    const character = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard", styleId: style.entityId },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    // What the Create body button does: one create, pre-filled from the character.
+    const body = expectOk(
+      await registry.execute(
+        "entity.create",
+        {
+          kind: "body",
+          name: "The keeper body",
+          description: "salt in his beard",
+          forCharacter: character.entityId,
+          styleId: style.entityId,
+        },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const listed = expectOk(await registry.execute("entity.list", {}, context)).data as {
+      entities: Array<{ id: string; kind: string; forCharacter: string | null; styleId: string | null }>;
+    };
+    const created = listed.entities.find((entry) => entry.id === body.entityId);
+    expect(created?.kind).toBe("body");
+    // A body belongs to one character, and carries the look the shortcut inherited.
+    expect(created?.forCharacter).toBe(character.entityId);
+    expect(created?.styleId).toBe(style.entityId);
+  });
+
+  it("refuses a style that is not a style", async () => {
+    const character = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "Keeper", description: "salt" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    const refused = await registry.execute(
+      "entity.create",
+      {
+        kind: "body",
+        name: "Keeper body",
+        forCharacter: character.entityId,
+        // A character is not a look: this would have failed at generation with a confusing message.
+        styleId: character.entityId,
+      },
+      context,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.code).toBe("invalid_input");
+  });
+});
