@@ -1,0 +1,51 @@
+{
+  // Run and restart Slate without leaving the editor: Terminal → Run Task, or Ctrl+Shift+B for the default.
+  // Set SLATE_OWNER_PASSWORD in your shell, or the first run prints a password and you keep it.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "slate: serve",
+      "detail": "Start the server on 7788 (refuses if the port is taken)",
+      "type": "shell",
+      "command": "node scripts/dev-serve.mjs",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "group": "build"
+    },
+    {
+      "label": "slate: restart",
+      "detail": "Stop whatever holds 7788, then start the server on the current sources",
+      "type": "shell",
+      "command": "node scripts/dev-serve.mjs --restart",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "slate: watch",
+      "detail": "Restart on every file change, for a day of editing",
+      "type": "shell",
+      "command": "node scripts/dev-serve.mjs --watch",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "slate: verify",
+      "detail": "Typecheck, lint, registry check and the test suite",
+      "type": "shell",
+      "command": "pnpm verify",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    },
+    {
+      "label": "slate: build web",
+      "detail": "Rebuild web/dist — needed after any page change, then restart",
+      "type": "shell",
+      "command": "pnpm build:web",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+    }
+  ]
+}

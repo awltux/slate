@@ -1,0 +1,66 @@
+{
+  // F5: run the server under the debugger. Breakpoints work in src/ because Node runs the TypeScript through tsx.
+  // The home is whatever SLATE_HOME says (the product's rule), so the editor looks at the same films as your shell.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "slate: serve (debug)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/surfaces/cli.ts",
+      "runtimeArgs": ["--import", "tsx"],
+      "args": ["serve", "--port", "7788"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      "name": "slate: restart (debug)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/dev-serve.mjs",
+      "args": ["--restart"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    },
+    {
+      "name": "slate: run one op",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/surfaces/cli.ts",
+      "runtimeArgs": ["--import", "tsx"],
+      // An operation runs against a project folder, which is the folder holding project.json — not the Slate home.
+      "args": [
+        "op",
+        "${input:opName}",
+        "--root",
+        "${input:projectFolder}",
+        "--input",
+        "${input:opInput}",
+        "--json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "opName",
+      "type": "promptString",
+      "description": "Operation name (for example shot.list)"
+    },
+    {
+      "id": "projectFolder",
+      "type": "promptString",
+      "description": "Project folder (the one holding project.json)"
+    },
+    {
+      "id": "opInput",
+      "type": "promptString",
+      "description": "Operation input as JSON",
+      "default": "{}"
+    }
+  ]
+}
