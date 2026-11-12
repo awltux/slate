@@ -512,6 +512,25 @@ export const aiEndpointSave = defineOp({
     if (input.id && !config.endpoints.some((endpoint) => endpoint.id === input.id)) {
       throw new SlateError("not_found", `no endpoint ${input.id}`);
     }
+    const capability = canonicalCapability(input.capability) ?? input.capability;
+    const template = JSON.stringify(input.body ?? {});
+    if (capability === "image-to-image" && !/\{\{\s*(image|image2|images)\s*\}\}/.test(template)) {
+      throw new SlateError(
+        "invalid_input",
+        "an image-to-image endpoint must carry a picture: put {{image}}, {{image2}} or {{images}} in the request template",
+        { detail: { capability, field: "body" } },
+      );
+    }
+    if (capability === "image-to-image" && !/\{\{\s*prompt\s*\}\}/.test(template)) {
+      throw new SlateError(
+        "invalid_input",
+        "an image-to-image endpoint needs the words too: {{prompt}} is missing",
+        {
+          detail: { capability, field: "body" },
+        },
+      );
+    }
+
     const id = input.id ?? newId("aie");
     const endpoint: Endpoint = {
       id,

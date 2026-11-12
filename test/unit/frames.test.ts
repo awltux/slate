@@ -659,3 +659,36 @@ describe("a frame made by an editor", () => {
     );
   });
 });
+
+describe("an endpoint that claims to edit", () => {
+  it("is refused when its template carries no picture", async () => {
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal", baseUrl: "https://fal.run", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+
+    // Declared as an editor, written as a painter: the model would never see a picture, and the frame would claim to
+    // have been edited from sheets it never received.
+    const refused = await registry.execute(
+      "ai.endpoint.save",
+      {
+        providerId: provider.id,
+        name: "Muse edit",
+        capability: "image-to-image",
+        method: "POST",
+        path: "/meta/muse-image/edit",
+        body: { prompt: "{{prompt}}" },
+        resultPath: "images[0].url",
+      },
+      context,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.error.code).toBe("invalid_input");
+      expect(refused.error.message).toContain("{{images}}");
+    }
+  });
+});
