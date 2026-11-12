@@ -288,6 +288,16 @@ export const promptExpand = defineOp({
       intent: `prompt: expand ${entity.name}${variant ? ` / ${variant.name}` : ""}`,
       touched: [`entity:${entity.id}`],
       clock: context.clock,
+      // This is a model call, so the entry carries the exchange: the words that were sent, and the prompt that came
+      // back. Without it the log would claim nothing was sent, which is the opposite of what Expand does.
+      detail: {
+        input: description,
+        prompt: result.prompt,
+        via: result.via,
+        kind: entity.kind,
+        ...(style ? { style: `${style.name} — ${style.description}`.trim() } : { style: "none" }),
+        ...(inferredPath ? { resultPath: inferredPath } : {}),
+      },
       expectedRevision: input.expectedRevision,
       mutate: ({ production: target }) => {
         const local = target.entities[input.entityId];

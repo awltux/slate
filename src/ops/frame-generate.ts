@@ -178,6 +178,8 @@ export const frameGenerate = defineOp({
 
     const work = await mkdtemp(join(tmpdir(), "slate-frame-"));
     const made: Array<Awaited<ReturnType<typeof ingestAsset>>> = [];
+    /** The model's own words, so a frame that ignored the prompt can be explained rather than guessed at. */
+    const answers: string[] = [];
     try {
       if (endpoint) {
         const provider = aiConfig.providers.find((entry) => entry.id === endpoint.providerId);
@@ -208,6 +210,7 @@ export const frameGenerate = defineOp({
         });
 
         for (const file of files) {
+          if (file.answer) answers.push(file.answer);
           made.push(
             await ingestAsset(context.root, { kind: "frame", sourcePath: file.file, clock: context.clock }),
           );
@@ -262,6 +265,13 @@ export const frameGenerate = defineOp({
       intent: `frame: ${input.role} for shot ${shot.number} (${attached.length} reference(s))`,
       touched: [`shot:${shot.id}`],
       clock: context.clock,
+      // A rendered frame is a model call too: the log records the prompt it read and the answer it got.
+      detail: {
+        prompt,
+        via,
+        ...(endpoint ? { endpoint: endpoint.name } : {}),
+        ...(answers.length > 0 ? { response: answers.join("\n---\n").slice(0, 2_000) } : {}),
+      },
       // Checked again at commit time: an edit that landed while the frame was rendering must not be overwritten.
       expectedRevision: input.expectedRevision,
       mutate: ({ production: target }) => {

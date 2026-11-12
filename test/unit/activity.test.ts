@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
+import type { HttpPort } from "../../src/kernel/ai/reference.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
 import { testContext } from "../helpers/context.js";
 import { fakeFfmpeg } from "../helpers/fake-ffmpeg.js";
@@ -100,5 +101,72 @@ describe("activity", () => {
     const refused = await registry.execute("project.history", { before: "cmt_nope" }, context);
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.error.code).toBe("not_found");
+  });
+});
+
+describe("a model call is never logged as nothing", () => {
+  it("records the exchange an Expand makes", async () => {
+    // A text endpoint that answers, bound as the project's text model, so Expand goes through the model.
+    const answered = JSON.stringify({
+      choices: [{ message: { content: "a bent old keeper, salt in his beard" } }],
+    });
+    const port: HttpPort = async () => ({ status: 200, body: answered });
+
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "Text host", baseUrl: "https://llm.example", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "Text model",
+          capability: "text",
+          method: "POST",
+          path: "/v1/chat",
+          resultPath: "choices[0].message.content",
+          body: { prompt: "{{prompt}}" },
+          timeoutMs: 30_000,
+        },
+        context,
+      ),
+    ).data as { id: string };
+
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Text", bindings: { text: [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    expectOk(
+      await registry.execute(
+        "prompt.expand",
+        { entityId: entity.entityId },
+        testContext(root, { home, http: port }),
+      ),
+    );
+
+    const page = expectOk(await registry.execute("project.history", {}, context)).data as HistoryPage;
+    const expand = page.commits.find((commit) => commit.intent.startsWith("prompt: expand"));
+    // The point of Expand is a model call; an entry that says "nothing was sent" is the bug this guards.
+    expect(expand?.detail?.prompt).toContain("bent old keeper");
+    expect(expand?.detail?.input).toContain("salt in his beard");
+    expect(expand?.detail?.via).toContain("model:");
   });
 });

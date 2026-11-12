@@ -452,3 +452,10 @@ User-visible changes per slice. Internal refactors are not listed.
 - Documents are written atomically and committed with a snapshot, a validation pass and a commit log.
 - Canonical hashing and derived staleness underpin every "what changed" answer.
 - Tool discovery: environment override, vendored binaries, Windows uninstall registry, conventional folders, PATH.
+
+## An Expand is a model call, and the log now says so
+
+- **Activity records the exchange behind Expand**: the words that were sent, the prompt that came back, and which model
+  answered. It used to say "nothing was sent", which was exactly wrong — Expand *is* the model call.
+- **A rendered frame records the same thing**: prompt, model, and the answers, so a frame that ignored its prompt can be
+  explained rather than guessed at.

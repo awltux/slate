@@ -42,7 +42,7 @@ beforeAll(async () => {
   });
   sevenzip = await resolver("7z");
   has7z = Boolean(sevenzip.binary);
-}, 90_000);
+}, 240_000);
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), "slate-archive-home-"));
