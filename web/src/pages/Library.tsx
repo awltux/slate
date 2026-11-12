@@ -12,7 +12,15 @@ const ANGLES = [
   "three-quarter-right",
 ] as const;
 
-const OTHER_ROLES = ["close-up", "detail", "lighting", "plate", "palette", "texture"] as const;
+const OTHER_ROLES = [
+  "close-up",
+  "detail",
+  "lighting",
+  "plate",
+  "palette",
+  "texture",
+  "reference-sheet",
+] as const;
 
 interface GlobalItem {
   id: string;

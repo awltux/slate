@@ -2177,7 +2177,8 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
                   "lighting",
                   "plate",
                   "palette",
-                  "texture"
+                  "texture",
+                  "reference-sheet"
                 ]
               },
               {

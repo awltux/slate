@@ -566,3 +566,41 @@ describe("the shortcuts a published character earns", () => {
     if (!refused.ok) expect(refused.error.code).toBe("invalid_input");
   });
 });
+
+describe("a sheet item can say it is a reference sheet", () => {
+  it("keeps the role through publish", async () => {
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt in his beard" },
+        context,
+      ),
+    ).data as { entityId: string };
+    const generated = await registry.execute(
+      "entity.generate",
+      {
+        entityId: entity.entityId,
+        count: 1,
+        allowLocal: true,
+      },
+      context,
+    );
+    if (!generated.ok) throw new Error("expected a generated candidate");
+    const assetId = (generated.data as { candidates: Array<{ assetId: string }> }).candidates[0]?.assetId;
+    if (!assetId) throw new Error("expected an asset");
+
+    // One picture holding the subject from several angles: the role says so rather than implying a single view.
+    expectOk(
+      await registry.execute(
+        "sheet.edit",
+        { entityId: entity.entityId, items: [{ assetId, role: "reference-sheet" }] },
+        context,
+      ),
+    );
+    const published = expectOk(
+      await registry.execute("sheet.publish", { entityId: entity.entityId }, context),
+    ).data as { images: Array<{ role: string | null }> };
+
+    expect(published.images[0]?.role).toBe("reference-sheet");
+  });
+});

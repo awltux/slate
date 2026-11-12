@@ -486,3 +486,9 @@ User-visible changes per slice. Internal refactors are not listed.
 - **`entity.create` now takes a `styleId`**, so an item can be born with the look it inherits instead of needing a
   follow-up update; a style that is not a style is refused at creation rather than at generation.
 - **`entity.list` reports `forCharacter`**, so a body or costume can name the character it belongs to.
+
+## A sheet item can be a reference sheet
+
+- **"reference-sheet" is a role** in the *Type for item* dropdown, beside the head rotations and the detail roles. It says
+  the picture holds several views of the same subject at once, rather than one view per image — which is what a
+  character sheet is now written as.

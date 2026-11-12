@@ -23,6 +23,8 @@ export const SheetRoleSchema = z.enum([
   "plate",
   "palette",
   "texture",
+  /** Several views of the same subject in one image, rather than one view per picture. */
+  "reference-sheet",
 ]);
 
 /**
