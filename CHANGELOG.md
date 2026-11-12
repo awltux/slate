@@ -506,3 +506,15 @@ User-visible changes per slice. Internal refactors are not listed.
 - **Every picture in Plan opens for review**: the scene item sheets beside each shot, and the start and end frames. The
   frame dialog's current frame and its new options open the same way. Same popup as the Library: the image at the size of
   the window, what it is, and Escape to close.
+
+## A frame can be edited from the scene, not only painted
+
+- **`image-to-image` is a capability of its own**, beside text-to-image. An endpoint that declares it is offered as a
+  model profile binding, and a frame uses it whenever the scene gives it pictures to edit: the item sheets, the blockout
+  and the start frame all travel as `image_urls`.
+- **A template can ask for every reference at once** with `{{images}}`, which renders as an array (muse accepts up to
+  ten); `{{image}}` and `{{image2}}` still work for models that take one or two.
+- **A preset for fal's Muse edit** (`meta/muse-image/edit`) is in the known models: prompt plus image_urls, output
+  format png, sync off so the result is a url that can be kept.
+- **The frame records which capability made it** (`capability: image-to-image | text-to-image | none`), and warns
+  `references_unused` when it was given sheets but only a text-to-image model was bound, instead of dropping them quietly.

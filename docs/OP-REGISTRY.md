@@ -253,6 +253,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "enum": [
         "text",
         "text-to-image",
+        "image-to-image",
         "video",
         "audio",
         "upscale",
@@ -442,6 +443,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "enum": [
         "text",
         "text-to-image",
+        "image-to-image",
         "video",
         "audio",
         "upscale",

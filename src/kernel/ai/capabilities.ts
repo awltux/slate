@@ -28,6 +28,15 @@ export const CAPABILITY_SPECS = [
     modes: ["sync", "queue"],
   },
   {
+    id: "image-to-image",
+    label: "Image to image",
+    paid: true,
+    /** A picture to edit, as well as words: the picture is the subject, the prompt says what to do to it. */
+    requires: ["prompt", "image"],
+    produces: "image",
+    modes: ["sync", "queue"],
+  },
+  {
     id: "video",
     label: "Video",
     paid: true,

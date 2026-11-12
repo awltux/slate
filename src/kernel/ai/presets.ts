@@ -171,6 +171,57 @@ export const MODEL_PRESETS: ModelPreset[] = [
   },
 ];
 
+/** Muse edits the pictures it is given: the references travel as image_urls, the order is the reading order. */
+const MUSE_EDIT_BODY = {
+  prompt: "{{prompt}}",
+  image_urls: "{{images}}",
+  num_images: "{{param:num_images}}",
+  output_format: "png",
+  // A returned url can be downloaded and kept; an inline data uri cannot, and would be thrown away.
+  sync_mode: false,
+};
+
+MODEL_PRESETS.push({
+  id: "fal-muse-image-edit",
+  label: "fal — Muse image edit (image-to-image)",
+  summary:
+    "Edits the references it is given: the scene's sheets, the blockout and the start frame all travel as image_urls, so the frame is a version of those pictures rather than a new guess at them. Set the price to what your account is charged.",
+  provider: {
+    name: "fal",
+    kind: "fal",
+    baseUrl: "https://fal.run",
+    mode: "sync",
+    auth: { header: "Authorization", scheme: "Key {{key}}" },
+    testPath: "/meta/muse-image/edit",
+    testMethod: "POST",
+  },
+  endpoint: {
+    name: "Muse image edit",
+    capability: "image-to-image",
+    method: "POST",
+    path: "/meta/muse-image/edit",
+    params: [
+      {
+        key: "num_images",
+        label: "Images",
+        type: "integer",
+        required: false,
+        default: 1,
+        choices: [],
+        help: "One image per candidate, as Slate asks for one at a time",
+      },
+    ],
+    body: MUSE_EDIT_BODY,
+    resultPath: "images[0].url",
+    response: {},
+
+    // Muse's own price is per image and moves; zero keeps the budget honest about not knowing rather than inventing.
+    unitPriceUsd: 0,
+    imagesPerCall: 1,
+    timeoutMs: 180_000,
+  },
+});
+
 export function findPreset(id: string): ModelPreset | null {
   return MODEL_PRESETS.find((preset) => preset.id === id) ?? null;
 }

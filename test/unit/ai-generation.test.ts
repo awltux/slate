@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope, FailureEnvelope } from "../../src/domain/result.js";
+import { renderRequest } from "../../src/kernel/ai/declaration.js";
 import type { HttpPort } from "../../src/kernel/ai/reference.js";
+import { readAiConfig } from "../../src/kernel/ai/store.js";
 import { type OpContext, createRegistry } from "../../src/ops/index.js";
 import { testContext } from "../helpers/context.js";
 
@@ -600,5 +602,55 @@ describe("a style with both fields", () => {
     ).data as { promptUsed: string };
 
     expect(data.promptUsed).toContain("low key, hard shadows");
+  });
+});
+
+describe("a template that takes a list of references", () => {
+  it("renders {{images}} as an array, which is what an editor expects", async () => {
+    expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        {
+          name: "fal",
+          baseUrl: "https://fal.run",
+          apiKey: "k",
+          testMethod: "POST",
+        },
+        context,
+      ),
+    );
+    const provider = { ...context, id: "" } as unknown;
+    const config = await readAiConfig(home);
+    const saved = config.providers[0];
+    if (!saved) throw new Error("expected a provider");
+    const endpoint = {
+      id: "aie_test",
+      providerId: saved.id,
+      name: "Muse edit",
+      capability: "image-to-image" as const,
+      method: "POST" as const,
+      path: "/meta/muse-image/edit",
+      params: [],
+      body: { prompt: "{{prompt}}", image_urls: "{{images}}" },
+      resultPath: "images[0].url",
+      response: {},
+      unitPriceUsd: 0,
+      imagesPerCall: 1,
+      timeoutMs: 1000,
+      createdAt: new Date(0).toISOString(),
+    };
+    void provider;
+
+    const request = renderRequest(
+      saved,
+      endpoint,
+      { prompt: "rain", images: ["https://a.example/1.png", "https://a.example/2.png"], params: {} },
+      "k",
+    );
+    // An array stays an array: a model that wants image_urls must not receive one comma-joined string.
+    expect((request.body as { image_urls: unknown }).image_urls).toEqual([
+      "https://a.example/1.png",
+      "https://a.example/2.png",
+    ]);
   });
 });

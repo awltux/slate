@@ -80,8 +80,7 @@ if (existing) {
   existing = await holderOf(port);
   if (existing) {
     console.error(
-      `port ${port} is still held by pid ${existing}. Stop it with: taskkill /PID ${existing} /F` +
-        " (two Slate runs, or a terminal you closed without its process).",
+      `port ${port} is still held by pid ${existing}. Stop it with: taskkill /PID ${existing} /F (two Slate runs, or a terminal you closed without its process).`,
     );
     process.exit(1);
   }

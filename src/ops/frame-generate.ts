@@ -68,6 +68,8 @@ export const frameGenerate = defineOp({
       remainingUsd: z.number(),
       /** "model:<endpoint>" or "local". */
       via: z.string(),
+      /** Which capability answered: image-to-image edits the references, text-to-image describes them. */
+      capability: z.string().nullable(),
       endpointId: z.string().nullable(),
     })
     .strict(),
@@ -172,14 +174,25 @@ export const frameGenerate = defineOp({
       variant: null,
     });
 
-    // What will make this frame: the bound image endpoint, or - only when asked - the local renderer.
+    // What will make this frame: an image-to-image endpoint when there are references to edit, else a text-to-image one,
+    // or - only when asked - the local renderer. The capability that answered travels with the result, because the
+    // difference between editing the references and describing them from scratch is the difference between this frame
+    // and a different one.
     const aiConfig = await readAiConfig(context.home);
-    const resolution = resolveBinding(aiConfig, "text-to-image", project.aiBindingSetId ?? null);
+    const editor =
+      referenceAssetIds.length > 0
+        ? resolveBinding(aiConfig, "image-to-image", project.aiBindingSetId ?? null)
+        : null;
+    const painter = editor ? null : resolveBinding(aiConfig, "text-to-image", project.aiBindingSetId ?? null);
+    const resolution = editor ?? painter;
     const endpoint = resolution?.endpoint ?? null;
+    const capability = editor ? "image-to-image" : painter ? "text-to-image" : null;
     if (!endpoint && !input.allowLocal) {
       throw new SlateError(
         "capability_missing",
-        "no text-to-image model is bound: add a text-to-image endpoint to a profile in Setup, or draw locally on purpose",
+        referenceAssetIds.length > 0
+          ? "no model is bound to make this frame: add an image-to-image endpoint (it would edit the scene's sheets) or a text-to-image one to a profile in Setup, or draw locally on purpose"
+          : "no text-to-image model is bound: add a text-to-image endpoint to a profile in Setup, or draw locally on purpose",
         { detail: { capability: "text-to-image", allowLocal: false } },
       );
     }
@@ -291,6 +304,8 @@ export const frameGenerate = defineOp({
       startFrameAssetId,
       /** Every image the generator was given, so provenance names the pictures and not only the ids behind them. */
       referenceAssetIds,
+      /** Which capability answered: the same prompt makes different films from an edit and from a blank page. */
+      capability: capability ?? "none",
       /** The words the person wrote, so a frame can say what was asked for and not only what it was made from. */
       prompt: input.prompt.trim(),
       via,
@@ -350,6 +365,8 @@ export const frameGenerate = defineOp({
         width: size.width,
         height: size.height,
         via,
+        /** Which capability made it: image-to-image edits the sheets, text-to-image describes them. */
+        capability,
         endpointId: endpoint?.id ?? null,
         spentUsd: cost,
         remainingUsd: remainingUsd(project.budget.ceilingUsd, await readLedger(paths)),
@@ -374,14 +391,21 @@ export const frameGenerate = defineOp({
                     "This scene has no library items attached, so the frame was generated from the description alone.",
                 },
               ]
-            : unreferenced.length > 0
+            : capability === "text-to-image" && referenceAssetIds.length > 0
               ? [
                   {
-                    code: "reference_missing",
-                    message: `${unreferenced.join(", ")} have no published sheet, so they were named but not shown.`,
+                    code: "references_unused",
+                    message: `${endpoint?.name ?? "The model"} makes pictures from words, so the scene's sheets were named but not shown. Bind an image-to-image endpoint to edit them instead.`,
                   },
                 ]
-              : [],
+              : unreferenced.length > 0
+                ? [
+                    {
+                      code: "reference_missing",
+                      message: `${unreferenced.join(", ")} have no published sheet, so they were named but not shown.`,
+                    },
+                  ]
+                : [],
       next: ["frame.generate", "take.generate"],
     };
   },

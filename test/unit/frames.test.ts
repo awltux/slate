@@ -569,3 +569,93 @@ describe("what a frame can be conditioned on", () => {
     expect(find(costumeId)?.missing.join(" ")).toContain("Bare has no published sheet");
   });
 });
+
+describe("a frame made by an editor", () => {
+  it("sends the scene's sheets as images to edit, and records that it did", async () => {
+    const room = await sheeted("location", "Lantern room");
+    const keeper = await sheeted("character", "The keeper");
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LAMP ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    expectOk(
+      await registry.execute(
+        "scene.set-entities",
+        { sceneId: scene.sceneId, entityIds: [room, keeper] },
+        context,
+      ),
+    );
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "MS", angle: "EYE", movement: "STATIC", durationSec: 3 },
+        context,
+      ),
+    ).data as { shotId: string };
+
+    const sent: string[] = [];
+    const port: HttpPort = async (request) => {
+      if (request.url.endsWith(".png")) return { status: 200, body: "", bytes: Buffer.from(PNG_BYTES) };
+      sent.push(String(request.body ?? ""));
+      return { status: 200, body: JSON.stringify({ images: [{ url: "https://fal.example/edit.png" }] }) };
+    };
+
+    // An editor, not a painter: it is told to work from the pictures, and the pictures are the sheets.
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal", baseUrl: "https://fal.run", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "Muse edit",
+          capability: "image-to-image",
+          method: "POST",
+          path: "/meta/muse-image/edit",
+          body: { prompt: "{{prompt}}", image_urls: "{{images}}", num_images: 1 },
+          resultPath: "images[0].url",
+          unitPriceUsd: 0.02,
+          timeoutMs: 30_000,
+        },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Images", bindings: { "image-to-image": [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+    // The project needs the money the frame reserves; this suite's project was created with a ceiling of its own.
+    expectOk(await registry.execute("project.update", { budgetUsd: 5 }, context));
+
+    const frame = expectOk(
+      await registry.execute(
+        "frame.generate",
+        { shotId: shot.shotId, role: "first", prompt: "rain on the windows" },
+        testContext(root, { home, http: port }),
+      ),
+    ).data as { capability: string | null; referenceAssetIds: string[] };
+
+    expect(frame.capability).toBe("image-to-image");
+    console.log("SENT", sent[0]);
+    const body = JSON.parse(sent[0] ?? "{}") as { image_urls?: string[]; prompt?: string };
+    expect(body.prompt).toContain("rain on the windows");
+    // Both sheets travel as urls the model can fetch, not as the first two only.
+    expect(Array.isArray(body.image_urls)).toBe(true);
+    expect(body.image_urls?.length).toBeGreaterThanOrEqual(2);
+    expect(body.image_urls?.every((url) => url.startsWith("http") || url.startsWith("data:image/"))).toBe(
+      true,
+    );
+  });
+});

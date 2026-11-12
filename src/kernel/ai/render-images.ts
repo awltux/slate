@@ -31,7 +31,7 @@ export interface GeneratedFile {
 }
 
 /** Does the endpoint's template ask for a reference? Only then is one staged, because staging can cost an upload. */
-function templateWants(endpoint: Endpoint, token: "image" | "image2"): boolean {
+function templateWants(endpoint: Endpoint, token: "image" | "image2" | "images"): boolean {
   return JSON.stringify(endpoint.body ?? "").includes(`{{${token}}}`);
 }
 
@@ -62,7 +62,7 @@ export async function generateImages(input: {
 
   // A reference is staged once for the batch: it is the same bytes for every candidate, and an upload per candidate
   // would be a bill per candidate.
-  const staged: { image?: string; image2?: string } = {};
+  const staged: { image?: string; image2?: string; images?: string[] } = {};
   try {
     if (input.references && input.references.length > 0) {
       const first = input.references[0];
@@ -76,6 +76,20 @@ export async function generateImages(input: {
             key: input.key,
           })
         ).value;
+      }
+      if (templateWants(endpoint, "images")) {
+        const stagedUrls: string[] = [];
+        for (const file of input.references) {
+          const reference = await stageReference({
+            file,
+            provider: input.provider,
+            upload: input.upload ?? null,
+            http: input.http,
+            key: input.key,
+          });
+          stagedUrls.push(reference.value);
+        }
+        staged.images = stagedUrls;
       }
       const second = input.references[1];
       if (second && templateWants(endpoint, "image2")) {
@@ -103,6 +117,7 @@ export async function generateImages(input: {
           seconds: 5,
           ...(staged.image === undefined ? {} : { image: staged.image }),
           ...(staged.image2 === undefined ? {} : { image2: staged.image2 }),
+          ...(staged.images === undefined ? {} : { images: staged.images }),
           // Seeds and shape travel as parameters, so a template that declares them gets them and one that does not
           // ignores them.
           params: {

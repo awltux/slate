@@ -227,6 +227,8 @@ export interface CallValues {
   prompt?: string;
   image?: string;
   image2?: string;
+  /** Every reference, in order, for a model that takes a list rather than one or two pictures. */
+  images?: string[];
   seconds?: number;
   params: Record<string, string | number | boolean>;
 }
@@ -244,6 +246,8 @@ export interface RenderedRequest {
  */
 function renderValue(value: unknown, values: CallValues, params: Map<string, ParamSpec>): unknown {
   if (typeof value === "string") {
+    // "{{images}}" is the whole list, so it keeps its type: a model that wants an array of urls gets one, not a string.
+    if (/^\{\{\s*images\s*\}\}$/.test(value.trim())) return values.images ?? [];
     const exact = /^\{\{\s*param:([A-Za-z0-9_.-]+)\s*\}\}$/.exec(value.trim());
     if (exact) {
       const key = exact[1] as string;
@@ -261,6 +265,7 @@ function renderValue(value: unknown, values: CallValues, params: Map<string, Par
       if (key === "prompt") return values.prompt ?? "";
       if (key === "image") return values.image ?? "";
       if (key === "image2") return values.image2 ?? "";
+      if (key === "images") return (values.images ?? []).join(", ");
       if (key === "seconds") return values.seconds === undefined ? "" : String(values.seconds);
       if (key.startsWith("param:")) {
         const found = values.params[key.slice(6)];

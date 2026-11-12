@@ -23,7 +23,10 @@
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
-      "restart": true
+      "env": {
+        "SLATE_HOME": "F:\\git-clones\\ai-video-studio\\.tmp\\slate-home",
+        "SLATE_OWNER_PASSWORD": "slate-demo-2026"
+      }
     },
     {
       "name": "slate: run one op",

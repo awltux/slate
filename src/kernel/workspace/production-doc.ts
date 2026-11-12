@@ -66,6 +66,11 @@ export const FrameSourceSchema = z
      * Kept apart from entityIds so a frame can say what was chosen and what was inferred from it.
      */
     impliedEntityIds: z.array(z.string()).default([]),
+    /**
+     * Which capability made the frame: an edit of the references and a picture from words are different films, and a
+     * frame that cannot say which it is cannot be compared with the other kind.
+     */
+    capability: z.string().default("none"),
     /** Every image the call made, so a different one can be kept later. */
     candidateAssetIds: z.array(z.string()).default([]),
     /** What the person asked for, when they wrote it themselves. */
