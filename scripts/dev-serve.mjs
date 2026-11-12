@@ -38,10 +38,11 @@ async function holderOf(portNumber) {
       const line = stdout
         .split("\n")
         .map((entry) => entry.trim())
-        .find((entry) => /LISTENING$/.test(entry) && entry.includes(`:${portNumber} `));
-      if (!line) return null;
-      const parts = line.split(/\s+/);
-      return Number(parts[parts.length - 1]) || null;
+        .filter((entry) => entry.includes(`:${portNumber}`) && entry.includes("LISTENING"))
+        // The last column is the pid; the state sits just before it.
+        .map((entry) => Number(entry.split(/\s+/).at(-1)))
+        .find((pid) => Number.isFinite(pid) && pid > 0);
+      return line ?? null;
     }
     const { stdout } = await run("lsof", ["-ti", `tcp:${portNumber}`, "-sTCP:LISTEN"]);
     return Number(stdout.trim().split("\n")[0]) || null;
@@ -66,7 +67,7 @@ async function stop(pid) {
   }
 }
 
-const existing = await holderOf(port);
+let existing = await holderOf(port);
 if (existing) {
   if (!flag("restart") && !flag("watch")) {
     console.error(
@@ -76,6 +77,14 @@ if (existing) {
   }
   const stopped = await stop(existing);
   console.log(`${stopped ? "stopped" : "could not stop"} pid ${existing} on port ${port}`);
+  existing = await holderOf(port);
+  if (existing) {
+    console.error(
+      `port ${port} is still held by pid ${existing}. Stop it with: taskkill /PID ${existing} /F` +
+        " (two Slate runs, or a terminal you closed without its process).",
+    );
+    process.exit(1);
+  }
 }
 
 // Node runs the TypeScript itself, so there is no shell and no .cmd shim to escape: the same invocation the debugger uses.
