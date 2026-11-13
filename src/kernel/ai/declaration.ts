@@ -72,6 +72,11 @@ export const ReferencePolicySchema = z
   .object({
     transport: ReferenceTransportSchema.default("inline"),
     maxInlineBytes: z.number().int().positive().default(1_500_000),
+    /**
+     * Hosts this provider can fetch a picture from without being sent the bytes. fal serves its media from fal.media
+     * while it is called at fal.run, so the base url alone is not enough to know what it can read.
+     */
+    trustedHosts: z.array(z.string()).default([]),
   })
   .strict();
 

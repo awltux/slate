@@ -20,7 +20,7 @@ const fal: Provider = {
   baseUrl: "https://rest.alpha.fal.ai",
   mode: "sync",
   auth: { header: "Authorization", scheme: "Key {{key}}" },
-  reference: { transport: "upload", maxInlineBytes: 1_000 },
+  reference: { transport: "upload", maxInlineBytes: 1_000, trustedHosts: ["fal.media"] },
   testPath: "/",
   testMethod: "GET",
   queue: DEFAULT_QUEUE_SPEC,
@@ -188,5 +188,43 @@ describe("staging a reference", () => {
   it("builds a data uri that round-trips the bytes", () => {
     const uri = dataUri(Buffer.from("hello"), "text/plain");
     expect(uri).toBe("data:text/plain;base64,aGVsbG8=");
+  });
+});
+
+describe("a reference the provider already hosts", () => {
+  it("travels as its own url instead of bytes, whatever its size", async () => {
+    // 3 MB is over the inline limit and there is no upload endpoint: the url is the only route that works.
+    const staged = await stageReference({
+      file,
+      provider: fal,
+      publicUrl: "https://v3b.fal.media/files/b/abc/sheet.png",
+      upload: null,
+      http: async () => {
+        throw new Error("nothing should be fetched: the url is handed over as it stands");
+      },
+    });
+    expect(staged.via).toBe("url");
+    expect(staged.value).toBe("https://v3b.fal.media/files/b/abc/sheet.png");
+  });
+
+  it("does not hand one provider's url to another", async () => {
+    // A fal url is meaningless to a host that cannot read it, so a different host falls back to the bytes it has.
+    const staged = await stageReference({
+      file,
+      // A host that says nothing about what it can read is given the bytes, not another provider's address.
+      provider: {
+        ...fal,
+        baseUrl: "https://other.example",
+        reference: { ...fal.reference, trustedHosts: [] },
+      },
+      publicUrl: "https://v3b.fal.media/files/b/abc/sheet.png",
+      upload: null,
+      http: async () => {
+        throw new Error("unused");
+      },
+    });
+    // It travels as bytes instead: the bytes are what this host can actually read.
+    expect(staged.via).toBe("inline");
+    expect(staged.value.startsWith("data:")).toBe(true);
   });
 });

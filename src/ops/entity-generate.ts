@@ -228,7 +228,9 @@ export const entityGenerate = defineOp({
         // The body reference is a picture the model should see, not a sentence it should read.
         const composite = bodyFor?.identity?.compositeAssetId ?? null;
         const compositeAsset = composite ? (before.assets[composite] ?? null) : null;
-        const references = compositeAsset ? [assetFile(context.root, compositeAsset)] : [];
+        const references = compositeAsset
+          ? [{ file: assetFile(context.root, compositeAsset), url: compositeAsset.sourceUrl ?? null }]
+          : [];
 
         const files = await generateImages({
           provider,
@@ -248,6 +250,7 @@ export const entityGenerate = defineOp({
           const asset = await ingestAsset(context.root, {
             kind: "sheet",
             sourcePath: file.file,
+            sourceUrl: file.url,
             clock: context.clock,
           });
           created.push({

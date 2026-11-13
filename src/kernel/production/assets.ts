@@ -26,6 +26,11 @@ export const AssetSchema = z
     path: z.string(),
     sha256: z.string().startsWith("sha256:"),
     bytes: z.number().int().nonnegative(),
+    /**
+     * The provider's own address for these bytes, when a model produced them. Kept because a reference is a picture a
+     * remote model has to fetch, and a fal url it already has is better than megabytes of base64 we cannot send.
+     */
+    sourceUrl: z.string().nullable().default(null),
     createdAt: z.string(),
   })
   .strict();
@@ -50,7 +55,14 @@ const FOLDER: Record<AssetKind, string> = {
  */
 export async function ingestAsset(
   root: string,
-  input: { kind: AssetKind; sourcePath: string; clock: Clock; extension?: string },
+  input: {
+    kind: AssetKind;
+    sourcePath: string;
+    clock: Clock;
+    extension?: string;
+    /** Where the bytes came from, when that was a model: the url is reused as a reference later. */
+    sourceUrl?: string | null;
+  },
 ): Promise<Asset> {
   const paths = projectPaths(root);
   let bytes: Buffer;
@@ -76,6 +88,7 @@ export async function ingestAsset(
     path: relative(root, destination).split("\\").join("/"),
     sha256: hashBytes(bytes),
     bytes: size,
+    sourceUrl: input.sourceUrl ?? null,
     createdAt: input.clock.now(),
   };
 }

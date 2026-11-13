@@ -640,6 +640,13 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
           "type": "integer",
           "exclusiveMinimum": 0,
           "default": 1500000
+        },
+        "trustedHosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
         }
       },
       "additionalProperties": false

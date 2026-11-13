@@ -561,3 +561,11 @@ User-visible changes per slice. Internal refactors are not listed.
 
 - **Pressing Expand stores the expanded prompt immediately**, so a page refresh does not make you pay for the same
   sentence twice. The Save button still exists for editing either text by hand.
+
+## A reference travels as the url the provider already has
+
+- **Every generated asset records the address it came from**, so a sheet or frame that fal made can be handed back to
+  fal as a **url**: no upload, no base64, and none of the 1.5 MB inline limit that was refusing a 3 MB sheet.
+- **A provider declares the hosts it can fetch from** (`trustedHosts`), because fal serves media from `fal.media` while
+  it is called at `fal.run`. A url from a host it cannot read still falls back to bytes or an upload.
+- **Synchronous and queued calls are both covered**: both answers carry a url, and that is what is recorded now.

@@ -245,10 +245,12 @@ export const frameGenerate = defineOp({
             (entry) => entry.providerId === endpoint.providerId && entry.capability === "upload",
           ) ?? null;
         // The references are pictures, so they are handed over as pictures: the sheets, the blockout and the start frame.
+        // Each reference travels with the provider url it already has, when it has one: a sheet fal made can be handed
+        // back to fal as a url instead of megabytes of base64 that may not even fit the inline limit.
         const references = referenceAssetIds
           .map((id) => production.assets[id] ?? null)
           .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-          .map((entry) => assetFile(context.root, entry));
+          .map((entry) => ({ file: assetFile(context.root, entry), url: entry.sourceUrl ?? null }));
 
         const files = await generateImages({
           provider,
@@ -268,7 +270,12 @@ export const frameGenerate = defineOp({
           if (file.answer) answers.push(file.answer);
           if (Object.keys(file.log).length > 0) calls.push(file.log);
           made.push(
-            await ingestAsset(context.root, { kind: "frame", sourcePath: file.file, clock: context.clock }),
+            await ingestAsset(context.root, {
+              kind: "frame",
+              sourcePath: file.file,
+              sourceUrl: file.url,
+              clock: context.clock,
+            }),
           );
         }
       } else {

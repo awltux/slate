@@ -36,7 +36,8 @@ export const httpPort: HttpPort = async (input) => {
   return { status: response.status, body: await response.text() };
 };
 
-export type ReferenceRung = "inline" | "upload" | "none";
+/** How a reference reached the model: as the provider's own url, inline bytes, an upload, or not at all. */
+export type ReferenceRung = "url" | "inline" | "upload" | "none";
 
 export interface ReferencePlan {
   rung: ReferenceRung;
@@ -77,6 +78,23 @@ export function planReference(input: {
   };
 }
 
+/**
+ * Whether the provider can fetch this url itself: its own host, or a host it declares. A picture fal made lives on
+ * fal.media while fal is called at fal.run, so "same host" is too strict and "any url" would hand one provider another
+ * provider's file.
+ */
+function canFetch(url: string, provider: Provider): boolean {
+  try {
+    const host = new URL(url).host;
+    if (host === new URL(provider.baseUrl).host) return true;
+    return provider.reference.trustedHosts.some(
+      (trusted) => host === trusted || host.endsWith(`.${trusted}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function dataUri(bytes: Uint8Array, contentType: string): string {
   return `data:${contentType};base64,${Buffer.from(bytes).toString("base64")}`;
 }
@@ -112,11 +130,21 @@ export const UPLOAD_RESPONSE = { uploadUrl: "upload_url", fileUrl: "file_url" } 
 export async function stageReference(input: {
   file: string;
   provider: Provider;
+  /**
+   * The address this picture already has, when a model produced it. A fal url is fetchable by fal: sending it costs
+   * nothing and has no size limit, which inline bytes do.
+   */
+  publicUrl?: string | null;
   /** The upload endpoint, when the provider has one bound. */
   upload?: Endpoint | null;
   http: HttpPort;
   key?: string | null;
 }): Promise<StagedReference> {
+  // The provider's own address first: only a host that already has the bytes can use it, so it must match.
+  if (input.publicUrl && canFetch(input.publicUrl, input.provider)) {
+    return { value: input.publicUrl, via: "url", bytes: 0, contentType: contentTypeFor(input.file) };
+  }
+
   const bytes = await readFile(input.file).catch(() => null);
   if (!bytes) throw new SlateError("media_missing", `cannot read the reference ${basename(input.file)}`);
 

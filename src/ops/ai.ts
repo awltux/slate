@@ -39,6 +39,8 @@ const ReferenceViewSchema = z
     maxInlineBytes: z.number().int(),
     /** The upload endpoint this provider has bound, when one is declared: uploads are endpoints, not a side channel. */
     uploadEndpointId: z.string().nullable(),
+    /** Hosts this provider can fetch a picture from: a reference living there travels as its url, not as bytes. */
+    trustedHosts: z.array(z.string()),
   })
   .strict();
 
@@ -354,6 +356,7 @@ export const aiCatalog = defineOp({
           reference: {
             transport: provider.reference.transport,
             maxInlineBytes: provider.reference.maxInlineBytes,
+            trustedHosts: provider.reference.trustedHosts,
             uploadEndpointId:
               config.endpoints.find(
                 (endpoint) => endpoint.providerId === provider.id && endpoint.capability === "upload",

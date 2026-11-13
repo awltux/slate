@@ -52,8 +52,11 @@ export async function generateImages(input: {
   seed: number;
   width: number;
   height: number;
-  /** Local files to offer as references, in order: the first becomes {{image}}, the second {{image2}}. */
-  references?: string[];
+  /**
+   * References, in order: the first becomes {{image}}, the second {{image2}}. A reference that already lives on the
+   * provider's host travels as its url; the rest fall back to inline bytes or an upload.
+   */
+  references?: Array<{ file: string; url?: string | null }>;
   /** The endpoint that gives references a public home, when the provider's policy wants one. */
   upload?: Endpoint | null;
   http: HttpPort;
@@ -78,7 +81,8 @@ export async function generateImages(input: {
       if (first && templateWants(endpoint, "image")) {
         staged.image = (
           await stageReference({
-            file: first,
+            file: first.file,
+            publicUrl: first.url ?? null,
             provider: input.provider,
             upload: input.upload ?? null,
             http: input.http,
@@ -88,9 +92,10 @@ export async function generateImages(input: {
       }
       if (templateWants(endpoint, "images")) {
         const stagedUrls: string[] = [];
-        for (const file of input.references) {
+        for (const entry of input.references) {
           const reference = await stageReference({
-            file,
+            file: entry.file,
+            publicUrl: entry.url ?? null,
             provider: input.provider,
             upload: input.upload ?? null,
             http: input.http,
@@ -104,7 +109,8 @@ export async function generateImages(input: {
       if (second && templateWants(endpoint, "image2")) {
         staged.image2 = (
           await stageReference({
-            file: second,
+            file: second.file,
+            publicUrl: second.url ?? null,
             provider: input.provider,
             upload: input.upload ?? null,
             http: input.http,
