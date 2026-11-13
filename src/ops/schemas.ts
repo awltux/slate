@@ -66,9 +66,9 @@ export const SceneSummarySchema = z
           name: z.string(),
           kind: z.string(),
           coverAssetId: z.string().nullable(),
-          /** Whether this item can condition a frame: a published sheet, and for a costume, the character's too. */
-          ready: z.boolean(),
-          /** Why it cannot, in the words a person needs: "X has no published sheet". */
+          /** Whether this item has a published sheet of its own: the picture a frame uses instead of its words. */
+          hasSheet: z.boolean(),
+          /** Why it has none, in the words a person needs: "X has no published sheet". */
           missing: z.array(z.string()),
         })
         .strict(),

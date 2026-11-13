@@ -502,17 +502,20 @@ describe("a frame reads who is wearing what", () => {
     ).data as { referenceAssetIds: string[] };
 
     const prompt = bodies.join(" ");
-    // The director's words and the framing both travel; the garment is named with the person inside it.
+    // The director's words and the framing both travel.
     expect(prompt).toContain("mops the floor");
     expect(prompt).toContain("MS EYE");
-    expect(prompt).toContain("Oilskin coat worn by The keeper");
+    // The garment and the character both have published sheets, so they travel as pictures and say nothing in words:
+    // a frame with a sheet is not also told what the sheet shows.
+    expect(prompt).not.toContain("Oilskin coat");
+    expect(prompt).not.toContain("The keeper description");
     // Three sheets were given: the place, the garment, and the character behind the costume.
     expect(frame.referenceAssetIds.length).toBeGreaterThanOrEqual(3);
   });
 });
 
-describe("what a frame can be conditioned on", () => {
-  it("says which items are usable, and why the others are not", async () => {
+describe("an item is used as a picture or as words", () => {
+  it("reports which items have a sheet of their own, and why the others do not", async () => {
     const room = await sheeted("location", "Lantern room");
     const keeper = await sheeted("character", "The keeper");
     // A character with no published sheet: nothing to show a model.
@@ -548,25 +551,24 @@ describe("what a frame can be conditioned on", () => {
       ),
     );
 
-    // scene.list is the view the Plan page reads, so the readiness a person sees comes from here.
+    // scene.list is the view the Plan page reads, so the mark a person sees comes from here.
     const listed = expectOk(await registry.execute("scene.list", {}, context)).data as {
       scenes: Array<{
         id: string;
-        entities: Array<{ entityId: string; name: string; ready: boolean; missing: string[] }>;
+        entities: Array<{ entityId: string; name: string; hasSheet: boolean; missing: string[] }>;
       }>;
     };
     const sceneView = listed.scenes.find((entry) => entry.id === scene.sceneId);
     const find = (id: string) => sceneView?.entities.find((entity) => entity.entityId === id);
 
-    // A published sheet is what a frame can be shown.
-    expect(find(room)?.ready).toBe(true);
-    expect(find(keeper)?.ready).toBe(true);
-    // A character with no sheet is not usable, and says why.
-    expect(find(bareId)?.ready).toBe(false);
+    // A published sheet is the picture a frame uses instead of words.
+    expect(find(room)?.hasSheet).toBe(true);
+    expect(find(keeper)?.hasSheet).toBe(true);
+    // A character with no sheet is used as words, and says so.
+    expect(find(bareId)?.hasSheet).toBe(false);
     expect(find(bareId)?.missing.join(" ")).toContain("no published sheet");
-    // A costume is only half a reference without its character: the garment needs somebody inside it.
-    expect(find(costumeId)?.ready).toBe(false);
-    expect(find(costumeId)?.missing.join(" ")).toContain("Bare has no published sheet");
+    // A garment is its own picture: it does not borrow the character's sheet, and is not withheld for lacking one.
+    expect(find(costumeId)?.hasSheet).toBe(false);
   });
 });
 
@@ -690,5 +692,91 @@ describe("an endpoint that claims to edit", () => {
       expect(refused.error.code).toBe("invalid_input");
       expect(refused.error.message).toContain("{{images}}");
     }
+  });
+});
+
+describe("words for what has no picture", () => {
+  it("describes an item with no sheet, and leaves out one with a sheet", async () => {
+    const room = await sheeted("location", "Lantern room");
+    const bare = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "Bare", description: "a tall woman in a grey coat" },
+        context,
+      ),
+    ).data as { entityId: string };
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "EXT", location: "HARBOUR", timeOfDay: "DAWN" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    expectOk(
+      await registry.execute(
+        "scene.set-entities",
+        { sceneId: scene.sceneId, entityIds: [room, bare.entityId] },
+        context,
+      ),
+    );
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "CU", angle: "EYE", movement: "STATIC", durationSec: 3 },
+        context,
+      ),
+    ).data as { shotId: string };
+
+    const bodies: string[] = [];
+    const port: HttpPort = async (request) => {
+      if (request.url.endsWith(".png")) return { status: 200, body: "", bytes: Buffer.from(PNG_BYTES) };
+      bodies.push(String(request.body ?? ""));
+      return { status: 200, body: JSON.stringify({ images: [{ url: "https://fal.example/frame.png" }] }) };
+    };
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal", baseUrl: "https://fal.run", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "FLUX",
+          capability: "text-to-image",
+          method: "POST",
+          path: "/fal-ai/flux/schnell",
+          body: { prompt: "{{prompt}}" },
+          resultPath: "images[0].url",
+          unitPriceUsd: 0.01,
+        },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Text only", bindings: { "text-to-image": [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    expectOk(
+      await registry.execute(
+        "frame.generate",
+        { shotId: shot.shotId, role: "first", prompt: "the harbour in fog" },
+        testContext(root, { home, http: port }),
+      ),
+    );
+
+    const prompt = bodies.join(" ");
+    // No picture of her exists, so her words are the only way she can reach the model.
+    expect(prompt).toContain("Bare: a tall woman in a grey coat");
+    // The location has a sheet, so it is the picture and not a sentence as well.
+    expect(prompt).not.toContain("Lantern room description");
   });
 });

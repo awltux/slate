@@ -349,3 +349,9 @@ code,
   border-color: var(--accent, #c9a227);
   outline: none;
 }
+
+/* A resource with a published sheet: the frame uses that picture instead of describing the item in words. */
+.sheet-mark {
+  color: var(--accent, #c9a227);
+  font-weight: 600;
+}

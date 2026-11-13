@@ -518,3 +518,10 @@ User-visible changes per slice. Internal refactors are not listed.
   format png, sync off so the result is a url that can be kept.
 - **The frame records which capability made it** (`capability: image-to-image | text-to-image | none`), and warns
   `references_unused` when it was given sheets but only a text-to-image model was bound, instead of dropping them quietly.
+
+## A picture or its words, never both
+
+- **Nothing in the frame dialog is disabled any more.** An item with a published sheet is **highlighted** instead: it is
+  the one the frame will use as a picture. Ticking is a decision about what the shot is made of, not a permission.
+- **An item with a published sheet travels as that sheet and is not also described in words**; an item without one
+  travels as its text and adds no reference. Both at once made the model argue with its own reference.

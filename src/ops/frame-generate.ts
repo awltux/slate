@@ -127,21 +127,22 @@ export const frameGenerate = defineOp({
     // What was chosen wins: an entity attached on purpose is not also an inference.
     for (const entity of attached) implied.delete(entity.id);
     const cast = [...attached, ...implied.values()];
-    /** Items that were attached but have no published sheet: named in the prompt, absent from the references. */
-    const unreferenced = cast
-      .filter((entity) => !sheetReference(entity.identity))
-      .map((entity) => entity.name);
 
-    // Everything the generator is given to look at: the sheet of each cast member, the blockout, the start frame.
+    // A picture says what it says: an item with a published sheet travels as that sheet and is not described as well,
+    // because words on top of a reference make the model argue with the picture. An item without one is only words,
+    // because there is nothing to show. Never both - that is the rule that keeps a frame honest about its inputs.
+    const withSheet = cast.filter((entity) => Boolean(sheetReference(entity.identity)));
+    const withoutSheet = cast.filter((entity) => !sheetReference(entity.identity));
+
+    // Everything the generator is given to look at: the sheet of each cast member that has one, the blockout, the start.
     const referenceAssetIds = [
-      ...cast.map((entity) => sheetReference(entity.identity)).filter((id): id is string => Boolean(id)),
+      ...withSheet.map((entity) => sheetReference(entity.identity)).filter((id): id is string => Boolean(id)),
       ...(blockoutAssetId ? [blockoutAssetId] : []),
       ...(startFrameAssetId ? [startFrameAssetId] : []),
     ];
 
-    // The description names the place, the garment and the person wearing it, so the model is not left to guess the
-    // relationship between three sheets that arrive side by side.
-    const subject = [...attached, ...implied.values()]
+    // Only the items with no sheet are described, and only as much as a model needs to place them.
+    const subject = withoutSheet
       .map((entity) => {
         if (entity.kind === "costume") {
           const wearerId =
@@ -159,7 +160,7 @@ export const frameGenerate = defineOp({
     // dialog or from the shot itself, say what is happening inside that framing. Both travel, then the cast.
     const framing = `${shot.size} ${shot.angle}`;
     const director = input.prompt.trim() || shot.description.trim() || "the scene";
-    const description = `${framing}, ${director}. ${subject}`.trim();
+    const description = `${framing}, ${director}.${subject ? ` ${subject}` : ""}`.trim();
     // The film's look applies to a frame as much as to a sheet: a shot that ignored it would not match its own scene.
     const styleEntity = project.settings.defaultStyleId
       ? (production.entities[project.settings.defaultStyleId] ?? null)
@@ -398,14 +399,7 @@ export const frameGenerate = defineOp({
                     message: `${endpoint?.name ?? "The model"} makes pictures from words, so the scene's sheets were named but not shown. Bind an image-to-image endpoint to edit them instead.`,
                   },
                 ]
-              : unreferenced.length > 0
-                ? [
-                    {
-                      code: "reference_missing",
-                      message: `${unreferenced.join(", ")} have no published sheet, so they were named but not shown.`,
-                    },
-                  ]
-                : [],
+              : [],
       next: ["frame.generate", "take.generate"],
     };
   },

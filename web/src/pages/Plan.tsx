@@ -24,8 +24,8 @@ interface SceneEntity {
   name: string;
   kind: string;
   coverAssetId: string | null;
-  /** Whether this item can condition a frame, and why not when it cannot. */
-  ready: boolean;
+  /** Whether this item has a published sheet: the frame uses the picture, or the words when there is none. */
+  hasSheet: boolean;
   missing: string[];
 }
 
@@ -177,7 +177,7 @@ export function Plan({ projectId }: { projectId: string }) {
                   id: entity.entityId,
                   name: entity.name,
                   kind: entity.kind,
-                  ready: entity.ready,
+                  hasSheet: entity.hasSheet,
                   missing: entity.missing,
                 }))}
                 frames={shot.frames}

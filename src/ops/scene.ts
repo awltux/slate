@@ -40,19 +40,15 @@ export function shotSummary(shot: Shot, production: ProductionDocument) {
 }
 
 /**
- * Whether an item can condition a frame. A costume is ready only when its own sheet and the sheet of the character
- * wearing it are both published: the garment without the person is half a reference.
+ * Whether an item has a published sheet of its own, which is what decides how a frame uses it: the picture when there is
+ * one, the words when there is not. Nothing is disabled by this - it is information the editor highlights.
  */
-export function referenceReadiness(entity: Entity, production: ProductionDocument) {
-  const missing: string[] = [];
-  if (!sheetReference(entity.identity)) missing.push(`${entity.name} has no published sheet`);
-  if (entity.kind === "costume") {
-    const characterId = entity.forCharacter ?? null;
-    const character = characterId ? (production.entities[characterId] ?? null) : null;
-    if (!character) missing.push(`${entity.name} does not say whose it is`);
-    else if (!sheetReference(character.identity)) missing.push(`${character.name} has no published sheet`);
-  }
-  return { ready: missing.length === 0, missing };
+export function sheetPresence(entity: Entity) {
+  const sheet = sheetReference(entity.identity);
+  return {
+    hasSheet: Boolean(sheet),
+    missing: sheet ? [] : [`${entity.name} has no published sheet`],
+  };
 }
 
 export function sceneSummary(sceneId: string, production: ProductionDocument) {
@@ -74,9 +70,9 @@ export function sceneSummary(sceneId: string, production: ProductionDocument) {
       name: entity.name,
       kind: entity.kind,
       coverAssetId: sheetReference(entity.identity),
-      // A frame can only be conditioned on published sheets, and a costume also needs the character inside it: a
-      // garment with nobody to wear it is not a reference, it is half of one.
-      ...referenceReadiness(entity, production),
+      // A published sheet is used as the picture; without one the frame falls back to the words, so the editor says
+      // which it will be rather than forbidding the item.
+      ...sheetPresence(entity),
     })),
     location: location
       ? {
