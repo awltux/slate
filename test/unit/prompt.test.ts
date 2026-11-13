@@ -202,7 +202,7 @@ describe("the type instructions reach the model", () => {
 
     // The instructions for a character are in the request even though the template never mentioned them.
     const body = sent.join(" ");
-    expect(body).toContain("headshot reference sheet");
+    expect(body).toContain("character reference sheet");
     expect(body).toContain("salt in his beard");
     expect(data.systemInlined).toBe(true);
     expect(expanded.warnings?.some((warning) => warning.code === "system_inlined")).toBe(true);
@@ -265,8 +265,8 @@ describe("the type instructions reach the model", () => {
     const data = expanded.data as { systemInlined: boolean };
 
     // When the template has a slot, the instructions stay in it and the prompt text stays clean.
-    expect(sent[0]?.system).toContain("headshot reference sheet");
-    expect(sent[0]?.prompt).not.toContain("headshot reference sheet");
+    expect(sent[0]?.system).toContain("character reference sheet");
+    expect(sent[0]?.prompt).not.toContain("character reference sheet");
     expect(sent[0]?.prompt).toContain("salt in his beard");
     expect(data.systemInlined).toBe(false);
   });
@@ -334,5 +334,22 @@ describe("the frame instructions are a host setting", () => {
 
     // The host's wording is the system message the model receives, not a built-in it never heard of.
     expect(sent.join(" ")).toContain("silent film: no dialogue");
+  });
+});
+
+describe("what a character reference sheet shows", () => {
+  it("is a head cropped at the neck, with nothing worn", async () => {
+    const { DEFAULT_SYSTEM_PROMPTS } = await import("../../src/kernel/library/type-prompts.js");
+    const character = DEFAULT_SYSTEM_PROMPTS.character;
+
+    // The head, and only the head: shoulders bring collars, and a collar in a reference becomes a costume that cannot be
+    // taken off.
+    expect(character).toContain("cropped cleanly at the neck");
+    expect(character).toContain("no shoulders");
+    for (const banned of ["no clothing", "jewellery", "glasses", "adornments of any kind"]) {
+      expect(character).toContain(banned);
+    }
+    // And it says where those things belong instead, so the model does not invent them to fill the frame.
+    expect(character).toContain("decided later, in the shot");
   });
 });

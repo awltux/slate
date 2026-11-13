@@ -574,3 +574,11 @@ User-visible changes per slice. Internal refactors are not listed.
 
 - **Every generate button starts at one image**: the frame dialog, the library's candidate count, and the default on
   `entity.generate` (was four). More images cost more, so a batch is something asked for, never something assumed.
+
+## A character sheet is a head, and nothing else
+
+- **The character instructions now crop at the neck**: only the head and face, no shoulders, no torso — and **nothing
+  worn**: no clothing, collars, jewellery, glasses, hats or adornments of any kind. Whatever the head was wearing was
+  being inherited by every costume cut from it, so a coat appeared under a coat.
+- Clothing and accessories are decided later, in the shot's own words; the instructions say so, so the model does not
+  invent them to fill the frame.
