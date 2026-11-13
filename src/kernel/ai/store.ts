@@ -26,12 +26,37 @@ function emptyConfig(): AiConfig {
   };
 }
 
+/**
+ * The media hosts a provider can fetch from, inferred from where it is called. fal serves pictures from fal.media while
+ * its API lives at fal.run, so a provider pointed at either can read both - declared or not, because an empty list
+ * makes every reference fall back to bytes and fail on size.
+ */
+export function hostsForBaseUrl(baseUrl: string): string[] {
+  try {
+    const host = new URL(baseUrl).host;
+    if (host.endsWith("fal.run") || host.endsWith("fal.media") || host.endsWith("fal.ai")) {
+      return ["fal.media", "fal.run", "fal.ai"];
+    }
+  } catch {
+    // A url that does not parse has no hosts to infer; the caller keeps whatever it declared.
+  }
+  return [];
+}
+
 /** Older configs stored one flat binding map; it becomes a single "Default" set the first time it is read. */
 function migrate(parsed: AiConfig): AiConfig {
   const { bindings, ...rest } = parsed;
 
   // A capability that has been renamed since this file was written is read as its current name. Doing it here, rather
   // than in the schema, is what keeps an old config from failing to parse and coming back as an empty catalogue.
+  const providers = parsed.providers.map((provider) =>
+    provider.reference.trustedHosts.length > 0
+      ? provider
+      : {
+          ...provider,
+          reference: { ...provider.reference, trustedHosts: hostsForBaseUrl(provider.baseUrl) },
+        },
+  );
   const endpoints = parsed.endpoints.map((endpoint) => ({
     ...endpoint,
     capability: canonicalCapability(endpoint.capability) ?? endpoint.capability,
@@ -48,6 +73,7 @@ function migrate(parsed: AiConfig): AiConfig {
   if (bindingSets.length > 0) {
     return {
       ...rest,
+      providers,
       endpoints,
       bindingSets,
       defaultBindingSetId: parsed.defaultBindingSetId ?? bindingSets[0]?.id ?? null,

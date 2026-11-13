@@ -27,7 +27,14 @@ import {
 } from "../kernel/ai/declaration.js";
 import { MODEL_PRESETS, findPreset } from "../kernel/ai/presets.js";
 import { type ReferencePlan, httpPort, planReference, stageReference } from "../kernel/ai/reference.js";
-import { readAiConfig, readKeys, resolveBinding, writeAiConfig, writeKeys } from "../kernel/ai/store.js";
+import {
+  hostsForBaseUrl,
+  readAiConfig,
+  readKeys,
+  resolveBinding,
+  writeAiConfig,
+  writeKeys,
+} from "../kernel/ai/store.js";
 import { assetFile } from "../kernel/production/assets.js";
 import { readProductionDocument } from "../kernel/workspace/production-doc.js";
 import { readProjectDocument } from "../kernel/workspace/project-doc.js";
@@ -454,11 +461,10 @@ export const aiProviderSave = defineOp({
       mode: input.mode,
       baseUrl: input.baseUrl,
       auth: { header: input.authHeader, scheme: input.authScheme },
-      reference:
-        storedReference ??
-        (input.kind === "fal"
-          ? { ...DEFAULT_REFERENCE_POLICY, trustedHosts: ["fal.media", "fal.run", "fal.ai"] }
-          : DEFAULT_REFERENCE_POLICY),
+      reference: storedReference ?? {
+        ...DEFAULT_REFERENCE_POLICY,
+        trustedHosts: hostsForBaseUrl(input.baseUrl),
+      },
       queue: input.queue ?? existing?.queue ?? DEFAULT_QUEUE_SPEC,
       testPath: input.testPath,
       testMethod: input.testMethod,
