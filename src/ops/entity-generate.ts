@@ -37,7 +37,8 @@ export const entityGenerate = defineOp({
   input: z
     .object({
       entityId: z.string(),
-      count: z.number().int().min(1).max(8).default(4),
+      /** One by default: another image is another charge, so a batch is always something a person asked for. */
+      count: z.number().int().min(1).max(8).default(1),
       variantId: z.string().nullable().default(null),
       seed: z.number().int().default(0),
       /**

@@ -667,3 +667,21 @@ describe("a costume and the body it is cut for", () => {
     if (!wrongKind.ok) expect(wrongKind.error.code).toBe("invalid_input");
   });
 });
+
+describe("how many images a generation makes", () => {
+  it("is one unless the caller asks for more", async () => {
+    const entity = expectOk(
+      await registry.execute(
+        "entity.create",
+        { kind: "character", name: "The keeper", description: "salt" },
+        context,
+      ),
+    ).data as { entityId: string };
+
+    // No count in the call: the default must not spend on three guesses nobody asked for.
+    const generated = expectOk(
+      await registry.execute("entity.generate", { entityId: entity.entityId, allowLocal: true }, context),
+    ).data as { candidates: unknown[] };
+    expect(generated.candidates).toHaveLength(1);
+  });
+});

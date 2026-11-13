@@ -1036,7 +1036,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       "type": "integer",
       "minimum": 1,
       "maximum": 8,
-      "default": 4
+      "default": 1
     },
     "variantId": {
       "type": [

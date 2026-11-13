@@ -392,7 +392,7 @@ function EntityCard({
   const [forCharacter, setForCharacter] = useState(entity.forCharacter ?? "");
   const [forBody, setForBody] = useState(entity.forBody ?? "");
   // Remembered across reloads: how many candidates to make is a habit, not a property of the film.
-  const [count, setCount] = useState(() => readPreference("library.candidateCount", "4"));
+  const [count, setCount] = useState(() => readPreference("library.candidateCount", "1"));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** No image model is bound: the offer is to draw locally, said out loud rather than done quietly. */

@@ -569,3 +569,8 @@ User-visible changes per slice. Internal refactors are not listed.
 - **A provider declares the hosts it can fetch from** (`trustedHosts`), because fal serves media from `fal.media` while
   it is called at `fal.run`. A url from a host it cannot read still falls back to bytes or an upload.
 - **Synchronous and queued calls are both covered**: both answers carry a url, and that is what is recorded now.
+
+## One image by default
+
+- **Every generate button starts at one image**: the frame dialog, the library's candidate count, and the default on
+  `entity.generate` (was four). More images cost more, so a batch is something asked for, never something assumed.

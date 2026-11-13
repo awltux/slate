@@ -57,7 +57,7 @@ export function FrameDialog({
   const [picked, setPicked] = useState<string[]>(sceneEntities.map((entity) => entity.id));
   // An end frame is made from where the shot began: on by default, and only meaningful once a start frame exists.
   const [useStartFrame, setUseStartFrame] = useState(true);
-  const [count, setCount] = useState(3);
+  const [count, setCount] = useState(1);
   const [notice, setNotice] = useState<string | null>(null);
   const [made, setMade] = useState<{ assetIds: string[]; role: string } | null>(null);
   const [expanded, setExpanded] = useState(savedExpanded.first ?? "");
