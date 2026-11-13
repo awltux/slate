@@ -542,3 +542,9 @@ User-visible changes per slice. Internal refactors are not listed.
   reopens on it. Writing the same words again commits nothing, so the log stays a record of decisions.
 - **A frame that was never made gives its reservation back.** Before, a failed call left the money reserved with no
   commit and no entry anywhere — the budget silently shrank.
+
+## Save keeps both texts of a frame
+
+- **The expanded prompt is now stored too**, beside the sentence it came from, per frame and per role.
+- **A Save button does it**, beside Generate: it is the only thing that writes, so the film remembers what you decide it
+  should. It reads *Saved* when both texts already match the shot, and nothing is written behind your back.

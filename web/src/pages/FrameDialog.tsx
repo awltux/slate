@@ -25,6 +25,8 @@ interface Props {
   frames: { first?: string; last?: string };
   /** What was last written for each frame; the dialog opens on these rather than making the person retype them. */
   savedPrompt: { first: string; last: string };
+  /** The expanded prompt saved for each frame, kept beside the sentence it came from. */
+  savedExpanded: { first: string; last: string };
   revision: number;
   onDone: () => Promise<void> | void;
   onCancel: () => void;
@@ -43,6 +45,7 @@ export function FrameDialog({
   sceneEntities,
   frames,
   savedPrompt,
+  savedExpanded,
   revision,
   onDone,
   onCancel,
@@ -57,7 +60,7 @@ export function FrameDialog({
   const [count, setCount] = useState(3);
   const [notice, setNotice] = useState<string | null>(null);
   const [made, setMade] = useState<{ assetIds: string[]; role: string } | null>(null);
-  const [expanded, setExpanded] = useState("");
+  const [expanded, setExpanded] = useState(savedExpanded.first ?? "");
   const [expanding, setExpanding] = useState(false);
   const [mention, setMention] = useState<Mention | null>(null);
   const [active, setActive] = useState(0);
@@ -113,21 +116,35 @@ export function FrameDialog({
     }
   }
 
-  /** File the words against the shot. A no-op when nothing changed, so the log stays a record of decisions. */
+  /**
+   * What is on screen against what is stored, for the role being edited. Both texts are one decision, so both are dirty
+   * together: the sentence and the prompt the model made of it.
+   */
+  const dirty =
+    (prompt.trim() === "" ? "" : prompt) !== (savedPrompt[role] ?? "") ||
+    expanded.trim() !== (savedExpanded[role] ?? "");
+
+  /** Write both texts against the shot. The only writer, so a person decides when the film remembers. */
   async function keepPrompt() {
-    const text = prompt.trim() === "" ? "" : prompt;
-    if (text === (savedPrompt[role] ?? "")) return;
     try {
-      await runOp(projectId, "shot.frame-prompt", { shotId, role, prompt: text });
+      const written = await runOp<{ prompt: string; expanded: string }>(projectId, "shot.frame-prompt", {
+        shotId,
+        role,
+        prompt: prompt.trim() === "" ? "" : prompt,
+        expanded,
+      });
+      setNotice(
+        `Saved the ${role === "first" ? "start" : "end"} frame's words${
+          written.data.expanded.trim() === "" ? "" : " and the expanded prompt"
+        }`,
+      );
       await onDone();
-    } catch {
-      // Losing a draft is not worth an error banner over: the text stays in the field and the next action retries.
+    } catch (caught) {
+      setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
     }
   }
 
   async function generate(allowLocal = false) {
-    // The words are the decision being made; keep them before the money moves.
-    await keepPrompt();
     setBusy(true);
     setError(null);
     setNeedsLocal(false);
@@ -181,10 +198,28 @@ export function FrameDialog({
         <h2 style={{ margin: 0 }}>Frames for shot {shotNumber}</h2>
         <div className="spacer" />
         <div className="tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={role === "first"} onClick={() => setRole("first")}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={role === "first"}
+            onClick={() => {
+              setRole("first");
+              setPrompt(saved("first"));
+              setExpanded(savedExpanded.first ?? "");
+            }}
+          >
             Start
           </button>
-          <button type="button" role="tab" aria-selected={role === "last"} onClick={() => setRole("last")}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={role === "last"}
+            onClick={() => {
+              setRole("last");
+              setPrompt(saved("last"));
+              setExpanded(savedExpanded.last ?? "");
+            }}
+          >
             End
           </button>
         </div>
@@ -438,6 +473,14 @@ export function FrameDialog({
         </label>
         <button
           type="button"
+          onClick={() => void keepPrompt()}
+          disabled={busy || !dirty}
+          title={dirty ? "Keep these words with this shot" : "Both texts are already saved"}
+        >
+          {dirty ? "Save" : "Saved"}
+        </button>
+        <button
+          type="button"
           className="primary"
           onClick={() => void generate()}
           disabled={busy || prompt.trim() === ""}
@@ -446,14 +489,7 @@ export function FrameDialog({
             ? "Generating… a model call can take a minute"
             : `Generate ${role === "first" ? "start" : "end"} frame`}
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            // Closing is not discarding: what was written stays with the shot.
-            void keepPrompt().finally(onCancel);
-          }}
-          disabled={busy}
-        >
+        <button type="button" onClick={onCancel} disabled={busy}>
           Close
         </button>
       </div>

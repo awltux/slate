@@ -893,3 +893,59 @@ describe("a frame that was never made", () => {
     expect(ledger.some((entry) => entry.kind === "refund" && entry.note.includes("not made"))).toBe(true);
   });
 });
+
+describe("both texts are saved together", () => {
+  it("stores the sentence and the expanded prompt, and treats them as one decision", async () => {
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LAMP ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "MS", angle: "EYE", movement: "STATIC", durationSec: 3 },
+        context,
+      ),
+    ).data as { shotId: string };
+
+    expectOk(
+      await registry.execute(
+        "shot.frame-prompt",
+        {
+          shotId: shot.shotId,
+          role: "first",
+          prompt: "head on his chest, rain",
+          expanded: "MS EYE, a man's head resting on his chest, rain on the glass",
+        },
+        context,
+      ),
+    );
+
+    const after = expectOk(await registry.execute("shot.get", { shotId: shot.shotId }, context)).data as {
+      shot: { frames: { prompts: { first: string }; expanded: { first: string; last: string } } };
+    };
+    expect(after.shot.frames.prompts.first).toBe("head on his chest, rain");
+    expect(after.shot.frames.expanded.first).toContain("rain on the glass");
+    // The end frame has its own words, or none: the two roles never share a draft.
+    expect(after.shot.frames.expanded.last).toBe("");
+
+    // Only the expanded text changed: that is still a change, and it is recorded.
+    const revision = (await readProjectDocument(root)).revision;
+    expectOk(
+      await registry.execute(
+        "shot.frame-prompt",
+        {
+          shotId: shot.shotId,
+          role: "first",
+          prompt: "head on his chest, rain",
+          expanded: "a tighter frame, head on his chest",
+        },
+        context,
+      ),
+    );
+    expect((await readProjectDocument(root)).revision).toBe(revision + 1);
+  });
+});

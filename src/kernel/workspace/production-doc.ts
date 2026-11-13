@@ -107,6 +107,14 @@ export const ShotFramesSchema = z
       .object({ first: z.string().default(""), last: z.string().default("") })
       .strict()
       .default({ first: "", last: "" }),
+    /**
+     * The expanded prompt for each frame. Kept with the sentence, because the two are one decision: what the director
+     * wrote, and what the model made of it before the frame was drawn from it.
+     */
+    expanded: z
+      .object({ first: z.string().default(""), last: z.string().default("") })
+      .strict()
+      .default({ first: "", last: "" }),
   })
   .strict();
 

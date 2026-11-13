@@ -54,6 +54,11 @@ const ShotViewSchema = z
           .object({ first: z.string().default(""), last: z.string().default("") })
           .strict()
           .default({ first: "", last: "" }),
+        /** The expanded prompt for each frame, kept with the sentence it came from. */
+        expanded: z
+          .object({ first: z.string().default(""), last: z.string().default("") })
+          .strict()
+          .default({ first: "", last: "" }),
       })
       .strict(),
     builtFromSceneHash: z.string(),
@@ -123,7 +128,7 @@ export const shotCreate = defineOp({
           durationSec: input.durationSec,
           description: input.description,
           builtFromSceneHash,
-          frames: { candidates: [], prompts: { first: "", last: "" } },
+          frames: { candidates: [], prompts: { first: "", last: "" }, expanded: { first: "", last: "" } },
           entityIds: [],
           pins: {},
           createdAt: now,
@@ -313,11 +318,16 @@ export const shotFramePrompt = defineOp({
     .object({
       shotId: z.string(),
       role: z.enum(["first", "last"]),
+      /** What the person wrote. */
       prompt: z.string(),
+      /** What the text model made of it, when Expand has been used. */
+      expanded: z.string().default(""),
       expectedRevision: z.number().int().optional(),
     })
     .strict(),
-  output: z.object({ shotId: z.string(), role: z.string(), prompt: z.string() }).strict(),
+  output: z
+    .object({ shotId: z.string(), role: z.string(), prompt: z.string(), expanded: z.string() })
+    .strict(),
   touched: (input) => [`shot:${input.shotId}`],
   run: async (input, context) => {
     const { production: before } = await loadDocuments(context);
@@ -325,9 +335,17 @@ export const shotFramePrompt = defineOp({
     if (!shot) throw new SlateError("not_found", `no shot ${input.shotId}`);
 
     // Writing the same words again is not a decision: it leaves no commit, so the log stays a record of changes.
-    if (shot.frames.prompts[input.role] === input.prompt) {
+    if (
+      shot.frames.prompts[input.role] === input.prompt &&
+      shot.frames.expanded[input.role] === input.expanded
+    ) {
       return {
-        data: { shotId: input.shotId, role: input.role, prompt: input.prompt },
+        data: {
+          shotId: input.shotId,
+          role: input.role,
+          prompt: input.prompt,
+          expanded: input.expanded,
+        },
         version: before.revision,
         next: ["shot.frame-prompt", "frame.generate"],
       };
@@ -344,11 +362,17 @@ export const shotFramePrompt = defineOp({
         const target = production.shots[input.shotId];
         if (!target) return;
         target.frames.prompts[input.role] = input.prompt;
+        target.frames.expanded[input.role] = input.expanded;
         target.updatedAt = context.clock.now();
       },
     });
     return {
-      data: { shotId: input.shotId, role: input.role, prompt: input.prompt },
+      data: {
+        shotId: input.shotId,
+        role: input.role,
+        prompt: input.prompt,
+        expanded: input.expanded,
+      },
       version: result.project.revision,
       commit: result.commit.id,
       next: ["shot.frame-prompt", "frame.generate"],
