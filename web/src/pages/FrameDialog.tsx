@@ -126,26 +126,32 @@ export function FrameDialog({
   }
 
   async function generate(allowLocal = false) {
+    // The words are the decision being made; keep them before the money moves.
+    await keepPrompt();
     setBusy(true);
     setError(null);
     setNeedsLocal(false);
     try {
-      const result = await runOp<{ assetId: string; assetIds: string[]; role: string }>(
-        projectId,
-        "frame.generate",
-        {
-          shotId,
-          role,
-          // The expanded prompt is what the model reads when it exists: that is what "Expand" is for.
-          prompt: expanded.trim() === "" ? prompt : expanded,
-          useStartFrame,
-          entityIds: picked,
-          count,
-          allowLocal,
-          expectedRevision: revision,
-        },
-      );
+      const result = await runOp<{
+        assetId: string;
+        assetIds: string[];
+        role: string;
+        capability: string | null;
+      }>(projectId, "frame.generate", {
+        shotId,
+        role,
+        // The expanded prompt is what the model reads when it exists: that is what "Expand" is for.
+        prompt: expanded.trim() === "" ? prompt : expanded,
+        useStartFrame,
+        entityIds: picked,
+        count,
+        allowLocal,
+        expectedRevision: revision,
+      });
       setMade({ assetIds: result.data.assetIds, role: result.data.role });
+      setNotice(
+        `Made ${result.data.assetIds.length} image(s) via ${result.data.capability ?? "local"} — recorded in Activity`,
+      );
       await onDone();
     } catch (caught) {
       // No image model bound: offer the local renderer explicitly rather than drawing without saying so.
@@ -436,9 +442,18 @@ export function FrameDialog({
           onClick={() => void generate()}
           disabled={busy || prompt.trim() === ""}
         >
-          {busy ? "Generating…" : `Generate ${role === "first" ? "start" : "end"} frame`}
+          {busy
+            ? "Generating… a model call can take a minute"
+            : `Generate ${role === "first" ? "start" : "end"} frame`}
         </button>
-        <button type="button" onClick={onCancel} disabled={busy}>
+        <button
+          type="button"
+          onClick={() => {
+            // Closing is not discarding: what was written stays with the shot.
+            void keepPrompt().finally(onCancel);
+          }}
+          disabled={busy}
+        >
           Close
         </button>
       </div>
