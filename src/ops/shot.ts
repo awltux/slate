@@ -49,6 +49,11 @@ const ShotViewSchema = z
               .strict(),
           )
           .default([]),
+        /** The words written for each frame, so the dialog reopens on them. */
+        prompts: z
+          .object({ first: z.string().default(""), last: z.string().default("") })
+          .strict()
+          .default({ first: "", last: "" }),
       })
       .strict(),
     builtFromSceneHash: z.string(),
@@ -118,7 +123,7 @@ export const shotCreate = defineOp({
           durationSec: input.durationSec,
           description: input.description,
           builtFromSceneHash,
-          frames: { candidates: [] },
+          frames: { candidates: [], prompts: { first: "", last: "" } },
           entityIds: [],
           pins: {},
           createdAt: now,
@@ -292,6 +297,61 @@ export const shotGet = defineOp({
       },
       version: project.revision,
       next: ["shot.update", "story.get"],
+    };
+  },
+});
+
+/**
+ * Keep what was written for one frame before it is generated. This is a draft, not a plan - but a draft the director has
+ * to retype every time they open the dialog is not a draft, it is a form. Nothing is generated and no money moves.
+ */
+export const shotFramePrompt = defineOp({
+  name: "shot.frame-prompt",
+  policy: "write",
+  summary: "Keep the words written for a shot's start or end frame, so the dialog reopens with them.",
+  input: z
+    .object({
+      shotId: z.string(),
+      role: z.enum(["first", "last"]),
+      prompt: z.string(),
+      expectedRevision: z.number().int().optional(),
+    })
+    .strict(),
+  output: z.object({ shotId: z.string(), role: z.string(), prompt: z.string() }).strict(),
+  touched: (input) => [`shot:${input.shotId}`],
+  run: async (input, context) => {
+    const { production: before } = await loadDocuments(context);
+    const shot = before.shots[input.shotId];
+    if (!shot) throw new SlateError("not_found", `no shot ${input.shotId}`);
+
+    // Writing the same words again is not a decision: it leaves no commit, so the log stays a record of changes.
+    if (shot.frames.prompts[input.role] === input.prompt) {
+      return {
+        data: { shotId: input.shotId, role: input.role, prompt: input.prompt },
+        version: before.revision,
+        next: ["shot.frame-prompt", "frame.generate"],
+      };
+    }
+
+    const result = await commitDocuments({
+      root: context.root,
+      actor: context.actor,
+      intent: `shot ${shot.number}: words for the ${input.role === "first" ? "start" : "end"} frame`,
+      touched: [`shot:${input.shotId}`],
+      clock: context.clock,
+      expectedRevision: input.expectedRevision,
+      mutate: ({ production }) => {
+        const target = production.shots[input.shotId];
+        if (!target) return;
+        target.frames.prompts[input.role] = input.prompt;
+        target.updatedAt = context.clock.now();
+      },
+    });
+    return {
+      data: { shotId: input.shotId, role: input.role, prompt: input.prompt },
+      version: result.project.revision,
+      commit: result.commit.id,
+      next: ["shot.frame-prompt", "frame.generate"],
     };
   },
 });

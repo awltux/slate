@@ -23,6 +23,8 @@ interface Props {
   sceneEntities: Entity[];
   /** What the shot has already: shown so a new frame can be compared, not blindly replaced. */
   frames: { first?: string; last?: string };
+  /** What was last written for each frame; the dialog opens on these rather than making the person retype them. */
+  savedPrompt: { first: string; last: string };
   revision: number;
   onDone: () => Promise<void> | void;
   onCancel: () => void;
@@ -40,12 +42,14 @@ export function FrameDialog({
   basePrompt,
   sceneEntities,
   frames,
+  savedPrompt,
   revision,
   onDone,
   onCancel,
 }: Props) {
   const [role, setRole] = useState<"first" | "last">("first");
-  const [prompt, setPrompt] = useState(basePrompt);
+  const saved = (which: "first" | "last") => savedPrompt[which]?.trim() || basePrompt;
+  const [prompt, setPrompt] = useState(saved("first"));
   // Everything in the scene starts ticked: the interface does not decide what a shot is made of, the director does.
   const [picked, setPicked] = useState<string[]>(sceneEntities.map((entity) => entity.id));
   // An end frame is made from where the shot began: on by default, and only meaningful once a start frame exists.
@@ -106,6 +110,18 @@ export function FrameDialog({
       setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
     } finally {
       setExpanding(false);
+    }
+  }
+
+  /** File the words against the shot. A no-op when nothing changed, so the log stays a record of decisions. */
+  async function keepPrompt() {
+    const text = prompt.trim() === "" ? "" : prompt;
+    if (text === (savedPrompt[role] ?? "")) return;
+    try {
+      await runOp(projectId, "shot.frame-prompt", { shotId, role, prompt: text });
+      await onDone();
+    } catch {
+      // Losing a draft is not worth an error banner over: the text stays in the field and the next action retries.
     }
   }
 

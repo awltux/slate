@@ -44,6 +44,11 @@ export const ShotSummarySchema = z
               .strict(),
           )
           .default([]),
+        /** The words written for each frame, so the dialog reopens on them. */
+        prompts: z
+          .object({ first: z.string().default(""), last: z.string().default("") })
+          .strict()
+          .default({ first: "", last: "" }),
       })
       .strict(),
     /** The items this shot is made from. */

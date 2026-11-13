@@ -217,6 +217,8 @@ export const frameGenerate = defineOp({
       );
     }
 
+    /** Identifies this call's reservation, so a refund can name the thing it gives back. */
+    const reservation = `${input.role} frame for shot ${shot.number}`;
     await appendLedger(paths, {
       at: context.clock.now(),
       kind: "reservation",
@@ -224,7 +226,7 @@ export const frameGenerate = defineOp({
       usd: cost,
       estimateId: null,
       jobId: null,
-      note: `${input.role} frame for shot ${shot.number}`,
+      note: reservation,
     });
 
     const work = await mkdtemp(join(tmpdir(), "slate-frame-"));
@@ -287,6 +289,21 @@ export const frameGenerate = defineOp({
           );
         }
       }
+    } catch (failure) {
+      // The model never delivered: the money is not spent, and the ledger has to say so rather than keep a reservation
+      // for a picture that does not exist.
+      await appendLedger(paths, {
+        at: context.clock.now(),
+        kind: "refund",
+        actor: context.actor,
+        usd: -cost,
+        estimateId: null,
+        jobId: null,
+        note: `${reservation} — not made: ${
+          failure instanceof SlateError ? failure.code : "unknown failure"
+        }`,
+      });
+      throw failure;
     } finally {
       await rm(work, { recursive: true, force: true });
     }

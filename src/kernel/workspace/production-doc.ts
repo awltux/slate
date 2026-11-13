@@ -99,6 +99,14 @@ export const ShotFramesSchema = z
     lastSource: FrameSourceSchema.optional(),
     /** Every image generated for this shot, so a frame can be swapped without regenerating it. */
     candidates: z.array(FrameCandidateSchema).default([]),
+    /**
+     * What the person has written for each frame, kept before it is generated: a description is a decision in progress,
+     * and a field that empties itself when the dialog closes loses the thinking, not just the text.
+     */
+    prompts: z
+      .object({ first: z.string().default(""), last: z.string().default("") })
+      .strict()
+      .default({ first: "", last: "" }),
   })
   .strict();
 

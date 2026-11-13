@@ -55,7 +55,7 @@ import { OpRegistry } from "./registry.js";
 import { noteAdd, noteList, noteResolve, reviewLink, reviewLinks, reviewRevoke } from "./review.js";
 import { sceneCreate, sceneList, sceneSetEntities, sceneUpdate } from "./scene.js";
 import { serviceClearPath, serviceSetPath } from "./service.js";
-import { shotCreate, shotGet, shotRebase, shotUpdate } from "./shot.js";
+import { shotCreate, shotFramePrompt, shotGet, shotRebase, shotUpdate } from "./shot.js";
 import { estimateCreate, spendApprove, spendSummary } from "./spend.js";
 import { storyGet, storySet } from "./story.js";
 import { jobGet, takeGenerate, takeList, takeSelect } from "./take.js";
@@ -83,6 +83,7 @@ export function createRegistry(): OpRegistry {
     sceneList,
     shotCreate,
     shotUpdate,
+    shotFramePrompt,
     shotRebase,
     shotGet,
     frameAttach,

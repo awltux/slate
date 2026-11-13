@@ -13,7 +13,7 @@ interface ShotSummary {
   description: string;
   stale: boolean;
   staleCause: string | null;
-  frames: { board?: string; first?: string; last?: string };
+  frames: { board?: string; first?: string; last?: string; prompts?: { first: string; last: string } };
   /** The items this shot is made from: its own selection, or the scene's. */
   entityIds?: string[];
   readiness: { pass: number; warn: number; fail: number };
@@ -181,6 +181,7 @@ export function Plan({ projectId }: { projectId: string }) {
                   missing: entity.missing,
                 }))}
                 frames={shot.frames}
+                savedPrompt={shot.frames.prompts ?? { first: "", last: "" }}
                 revision={revision}
                 onDone={async () => {
                   await load();

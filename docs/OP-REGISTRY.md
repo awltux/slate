@@ -77,6 +77,7 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
 | `sheet.edit` | write | project | `sheet_edit` | Open a sheet for editing, or replace the items in the sheet being edited. |
 | `sheet.publish` | write | project | `sheet_publish` | Publish the sheet being edited and compose its active items into one reference image. |
 | `shot.create` | write | project | `shot_create` | Add a shot to a scene; it is built from that scene's current text. |
+| `shot.frame-prompt` | write | project | `shot_frame-prompt` | Keep the words written for a shot's start or end frame, so the dialog reopens with them. |
 | `shot.get` | read | project | `shot_get` | One shot with its readiness checks and staleness. |
 | `shot.rebase` | write | project | `shot_rebase` | Record that a shot has been re-checked against its scene's current text. |
 | `shot.set-entities` | write | project | `shot_set-entities` | Set the entities in a shot and pin their current identity sheets. |
@@ -2365,6 +2366,12 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }
+```
+
+### `shot.frame-prompt`
+
+```json
+{}
 ```
 
 ### `shot.get`

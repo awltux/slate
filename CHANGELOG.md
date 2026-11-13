@@ -535,3 +535,10 @@ User-visible changes per slice. Internal refactors are not listed.
 - **One expander behind both buttons**: resolving instructions, choosing the model, and inlining them when the endpoint
   has no system slot is now a single path; the callers differ only in what they keep (an entry keeps the prompt, a frame
   offers it) and whether the look shapes the words (a frame: yes, an entry: no).
+
+## A frame's words are kept, and a failed frame is refunded
+
+- **"Describe the frame" persists**: what is written for the start or end frame is stored against the shot and the dialog
+  reopens on it. Writing the same words again commits nothing, so the log stays a record of decisions.
+- **A frame that was never made gives its reservation back.** Before, a failed call left the money reserved with no
+  commit and no entry anywhere — the budget silently shrank.

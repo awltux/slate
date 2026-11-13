@@ -780,3 +780,116 @@ describe("words for what has no picture", () => {
     expect(prompt).not.toContain("Lantern room description");
   });
 });
+
+describe("the words written for a frame", () => {
+  it("are kept against the shot, and are not a commit when nothing changed", async () => {
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LAMP ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "MS", angle: "EYE", movement: "STATIC", durationSec: 3 },
+        context,
+      ),
+    ).data as { shotId: string };
+
+    expectOk(
+      await registry.execute(
+        "shot.frame-prompt",
+        { shotId: shot.shotId, role: "first", prompt: "head on his chest, rain" },
+        context,
+      ),
+    );
+    const after = expectOk(await registry.execute("shot.get", { shotId: shot.shotId }, context)).data as {
+      shot: { frames: { prompts: { first: string; last: string } } };
+    };
+    expect(after.shot.frames.prompts.first).toBe("head on his chest, rain");
+    // The other role is untouched: two frames are two decisions.
+    expect(after.shot.frames.prompts.last).toBe("");
+
+    const revision = (await readProjectDocument(root)).revision;
+    // Writing the same words again is not a decision, so it leaves no commit behind.
+    expectOk(
+      await registry.execute(
+        "shot.frame-prompt",
+        { shotId: shot.shotId, role: "first", prompt: "head on his chest, rain" },
+        context,
+      ),
+    );
+    expect((await readProjectDocument(root)).revision).toBe(revision);
+  });
+});
+
+describe("a frame that was never made", () => {
+  it("gives its reservation back instead of spending on nothing", async () => {
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LAMP ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "MS", angle: "EYE", movement: "STATIC", durationSec: 3 },
+        context,
+      ),
+    ).data as { shotId: string };
+
+    // A model that answers with no image: the call was paid for on the way in, and cannot be on the way out.
+    const port: HttpPort = async () => ({ status: 500, body: "upstream is unwell" });
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal", baseUrl: "https://fal.run", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "Broken",
+          capability: "text-to-image",
+          method: "POST",
+          path: "/broken",
+          body: { prompt: "{{prompt}}" },
+          resultPath: "images[0].url",
+          unitPriceUsd: 0.5,
+        },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Broken", bindings: { "text-to-image": [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    const failed = await registry.execute(
+      "frame.generate",
+      { shotId: shot.shotId, role: "first", prompt: "a lamp room" },
+      testContext(root, { home, http: port }),
+    );
+    expect(failed.ok).toBe(false);
+
+    // The ledger must not keep a reservation for a picture that does not exist.
+    const { readLedger } = await import("../../src/kernel/ledger/ledger.js");
+    const { projectPaths } = await import("../../src/kernel/workspace/paths.js");
+    const ledger = await readLedger(projectPaths(root));
+    const granted = ledger.filter((entry) => entry.kind === "reservation").reduce((sum, e) => sum + e.usd, 0);
+    const returned = ledger.filter((entry) => entry.kind === "refund").reduce((sum, e) => sum + e.usd, 0);
+    expect(granted + returned).toBe(0);
+    expect(ledger.some((entry) => entry.kind === "refund" && entry.note.includes("not made"))).toBe(true);
+  });
+});
