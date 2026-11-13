@@ -494,6 +494,8 @@ export const aiEndpointSave = defineOp({
       resultPath: z.string().default(""),
       /** Named values the response carries, so an upload endpoint can promise a place to PUT and a url to use. */
       response: z.record(z.string(), ResponseFieldSchema).default({}),
+      /** What the activity log should record about a call: a label per thing worth keeping. */
+      log: z.record(z.string(), z.string()).default({}),
       /** What the provider charges for one call; a batch is priced from it. 0 means unpriced. */
       unitPriceUsd: z.number().min(0).default(0),
       /** How many media one call returns. Slate asks for one per candidate. */
@@ -543,6 +545,7 @@ export const aiEndpointSave = defineOp({
       body: input.body,
       resultPath: input.resultPath,
       response: input.response,
+      log: input.log,
       unitPriceUsd: input.unitPriceUsd,
       imagesPerCall: input.imagesPerCall,
       timeoutMs: input.timeoutMs,

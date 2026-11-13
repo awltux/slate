@@ -233,6 +233,8 @@ export const frameGenerate = defineOp({
     const made: Array<Awaited<ReturnType<typeof ingestAsset>>> = [];
     /** The model's own words, so a frame that ignored the prompt can be explained rather than guessed at. */
     const answers: string[] = [];
+    /** Every call's own account of itself, rendered from the endpoint's log mapping. */
+    const calls: Array<Record<string, string>> = [];
     try {
       if (endpoint) {
         const provider = aiConfig.providers.find((entry) => entry.id === endpoint.providerId);
@@ -264,6 +266,7 @@ export const frameGenerate = defineOp({
 
         for (const file of files) {
           if (file.answer) answers.push(file.answer);
+          if (Object.keys(file.log).length > 0) calls.push(file.log);
           made.push(
             await ingestAsset(context.root, { kind: "frame", sourcePath: file.file, clock: context.clock }),
           );
@@ -336,11 +339,27 @@ export const frameGenerate = defineOp({
       intent: `frame: ${input.role} for shot ${shot.number} (${attached.length} reference(s))`,
       touched: [`shot:${shot.id}`],
       clock: context.clock,
-      // A rendered frame is a model call too: the log records the prompt it read and the answer it got.
+      // A rendered frame is a model call too: the log records the prompt it read, the pictures it was given, and the
+      // answer it got, so the frame can be explained later without opening the shot.
       detail: {
         prompt,
         via,
+        capability: capability ?? "local",
+        sheets:
+          withSheet.length > 0
+            ? withSheet
+                .map((entity) => `${entity.name} (${sheetReference(entity.identity) ?? "-"})`)
+                .join(", ")
+            : "none: every item in the scene was described in words",
+        ...(implied.size > 0
+          ? { implied: [...implied.values()].map((entity) => entity.name).join(", ") }
+          : {}),
+        ...(blockoutAssetId ? { blockout: blockoutAssetId } : {}),
+        ...(startFrameAssetId ? { startFrame: startFrameAssetId } : {}),
+        size: `${size.width}x${size.height}`,
         ...(endpoint ? { endpoint: endpoint.name } : {}),
+        // What the endpoint itself declared as worth keeping: the pictures it was given, the shape it was asked for.
+        ...(calls[0] ?? {}),
         ...(answers.length > 0 ? { response: answers.join("\n---\n").slice(0, 2_000) } : {}),
       },
       // Checked again at commit time: an edit that landed while the frame was rendering must not be overwritten.

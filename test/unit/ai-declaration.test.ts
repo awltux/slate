@@ -62,6 +62,7 @@ const flux: Endpoint = {
   },
   resultPath: "images[0].url",
   response: {},
+  log: {},
 };
 
 const values = {

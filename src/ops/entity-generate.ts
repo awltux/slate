@@ -212,6 +212,8 @@ export const entityGenerate = defineOp({
     const queue: Array<{ requestId: string | null; polls: number; elapsedMs: number }> = [];
     /** The model's own words, so a picture that ignored the prompt can be explained rather than guessed at. */
     const answers: string[] = [];
+    /** What the endpoint declared as worth recording about its calls. */
+    const logs: Array<Record<string, string>> = [];
     const work = await mkdtemp(join(tmpdir(), "slate-candidate-"));
 
     try {
@@ -299,6 +301,7 @@ export const entityGenerate = defineOp({
       // Why a sheet looks the way it does is answered by the words sent, so they travel with the commit.
       detail: {
         prompt,
+        ...(logs.length > 0 ? Object.fromEntries(Object.entries(logs[0] ?? {})) : {}),
         via,
         ...(endpoint ? { endpoint: endpoint.name } : {}),
         ...(style ? { style: `${style.name} — ${styleText}`.trim() } : { style: "none" }),

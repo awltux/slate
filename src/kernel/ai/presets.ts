@@ -136,6 +136,8 @@ export const MODEL_PRESETS: ModelPreset[] = [
       body: FLUX_BODY,
       resultPath: "images[0].url",
       response: FLUX_RESPONSE,
+      // What the log keeps about a text-to-image call: the shape asked for and the seed, so a picture can be remade.
+      log: { size: "{{param:width}}x{{param:height}}", seed: "{{param:seed}}" },
       unitPriceUsd: 0.003,
       imagesPerCall: 1,
       timeoutMs: 120_000,
@@ -164,6 +166,7 @@ export const MODEL_PRESETS: ModelPreset[] = [
       body: FLUX_BODY,
       resultPath: "images[0].url",
       response: FLUX_RESPONSE,
+      log: { size: "{{param:width}}x{{param:height}}", seed: "{{param:seed}}" },
       unitPriceUsd: 0.003,
       imagesPerCall: 1,
       timeoutMs: 600_000,
@@ -217,6 +220,9 @@ MODEL_PRESETS.push({
     resultPath: "images[0].url",
     response: {},
 
+    // Every picture the edit was given, and the shape it was asked to hold: the two things a frame cannot be understood
+    // without.
+    log: { references: "{{images}}", aspect: "{{param:aspect}}" },
     // Muse's own price is per image and moves; zero keeps the budget honest about not knowing rather than inventing.
     unitPriceUsd: 0,
     imagesPerCall: 1,

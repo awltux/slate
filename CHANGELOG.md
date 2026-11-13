@@ -548,3 +548,11 @@ User-visible changes per slice. Internal refactors are not listed.
 - **The expanded prompt is now stored too**, beside the sentence it came from, per frame and per role.
 - **A Save button does it**, beside Generate: it is the only thing that writes, so the film remembers what you decide it
   should. It reads *Saved* when both texts already match the shot, and nothing is written behind your back.
+
+## An endpoint says what its calls are worth logging
+
+- **Every endpoint can declare an activity log**: a label per thing worth keeping, written in the same template style as
+  its body — `{"references": "{{images}}", "aspect": "{{param:aspect}}"}` — rendered with the call and the answer, and
+  recorded in the commit that the call produces.
+- **A generated frame now records the pictures it was given**: the sheets by name and asset id, plus the capability, the
+  blockout, the start frame and the size, so a frame can be traced to its references from the Activity log alone.

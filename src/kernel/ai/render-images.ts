@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { SlateError } from "../../domain/result.js";
 import { callEndpoint, downloadTo, readValue } from "./call.js";
-import { type Endpoint, type Provider, readResult } from "./declaration.js";
+import { type CallValues, type Endpoint, type Provider, readResult, renderLog } from "./declaration.js";
 import { type HttpPort, stageReference } from "./reference.js";
 
 /**
@@ -28,6 +28,8 @@ export interface GeneratedFile {
   queue?: { requestId: string | null; polls: number; elapsedMs: number };
   /** The answer, trimmed: enough to see what the model said when the picture is not what was asked for. */
   answer: string;
+  /** What the endpoint said was worth recording about this call, already rendered. */
+  log: Record<string, string>;
 }
 
 /** The film's shape as "16:9", reduced: a model that renders at its own size still renders the right shape. */
@@ -114,28 +116,29 @@ export async function generateImages(input: {
 
     const files: GeneratedFile[] = [];
     for (let index = 0; index < input.count; index += 1) {
+      const values: CallValues = {
+        prompt: input.prompt,
+        seconds: 5,
+        ...(staged.image === undefined ? {} : { image: staged.image }),
+        ...(staged.image2 === undefined ? {} : { image2: staged.image2 }),
+        ...(staged.images === undefined ? {} : { images: staged.images }),
+        // Seeds and shape travel as parameters, so a template that declares them gets them and one that does not
+        // ignores them.
+        params: {
+          seed: input.seed + index,
+          width: input.width,
+          height: input.height,
+          // The film's shape as a ratio, for models that choose their own resolution from one.
+          aspect: aspectOf(input.width, input.height),
+          index,
+        },
+      };
       const call = await callEndpoint({
         provider: input.provider,
         endpoint,
         apiKey: input.key,
         http: input.http,
-        values: {
-          prompt: input.prompt,
-          seconds: 5,
-          ...(staged.image === undefined ? {} : { image: staged.image }),
-          ...(staged.image2 === undefined ? {} : { image2: staged.image2 }),
-          ...(staged.images === undefined ? {} : { images: staged.images }),
-          // Seeds and shape travel as parameters, so a template that declares them gets them and one that does not
-          // ignores them.
-          params: {
-            seed: input.seed + index,
-            width: input.width,
-            height: input.height,
-            // The film's shape as a ratio, for models that choose their own resolution from one.
-            aspect: aspectOf(input.width, input.height),
-            index,
-          },
-        },
+        values,
       });
 
       const url = readValue(call, endpoint);
@@ -174,6 +177,7 @@ export async function generateImages(input: {
         bytes: saved.bytes,
         url,
         answer: call.body.slice(0, 800),
+        log: renderLog(endpoint, values, call.parsed),
         seed: typeof seedValue === "number" ? seedValue : null,
         flagged: flaggedValue === true,
         ...(call.queue ? { queue: call.queue } : {}),

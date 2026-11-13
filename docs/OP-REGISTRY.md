@@ -377,6 +377,13 @@ shows as `mcp__slate__<tool>`) and from the HTTP API (`POST /p/:projectId/api/op
       },
       "default": {}
     },
+    "log": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {}
+    },
     "unitPriceUsd": {
       "type": "number",
       "minimum": 0,

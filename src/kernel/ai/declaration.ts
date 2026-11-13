@@ -178,6 +178,11 @@ export const EndpointSchema = z
     /** The other named values the response carries, so a caller does not have to guess at the provider's shape. */
     response: z.record(z.string(), ResponseFieldSchema).default({}),
     /**
+     * What the activity log records about a call, label to template: the same placeholders as the body, plus
+     * {{result:path}} for the answer. A model that takes ten pictures should be able to say which ten.
+     */
+    log: z.record(z.string(), z.string()).default({}),
+    /**
      * What one call to this endpoint costs in dollars, as the provider publishes it. A batch is priced by multiplying
      * this, so the budget ceiling means something against a real model instead of one number for every model.
      */
@@ -332,6 +337,29 @@ export function renderRequest(
     !carriesBody && query.toString() ? `?${query.toString()}` : ""
   }`;
   return { method: endpoint.method, url, headers, body: carriesBody ? body : null };
+}
+
+/**
+ * Render an endpoint's log mapping with what the call carried and what came back. Values are strings: a log entry is read
+ * by a person, not by a program, so an array becomes a list and an object becomes its JSON.
+ */
+export function renderLog(endpoint: Endpoint, values: CallValues, response: unknown): Record<string, string> {
+  const rendered: Record<string, string> = {};
+  for (const [label, template] of Object.entries(endpoint.log ?? {})) {
+    rendered[label] = template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, token: string) => {
+      if (token === "prompt") return values.prompt ?? "";
+      if (token === "images") return (values.images ?? []).join(", ");
+      if (token === "image") return values.image ?? "";
+      if (token === "image2") return values.image2 ?? "";
+      if (token.startsWith("param:")) return String(values.params[token.slice(6)] ?? "");
+      if (token.startsWith("result:")) {
+        const found = readResult(response, token.slice(7));
+        return found === undefined ? "" : typeof found === "string" ? found : JSON.stringify(found);
+      }
+      return "";
+    });
+  }
+  return rendered;
 }
 
 /** Read a value out of a response by path: "images[0].url". Empty path returns the response itself. */

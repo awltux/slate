@@ -45,6 +45,7 @@ const uploadEndpoint: Endpoint = {
   unitPriceUsd: 0,
   imagesPerCall: 1,
   timeoutMs: 120_000,
+  log: {},
 };
 
 let work: string;

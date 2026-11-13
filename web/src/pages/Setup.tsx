@@ -39,6 +39,8 @@ interface EndpointView {
   unitPriceUsd: number;
   /** Named values the response carries, so an upload endpoint can promise a place to PUT and a url to use. */
   response: Record<string, { path: string; type: string; description: string }>;
+  /** What the activity log records about a call: a label per thing worth keeping. */
+  log: Record<string, string>;
   timeoutMs: number;
 }
 
@@ -1054,6 +1056,7 @@ function EndpointForm({
   const [resultPath, setResultPath] = useState(endpoint?.resultPath ?? "");
   /** What the provider charges for one call; a batch is priced from it. */
   const [unitPrice, setUnitPrice] = useState(String(endpoint?.unitPriceUsd ?? 0));
+  const [log, setLog] = useState(endpoint ? JSON.stringify(endpoint.log ?? {}, null, 2) : "{}");
   const [response, setResponse] = useState(
     endpoint ? JSON.stringify(endpoint.response ?? {}, null, 2) : "{}",
   );
@@ -1070,6 +1073,7 @@ function EndpointForm({
           const parsedBody = JSON.parse(body) as Record<string, unknown>;
           const parsedParams = JSON.parse(params) as unknown[];
           const parsedResponse = JSON.parse(response) as Record<string, unknown>;
+          const parsedLog = JSON.parse(log) as Record<string, string>;
           setFormError(null);
           const values: Record<string, unknown> = {
             providerId,
@@ -1081,6 +1085,7 @@ function EndpointForm({
             body: parsedBody,
             resultPath,
             response: parsedResponse,
+            log: parsedLog,
             unitPriceUsd: Number(unitPrice) || 0,
           };
           if (endpoint) values.id = endpoint.id;
@@ -1165,6 +1170,21 @@ function EndpointForm({
           aria-label="Result path"
           style={{ flex: 1, marginTop: 18 }}
         />
+      </div>
+      <div className="row" style={{ alignItems: "flex-start" }}>
+        <label className="stack" style={{ flex: 1, gap: "0.25rem" }}>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Activity log (JSON: label → template; {"{{images}}"}, {"{{param:name}}"}, {"{{result:path}}"})
+          </span>
+          <textarea
+            value={log}
+            onChange={(event) => setLog(event.target.value)}
+            aria-label="Activity log mapping"
+            rows={3}
+            placeholder={'{"references": "{{images}}", "size": "{{param:width}}x{{param:height}}"}'}
+            style={{ fontFamily: "monospace", fontSize: 12 }}
+          />
+        </label>
         <input
           value={unitPrice}
           onChange={(event) => setUnitPrice(event.target.value)}
@@ -1200,6 +1220,7 @@ function EndpointForm({
                   /** What the provider charges for one call, used to price a batch. */
                   unitPriceUsd: number;
                   response: Record<string, unknown>;
+                  log?: Record<string, string>;
                   params: unknown[];
                 };
               }>("ai.endpoint.draft", { providerId, path: path.trim() });
@@ -1212,6 +1233,7 @@ function EndpointForm({
               setParams(JSON.stringify(proposal.params, null, 2));
               setResultPath(proposal.resultPath);
               setResponse(JSON.stringify(proposal.response, null, 2));
+              setLog(JSON.stringify(proposal.log ?? {}, null, 2));
             } catch (caught) {
               setFormError(message(caught));
             } finally {

@@ -949,3 +949,86 @@ describe("both texts are saved together", () => {
     expect((await readProjectDocument(root)).revision).toBe(revision + 1);
   });
 });
+
+describe("what the activity log keeps about a call", () => {
+  it("names the images the frame was given, and what the endpoint declared", async () => {
+    const room = await sheeted("location", "Lantern room");
+    const scene = expectOk(
+      await registry.execute(
+        "scene.create",
+        { heading: { intExt: "INT", location: "LAMP ROOM", timeOfDay: "NIGHT" } },
+        context,
+      ),
+    ).data as { sceneId: string };
+    expectOk(
+      await registry.execute("scene.set-entities", { sceneId: scene.sceneId, entityIds: [room] }, context),
+    );
+    const shot = expectOk(
+      await registry.execute(
+        "shot.create",
+        { sceneId: scene.sceneId, size: "MS", angle: "EYE", movement: "STATIC", durationSec: 3 },
+        context,
+      ),
+    ).data as { shotId: string };
+
+    const port: HttpPort = async (request) => {
+      if (request.url.endsWith(".png")) return { status: 200, body: "", bytes: Buffer.from(PNG_BYTES) };
+      return { status: 200, body: JSON.stringify({ images: [{ url: "https://fal.example/frame.png" }] }) };
+    };
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "fal", baseUrl: "https://fal.run", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "Muse edit",
+          capability: "image-to-image",
+          method: "POST",
+          path: "/meta/muse-image/edit",
+          body: { prompt: "{{prompt}}", image_urls: "{{images}}" },
+          resultPath: "images[0].url",
+          // The endpoint says what is worth recording: every image it was given, and the shape it was asked to hold.
+          log: { references: "{{images}}", aspect: "{{param:aspect}}" },
+          unitPriceUsd: 0.01,
+        },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Edit", bindings: { "image-to-image": [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    expectOk(
+      await registry.execute(
+        "frame.generate",
+        { shotId: shot.shotId, role: "first", prompt: "the wick trimmed" },
+        testContext(root, { home, http: port }),
+      ),
+    );
+
+    const history = expectOk(await registry.execute("project.history", { limit: 3 }, context)).data as {
+      commits: Array<{ intent: string; detail?: Record<string, string> }>;
+    };
+    const entry = history.commits.find((commit) => commit.intent.startsWith("frame: first"));
+    if (!entry) throw new Error("expected the frame's commit");
+
+    // The pictures are named by asset id, so the frame can be traced to what it was shown.
+    expect(entry.detail?.sheets).toContain("ast_");
+    // And the endpoint's own account of the call is in the same entry.
+    expect(entry.detail?.references).toContain("data:image/");
+    expect(entry.detail?.aspect).toBe("16:9");
+    expect(entry.detail?.capability).toBe("image-to-image");
+    expect(entry.detail?.size).toBe("1920x1080");
+  });
+});

@@ -634,6 +634,7 @@ describe("a template that takes a list of references", () => {
       body: { prompt: "{{prompt}}", image_urls: "{{images}}" },
       resultPath: "images[0].url",
       response: {},
+      log: {},
       unitPriceUsd: 0,
       imagesPerCall: 1,
       timeoutMs: 1000,
