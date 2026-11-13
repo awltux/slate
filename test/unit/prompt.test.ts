@@ -115,9 +115,7 @@ describe("prompt.expand", () => {
 });
 
 describe("expanding text that is not an entity", () => {
-  it("composes a prompt from the words without writing anything", async () => {
-    const before = (await readProjectDocument(root)).revision;
-
+  it("offers the prompt, changes no entity, and still records the exchange", async () => {
     const result = expectOk(
       await registry.execute("prompt.expand-text", { description: "a keeper trimming the wick" }, context),
     ).data as { prompt: string; via: string };
@@ -125,8 +123,17 @@ describe("expanding text that is not an entity", () => {
     expect(result.prompt.toLowerCase()).toContain("keeper");
     // No model is configured on a test host, and the fallback says so rather than pretending.
     expect(result.via).toBe("local");
-    // It is a suggestion, not a document change.
-    expect((await readProjectDocument(root)).revision).toBe(before);
+
+    // A frame prompt is a suggestion, so nothing is written against the shot - but the call happened, and the activity
+    // log is where a person looks to see what was asked and what came back.
+    const history = expectOk(await registry.execute("project.history", { limit: 5 }, context)).data as {
+      commits: Array<{ intent: string; touched: string[]; detail?: Record<string, string> }>;
+    };
+    const entry = history.commits[0];
+    expect(entry?.intent).toContain("expand a frame");
+    expect(entry?.touched).toEqual([]);
+    expect(entry?.detail?.input).toContain("trimming the wick");
+    expect(entry?.detail?.prompt).toContain("keeper");
   });
 
   it("refuses empty words rather than inventing a prompt", async () => {
@@ -262,5 +269,70 @@ describe("the type instructions reach the model", () => {
     expect(sent[0]?.prompt).not.toContain("headshot reference sheet");
     expect(sent[0]?.prompt).toContain("salt in his beard");
     expect(data.systemInlined).toBe(false);
+  });
+});
+
+describe("the frame instructions are a host setting", () => {
+  it("is resolved from the host layer, and reaches the model", async () => {
+    const sent: string[] = [];
+    const port = async (request: { url: string; method: string; body?: unknown }) => {
+      sent.push(String(request.body ?? ""));
+      return { status: 200, body: JSON.stringify({ choices: [{ message: { content: "a frame prompt" } }] }) };
+    };
+
+    const provider = expectOk(
+      await registry.execute(
+        "ai.provider.save",
+        { name: "DeepSeek", baseUrl: "https://api.example", apiKey: "k" },
+        context,
+      ),
+    ).data as { id: string };
+    const endpoint = expectOk(
+      await registry.execute(
+        "ai.endpoint.save",
+        {
+          providerId: provider.id,
+          name: "DeepSeek LLM",
+          capability: "text",
+          method: "POST",
+          path: "/chat/completions",
+          body: { model: "deepseek", prompt: "{{prompt}}", system: "{{param:system}}" },
+          params: [
+            { key: "system", label: "System", type: "string", required: false, choices: [], help: "" },
+          ],
+          resultPath: "choices[0].message.content",
+          unitPriceUsd: 0,
+        },
+        context,
+      ),
+    ).data as { id: string };
+    const set = expectOk(
+      await registry.execute(
+        "ai.bindingset.save",
+        { name: "Text", bindings: { text: [endpoint.id] } },
+        context,
+      ),
+    ).data as { id: string };
+    expectOk(await registry.execute("ai.bindingset.use", { id: set.id }, context));
+
+    // The words a host wants every frame written with, set from Setup.
+    expectOk(
+      await registry.execute(
+        "type.prompt.save-global",
+        { kind: "frame", prompt: "Write frames for a silent film: no dialogue, hands and light only." },
+        context,
+      ),
+    );
+
+    expectOk(
+      await registry.execute(
+        "prompt.expand-text",
+        { description: "a keeper trimming the wick" },
+        testContext(root, { home, http: port }),
+      ),
+    );
+
+    // The host's wording is the system message the model receives, not a built-in it never heard of.
+    expect(sent.join(" ")).toContain("silent film: no dialogue");
   });
 });

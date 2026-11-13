@@ -31,6 +31,7 @@ four surfaces exist.
 | 24 | Library items are made by the model the profile binds | `pnpm gate:24` | **done** | [generated item](../artifacts/24/library-by-model.png) · [report](../artifacts/24/report.json) |
 | 25 | A known model, called synchronously or through a queue | `pnpm gate:25` | **done** | [known models](../artifacts/25/known-models.png) · [queued item](../artifacts/25/queued-model.png) · [activity message](../artifacts/25/activity-message.png) · [report](../artifacts/25/report.json) |
 | 26 | A frame is edited from the scene's sheets, not painted from words | `pnpm verify` | **done** | [capabilities in Setup](../artifacts/26/capabilities.png) |
+| 27 | One expander, two callers: a frame prompt is written by the host's instructions and its call is logged | `pnpm verify` | **done** | [frame instructions in Setup](../artifacts/27/frame-instructions.png) |
 
 ## Slice 25 — what it proves
 

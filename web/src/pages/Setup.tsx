@@ -255,6 +255,8 @@ export function Setup() {
         </p>
       </div>
 
+      <FrameInstructions />
+
       {error ? <p className="error">{error}</p> : null}
       {notice ? <p className="muted">{notice}</p> : null}
       {testDetail?.request && testDetail.response ? (
@@ -1281,5 +1283,85 @@ function BindingSetForm({
         Add profile
       </button>
     </form>
+  );
+}
+
+/**
+ * The words a text model is given when a director presses Expand in the frame dialog. Host level, because a frame is
+ * expanded the same way in every film; a project may still override it from its own Library tab.
+ */
+function FrameInstructions() {
+  const [entry, setEntry] = useState<{ global: string; effective: string; builtIn: string } | null>(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const result = await runGlobalOp<{
+          prompts: Array<{ kind: string; global: string; effective: string; builtIn: string }>;
+        }>("type.prompts", {});
+        const found = result.data.prompts.find((prompt) => prompt.kind === "frame") ?? null;
+        setEntry(found);
+        setDraft(found?.effective ?? "");
+      } catch (caught) {
+        setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+      }
+    })();
+  }, []);
+
+  async function save(text: string) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await runGlobalOp("type.prompt.save-global", { kind: "frame", prompt: text });
+      const result = await runGlobalOp<{
+        prompts: Array<{ kind: string; global: string; effective: string; builtIn: string }>;
+      }>("type.prompts", {});
+      const found = result.data.prompts.find((prompt) => prompt.kind === "frame") ?? null;
+      setEntry(found);
+      setDraft(found?.effective ?? "");
+      setNotice(
+        text.trim() === "" ? "Every film now uses the built-in instructions." : "Saved for every film.",
+      );
+    } catch (caught) {
+      setError(caught instanceof ApiError ? `${caught.code}: ${caught.message}` : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <details className="card">
+      <summary style={{ cursor: "pointer" }}>
+        <strong>Frame expansion</strong>
+        <span className="muted" style={{ marginLeft: "0.5rem", fontSize: 12 }}>
+          the instructions a text model gets when Expand is pressed in the frame dialog
+          {entry?.global ? " · the host's wording" : " · built-in"}
+        </span>
+      </summary>
+      <div className="stack" style={{ gap: "0.4rem", marginTop: "0.6rem" }}>
+        <textarea
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          rows={5}
+          aria-label="Frame expansion instructions"
+          placeholder={entry?.builtIn ?? ""}
+        />
+        <div className="row">
+          <button type="button" className="primary" disabled={busy} onClick={() => void save(draft)}>
+            {busy ? "Saving…" : "Save for every film"}
+          </button>
+          <button type="button" disabled={busy} onClick={() => void save("")}>
+            Use the built-in
+          </button>
+          {error ? <span className="error">{error}</span> : null}
+          {notice ? <span className="muted">{notice}</span> : null}
+        </div>
+      </div>
+    </details>
   );
 }

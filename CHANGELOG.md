@@ -525,3 +525,13 @@ User-visible changes per slice. Internal refactors are not listed.
   the one the frame will use as a picture. Ticking is a decision about what the shot is made of, not a permission.
 - **An item with a published sheet travels as that sheet and is not also described in words**; an item without one
   travels as its text and adds no reference. Both at once made the model argue with its own reference.
+
+## Expand is one feature, and a frame's is now in the log
+
+- **A frame's Expand is recorded in Activity**: the sentence that was sent and the prompt that came back, like an entry's
+  Expand. Nothing is written against the shot — a preview stays a preview — but the call is no longer invisible.
+- **Frames have their own instructions**, and they are a **Setup setting**: the host's wording applies to every film,
+  a film may still override it from its Library tab, and the built-in backs both.
+- **One expander behind both buttons**: resolving instructions, choosing the model, and inlining them when the endpoint
+  has no system slot is now a single path; the callers differ only in what they keep (an entry keeps the prompt, a frame
+  offers it) and whether the look shapes the words (a frame: yes, an entry: no).

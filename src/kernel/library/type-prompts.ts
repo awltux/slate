@@ -8,8 +8,16 @@ export const LIBRARY_KINDS = ["character", "location", "prop", "style", "costume
 
 export type LibraryKind = (typeof LIBRARY_KINDS)[number];
 
+/**
+ * Everything that has instructions of its own. "frame" is here and not in LIBRARY_KINDS because a frame is expanded in
+ * the shot dialog: it needs words, but it is never an entry in the library.
+ */
+export const PROMPT_KINDS = [...LIBRARY_KINDS, "frame"] as const;
+
+export type PromptKind = (typeof PROMPT_KINDS)[number];
+
 /** What each type is asked for, in the words that suit that type. These are the defaults; both layers can override. */
-export const DEFAULT_SYSTEM_PROMPTS: Record<LibraryKind, string> = {
+export const DEFAULT_SYSTEM_PROMPTS: Record<PromptKind, string> = {
   character:
     "You write image-generation prompts for a film production system. The prompt will create a single-image character headshot reference sheet with four head-and-shoulders views arranged in a clean 2×2 grid: front-right three-quarter view (angled toward the viewer’s right), front-left three-quarter view (angled toward the viewer’s left), behind-left rear three-quarter view, and behind-right rear three-quarter view. Show the same character in every panel with identical head shape, facial features, hairstyle, hair color, skin tone, accessories, and expression; keep the expression consistent in all face-visible views, and preserve the same head/hairstyle in rear views. Maintain the same scale, framing, and even spacing across all four panels. Studio lighting with soft, even illumination, seamless white background, and subtle contact shadows. Clean professional reference-sheet layout, sharp focus, high resolution. No text, labels, props, extra characters, or stylistic variation between panels.",
   location:
@@ -19,6 +27,8 @@ export const DEFAULT_SYSTEM_PROMPTS: Record<LibraryKind, string> = {
     "You write style sheets for a film production system. The subject is a look, not a thing. Given the description, reply with one description of at most 60 words covering palette, contrast, texture, grain, lens and light, to be applied to other prompts. No preamble, no quotes.",
   costume:
     "You write image-generation prompts for a film production system. The subject is a costume garment worn on a headless mannequin built to one character’s body. Reply with one image-generation prompt of at most 60 words. Specify fabric, weave or weight, cut, fit, closures, colour, wear or aging, and how the garment hangs, folds, and moves. Require full body, garment only; no head, face, hair, skin, or identifying features. Use a white studio background with soft lighting and subtle shadows. Avoid props, extra garments, logos, text, dramatic styling, cropping, and anatomy errors. If headgear is requested, show it hovering as if worn. Include multiple poses or views of the same costume within the single prompt to show drape and sit, keeping fabric, colour, cut, and styling consistent. Output only the prompt, no preamble, no quotes.",
+  frame:
+    "You write image-generation prompts for a film production system. The subject is one frame of a shot: a single still image that a camera could hold. Given the shot's framing, the director's sentence and the assets in the scene, reply with one prompt of at most 70 words: who or what is in frame and what they are doing, the setting, the light and time of day, the lens and composition, and what to avoid. Keep the framing the shot asked for. Do not invent characters, props or weather that were not named. No preamble, no quotes.",
   body: "You are a prompt writer for a film production system. For a costume-fitting body mannequin representing one character, write one image-generation prompt of at most 60 words. Specify build, height, posture, proportions, stance, and what to avoid. Require full body, no head, no face, no hair, no identifying features, neutral pose, no clothing, accessories, or props. Use a white studio background and lighting with subtle shadows, clear silhouette, anatomically plausible mannequin form, no cropping, no extra limbs, no dramatic styling. Output only the prompt, no preamble or quotes.",
 };
 
@@ -30,7 +40,7 @@ export type PromptSource = "project" | "global" | "default";
  * be guessed.
  */
 export function resolveTypePrompt(input: {
-  kind: LibraryKind;
+  kind: PromptKind;
   project?: Record<string, string> | null;
   global?: Record<string, string> | null;
 }): { prompt: string; source: PromptSource } {
@@ -44,4 +54,9 @@ export function resolveTypePrompt(input: {
 /** Only the types Slate knows: a typo in a stored map must not become a silent extra type. */
 export function isLibraryKind(value: string): value is LibraryKind {
   return (LIBRARY_KINDS as readonly string[]).includes(value);
+}
+
+/** The same guard for everything that takes instructions, a frame included. */
+export function isPromptKind(value: string): value is PromptKind {
+  return (PROMPT_KINDS as readonly string[]).includes(value);
 }

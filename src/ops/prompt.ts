@@ -1,15 +1,11 @@
 import { z } from "zod";
 import { SlateError } from "../domain/result.js";
-import { callEndpoint, readValue } from "../kernel/ai/call.js";
-import { readResult, renderRequest } from "../kernel/ai/declaration.js";
-import { type HttpPort, httpPort } from "../kernel/ai/reference.js";
-import { readAiConfig, readKeys, resolveBinding } from "../kernel/ai/store.js";
-import { readConfig } from "../kernel/config.js";
-import { readGlobalLibrary } from "../kernel/library/store.js";
-import { resolveTypePrompt } from "../kernel/library/type-prompts.js";
+import { httpPort } from "../kernel/ai/reference.js";
+import { PROMPT_KINDS } from "../kernel/library/type-prompts.js";
 import type { Entity } from "../kernel/production/entities.js";
 import { commitDocuments } from "../kernel/workspace/commit.js";
 import { loadDocuments } from "./documents.js";
+import { expandWithInstructions } from "./prompt-model.js";
 import { defineOp } from "./registry.js";
 
 const CAMERA_AND_LIGHT: Record<string, string[]> = {
@@ -24,137 +20,6 @@ const CAMERA_AND_LIGHT: Record<string, string[]> = {
  * fallback: a model, when one is configured, writes something better — but the operation must work with no key at all,
  * and it must be deterministic when it does, or a sheet cannot be reproduced.
  */
-/**
- * Ask whatever writes prompts on this host, preferring the endpoint the profile binds over the ad-hoc llm block in the
- * host config. The order matters: the endpoint is the thing a person configured in Setup, with its own body, key and
- * result path, and an llm block nobody can reach from the interface should not win over it.
- */
-/** The paths a text answer conventionally lives at, tried only when the endpoint declares none. */
-const CONVENTIONAL_TEXT_PATHS = [
-  "choices[0].message.content",
-  "text",
-  "response",
-  "output_text",
-  "output",
-  "content",
-  "result",
-];
-
-/**
- * Pull the words out of an answer. An endpoint that declares a result path is held to it; one that declares none is read
- * from the conventional homes, because "DeepSeek LLM" and its kin put the sentence at choices[0].message.content and
- * refusing them for not declaring it would be pedantry.
- */
-function readTextAnswer(
-  call: Awaited<ReturnType<typeof callEndpoint>>,
-  endpoint: { name: string; resultPath: string; id: string },
-): { text: string; path: string } {
-  if (endpoint.resultPath) {
-    const value = readValue(call, endpoint as never);
-    if (typeof value === "string" && value.trim() !== "")
-      return { text: value.trim(), path: endpoint.resultPath };
-    throw new SlateError(
-      "provider_error",
-      `${endpoint.name} answered but nothing at "${endpoint.resultPath}" was text`,
-      { detail: { endpointId: endpoint.id, resultPath: endpoint.resultPath } },
-    );
-  }
-
-  for (const candidate of CONVENTIONAL_TEXT_PATHS) {
-    const value = readResult(call.parsed, candidate);
-    if (typeof value === "string" && value.trim() !== "") return { text: value.trim(), path: candidate };
-  }
-
-  throw new SlateError(
-    "provider_error",
-    `${endpoint.name} declares no result path and its answer had text at none of ${CONVENTIONAL_TEXT_PATHS.join(", ")}: set the result path in Setup`,
-    {
-      detail: {
-        endpointId: endpoint.id,
-        resultPath: "",
-        tried: CONVENTIONAL_TEXT_PATHS,
-        body: call.body.slice(0, 500),
-      },
-    },
-  );
-}
-
-async function askTextModel(input: {
-  kind: "character" | "location" | "prop" | "style" | "costume" | "body";
-  system: string;
-  user: string;
-  project: { aiBindingSetId?: string | null; systemPrompts: Record<string, string> };
-  home: string;
-  http: HttpPort;
-}): Promise<{ prompt: string; via: string; inferredPath?: string | null; systemInlined?: boolean } | null> {
-  const ai = await readAiConfig(input.home);
-  const resolution = resolveBinding(ai, "text", input.project.aiBindingSetId ?? null);
-  if (resolution) {
-    const provider = ai.providers.find((entry) => entry.id === resolution.endpoint.providerId);
-    if (provider) {
-      const keys = await readKeys(input.home);
-      const apiKey = keys[provider.id] ?? null;
-      try {
-        // The words the model needs travel as values, so an OpenAI-shaped template and a bespoke one both work.
-        // But a template that never mentions {{param:system}} would drop the type instructions silently, and the model
-        // would write a prompt with no idea what a character sheet looks like. So the rendered request is checked first
-        // and, when the instructions are absent, they are folded into the prompt text and reported.
-        const values: { prompt: string; params: Record<string, string> } = {
-          prompt: input.user,
-          params: { system: input.system },
-        };
-        let systemInlined = false;
-        const probe = renderRequest(provider, resolution.endpoint, values, apiKey);
-        const marker = input.system.trim().slice(0, 40);
-        // The rendered body is an object, not a string: serialise before looking for the instructions in it.
-        const rendered = typeof probe.body === "string" ? probe.body : JSON.stringify(probe.body ?? "");
-        if (marker !== "" && !rendered.includes(marker)) {
-          values.prompt = `${input.system}\n\n${input.user}`;
-          systemInlined = true;
-        }
-
-        const call = await callEndpoint({
-          provider,
-          endpoint: resolution.endpoint,
-          apiKey,
-          http: input.http,
-          values,
-        });
-        const found = readTextAnswer(call, resolution.endpoint);
-        return {
-          prompt: found.text,
-          via: `model:${resolution.endpoint.name}`,
-          // Named when the path had to be inferred, so a screen can say so rather than implying a declaration that
-          // does not exist.
-          inferredPath: resolution.endpoint.resultPath ? null : found.path,
-          systemInlined,
-        };
-      } catch (error) {
-        // A broken text endpoint must not silently become a local prompt the person believes a model wrote: the caller
-        // gets the failure, and can choose the local path by clearing the binding.
-        if (error instanceof SlateError) throw error;
-        throw new SlateError("provider_error", `${resolution.endpoint.name} could not be reached`, {
-          detail: { endpointId: resolution.endpoint.id },
-        });
-      }
-    }
-  }
-
-  const config = await readConfig(input.home);
-  if (!config.llm) return null;
-  const written = await askModel(
-    input.http,
-    {
-      baseUrl: config.llm.baseUrl,
-      model: config.llm.model,
-      apiKey: process.env[config.llm.apiKeyEnv] ?? null,
-    },
-    input.system,
-    input.user,
-  );
-  return written ? { prompt: written, via: `model:${config.llm.model}` } : null;
-}
-
 export function composePrompt(input: {
   kind: string;
   name: string;
@@ -182,41 +47,6 @@ interface ModelResult {
   prompt: string;
   via: string;
 }
-
-async function askModel(
-  http: HttpPort,
-  model: { baseUrl: string; model: string; apiKey: string | null },
-  system: string,
-  user: string,
-): Promise<string | null> {
-  try {
-    const response = await http({
-      url: `${model.baseUrl.replace(/\/$/, "")}/chat/completions`,
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(model.apiKey ? { authorization: `Bearer ${model.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: model.model,
-        temperature: 0.2,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-    });
-    if (response.status < 200 || response.status >= 300) return null;
-    const payload = JSON.parse(response.body) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const text = payload.choices?.[0]?.message?.content?.trim();
-    return text && text.length > 0 ? text : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Expand a description into a generation prompt. A configured model does the writing; without one, the local composer
  * does it and the result says so, because a prompt that pretends to be model-written is a lie about provenance.
@@ -273,36 +103,29 @@ export const promptExpand = defineOp({
     /** Set when the endpoint's body had no system slot, so the type instructions were folded into the prompt text. */
     let systemInlined = false;
     {
-      // The instructions belong to the library type, not to this file: a character and a location are not written the
-      // same way, and a project may have its own words for either.
-      const system = resolveTypePrompt({
+      // The instructions belong to the type, not to this file: a character and a location are not written the same way,
+      // and a film or a host may have its own words for either. A style is deliberately not passed: the look is applied
+      // when a picture is made, not when the prompt behind it is written.
+      const written = await expandWithInstructions({
         kind: entity.kind,
-        project: project.systemPrompts,
-        global: (await readGlobalLibrary(context.home)).systemPrompts,
-      }).prompt;
-      // The description is the whole input. A style is applied when a picture is made, not when words are written:
-      // folding the look in here would bake one style into a prompt that may be re-styled later.
-      const user = [
-        `kind: ${entity.kind}`,
-        `name: ${entity.name}`,
-        `description: ${description}`,
-        variant ? `variant: ${variant.name}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const written = await askTextModel({
-        kind: entity.kind,
-        system,
-        user,
+        description,
+        notes: [`name: ${entity.name}`, ...(variant ? [`variant: ${variant.name}`] : [])],
         project: { aiBindingSetId: project.aiBindingSetId, systemPrompts: project.systemPrompts },
         home: context.home,
         http: context.http ?? httpPort,
       });
-      result = written ?? {
-        prompt: composePrompt({ kind: entity.kind, name: entity.name, description, style: null, variant }),
-        via: "local",
-      };
+      result = written
+        ? { prompt: written.prompt, via: written.via }
+        : {
+            prompt: composePrompt({
+              kind: entity.kind,
+              name: entity.name,
+              description,
+              style: null,
+              variant,
+            }),
+            via: "local",
+          };
       if (written?.inferredPath) inferredPath = written.inferredPath;
       if (written?.systemInlined) systemInlined = true;
     }
@@ -400,8 +223,8 @@ export const promptExpandText = defineOp({
       description: z.string().trim().min(1),
       /** The look to apply; null means the film's default. */
       styleId: z.string().nullable().default(null),
-      /** Which library type's instructions apply: a frame is a place, so locations by default. */
-      kind: z.enum(["character", "location", "prop", "style", "costume", "body"]).default("location"),
+      /** Whose instructions apply. A frame has its own now: it is a still of a shot, not a library entry. */
+      kind: z.enum(PROMPT_KINDS).default("frame"),
     })
     .strict(),
   output: z.object({ prompt: z.string(), via: z.string(), styleId: z.string().nullable() }).strict(),
@@ -415,12 +238,6 @@ export const promptExpandText = defineOp({
       ? { name: styleEntity.name, description: styleEntity.prompt.trim() || styleEntity.description }
       : null;
 
-    const system = resolveTypePrompt({
-      kind: input.kind,
-      project: project.systemPrompts,
-      global: (await readGlobalLibrary(context.home)).systemPrompts,
-    }).prompt;
-
     const local = composePrompt({
       kind: "location",
       name: "Shot frame",
@@ -429,27 +246,47 @@ export const promptExpandText = defineOp({
       variant: null,
     });
 
-    const user = [
-      `description: ${input.description}`,
-      style ? `style sheet: ${style.name} - ${style.description}` : "no style sheet",
-    ].join("\n");
-
-    // The catalog's text endpoint wins: it is the thing a person configured. The llm block in the host config is the
-    // fallback, and composing locally is the last rung - each of them named in `via`.
-    const written = await askTextModel({
+    // The same route as a library entry, with one difference that is the point of the frame: the look shapes the words,
+    // because a frame is made in the film's look and there is no later moment to apply it.
+    const written = await expandWithInstructions({
       kind: input.kind,
-      system,
-      user,
+      description: input.description,
+      style,
       project: { aiBindingSetId: project.aiBindingSetId, systemPrompts: project.systemPrompts },
       home: context.home,
       http: context.http ?? httpPort,
     });
 
+    const result = written ? { prompt: written.prompt, via: written.via } : { prompt: local, via: "local" };
+    const recorded = await commitDocuments({
+      root: context.root,
+      actor: context.actor,
+      // A preview changes no node, so it touches none: the record is the point, and a conflict is not.
+      intent: `prompt: expand a frame from "${input.description.slice(0, 60)}"`,
+      touched: [],
+      clock: context.clock,
+      detail: {
+        input: input.description,
+        prompt: result.prompt,
+        via: result.via,
+        kind: input.kind,
+        ...(written?.inferredPath ? { resultPath: written.inferredPath } : {}),
+        ...(written?.systemInlined
+          ? {
+              systemInlined:
+                "the endpoint has no system slot, so the type instructions were sent with the description",
+            }
+          : {}),
+      },
+      mutate: () => {
+        // Deliberately nothing: an expanded frame prompt is offered to the person, not stored against the shot.
+      },
+    });
+
     return {
-      data: written
-        ? { prompt: written.prompt, via: written.via, styleId: styleEntity?.id ?? null }
-        : { prompt: local, via: "local", styleId: styleEntity?.id ?? null },
-      version: project.revision,
+      data: { prompt: result.prompt, via: result.via, styleId: styleEntity?.id ?? null },
+      version: recorded.project.revision,
+      commit: recorded.commit.id,
       warnings: written
         ? written.inferredPath
           ? [

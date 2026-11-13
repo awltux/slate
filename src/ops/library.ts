@@ -13,7 +13,10 @@ import {
   DEFAULT_SYSTEM_PROMPTS,
   LIBRARY_KINDS,
   type LibraryKind,
+  PROMPT_KINDS,
+  type PromptKind,
   isLibraryKind,
+  isPromptKind,
   resolveTypePrompt,
 } from "../kernel/library/type-prompts.js";
 import { assetFile, ingestAsset } from "../kernel/production/assets.js";
@@ -465,7 +468,7 @@ export const typePrompts = defineOp({
     const library = await readGlobalLibrary(context.home);
     return {
       data: {
-        prompts: LIBRARY_KINDS.map((kind) => {
+        prompts: PROMPT_KINDS.map((kind) => {
           const resolved = resolveTypePrompt({
             kind,
             project: ownPrompts,
@@ -505,10 +508,10 @@ export const typePromptSave = defineOp({
   output: z.object({ kind: z.string(), source: z.string(), effective: z.string() }).strict(),
   touched: () => ["project"],
   run: async (input, context) => {
-    if (!isLibraryKind(input.kind)) {
-      throw new SlateError("invalid_input", `unknown library type: ${input.kind}`);
+    if (!isPromptKind(input.kind)) {
+      throw new SlateError("invalid_input", `unknown instruction type: ${input.kind}`);
     }
-    const kind: LibraryKind = input.kind;
+    const kind: PromptKind = input.kind;
 
     const result = await commitDocuments({
       root: context.root,
@@ -555,8 +558,8 @@ export const typePromptSaveGlobal = defineOp({
   output: z.object({ kind: z.string(), source: z.string() }).strict(),
   touched: () => ["library"],
   run: async (input, context) => {
-    if (!isLibraryKind(input.kind)) {
-      throw new SlateError("invalid_input", `unknown library type: ${input.kind}`);
+    if (!isPromptKind(input.kind)) {
+      throw new SlateError("invalid_input", `unknown instruction type: ${input.kind}`);
     }
     const library = await readGlobalLibrary(context.home);
     const prompts = { ...library.systemPrompts };

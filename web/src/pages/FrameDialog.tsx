@@ -96,6 +96,9 @@ export function FrameDialog({
         description: prompt.trim(),
       });
       setExpanded(result.data.prompt);
+      // Expand is recorded as an activity entry, which bumps the project revision: refresh so Generate is not rejected
+      // as a stale write when it is pressed next.
+      await onDone();
       if (result.data.via === "local") {
         setNotice("no text model is configured, so the prompt was composed locally from your words");
       }
