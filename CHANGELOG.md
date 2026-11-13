@@ -556,3 +556,8 @@ User-visible changes per slice. Internal refactors are not listed.
   recorded in the commit that the call produces.
 - **A generated frame now records the pictures it was given**: the sheets by name and asset id, plus the capability, the
   blockout, the start frame and the size, so a frame can be traced to its references from the Activity log alone.
+
+## Expand keeps its answer
+
+- **Pressing Expand stores the expanded prompt immediately**, so a page refresh does not make you pay for the same
+  sentence twice. The Save button still exists for editing either text by hand.

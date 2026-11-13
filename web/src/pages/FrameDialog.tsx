@@ -103,6 +103,14 @@ export function FrameDialog({
         description: prompt.trim(),
       });
       setExpanded(result.data.prompt);
+      await runOp(projectId, "shot.frame-prompt", {
+        shotId,
+        role,
+        prompt: prompt.trim() === "" ? "" : prompt,
+        // The answer, not the stale state: setExpanded has not rendered yet.
+        expanded: result.data.prompt,
+      });
+      await onDone();
       // Expand is recorded as an activity entry, which bumps the project revision: refresh so Generate is not rejected
       // as a stale write when it is pressed next.
       await onDone();
