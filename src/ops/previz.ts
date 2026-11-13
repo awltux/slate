@@ -221,6 +221,13 @@ export const previzGet = defineOp({
             shotId: z.string(),
             number: z.string(),
             durationSec: z.number(),
+            /** The shot's frames, so the blockout can be judged against the picture that was generated from it. */
+            frames: z
+              .object({
+                first: z.string().nullable(),
+                last: z.string().nullable(),
+              })
+              .strict(),
             blockout: z
               .object({
                 blockoutId: z.string(),
@@ -261,6 +268,10 @@ export const previzGet = defineOp({
               shotId: shot.id,
               number: shot.number,
               durationSec: shot.durationSec,
+              frames: {
+                first: shot.frames.first ?? null,
+                last: shot.frames.last ?? null,
+              },
               blockout: blockout
                 ? {
                     blockoutId: blockout.id,

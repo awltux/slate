@@ -589,3 +589,9 @@ User-visible changes per slice. Internal refactors are not listed.
   base64, no size limit — even when the picture lives on a host the provider does not list.
 - **A fal provider now declares fal'"'"'s media hosts by default** (`fal.media`, `fal.run`, `fal.ai`), so a fal url is
   used as a url without anyone typing a host list.
+
+## The blockout pane shows the frames it was blocked out for
+
+- **Each shot's First and Last column now holds two pictures**: the blockout still, and beneath it the start or end frame
+  once one has been generated. Both open at full size when clicked, so the geometry and what the model made of it can be
+  compared in one place.

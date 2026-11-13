@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, runOp } from "../api.js";
+import { Thumb } from "./ImageReview.js";
 
 interface SetView {
   id: string;
@@ -16,6 +17,8 @@ interface PrevizShot {
   shotId: string;
   number: string;
   durationSec: number;
+  /** What has been generated for this shot, so the blockout can be judged against it. */
+  frames: { first: string | null; last: string | null };
   blockout: {
     blockoutId: string;
     setId: string | null;
@@ -168,38 +171,76 @@ export function Previz({ projectId }: { projectId: string }) {
                     )}
                   </td>
                   <td>
-                    {shot.blockout ? (
-                      <img
-                        src={media(shot.blockout.firstAssetId)}
-                        alt={`First frame for shot ${shot.number}`}
-                        style={{
-                          width: 160,
-                          height: 90,
-                          objectFit: "cover",
-                          borderRadius: 6,
-                          background: "#000",
-                        }}
-                      />
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
+                    <div className="stack" style={{ gap: "0.25rem" }}>
+                      {shot.blockout ? (
+                        <figure style={{ margin: 0 }}>
+                          <Thumb
+                            src={media(shot.blockout.firstAssetId)}
+                            alt={`Blockout first frame for shot ${shot.number}`}
+                            caption={`Shot ${shot.number} — blockout, first`}
+                            width={160}
+                            height={90}
+                            radius={6}
+                          />
+                          <figcaption className="muted" style={{ fontSize: 11 }}>
+                            blockout
+                          </figcaption>
+                        </figure>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                      {shot.frames.first ? (
+                        <figure style={{ margin: 0 }}>
+                          <Thumb
+                            src={media(shot.frames.first)}
+                            alt={`Start frame for shot ${shot.number}`}
+                            caption={`Shot ${shot.number} — start frame`}
+                            width={160}
+                            height={90}
+                            radius={6}
+                          />
+                          <figcaption className="muted" style={{ fontSize: 11 }}>
+                            start frame
+                          </figcaption>
+                        </figure>
+                      ) : null}
+                    </div>
                   </td>
                   <td>
-                    {shot.blockout?.lastAssetId ? (
-                      <img
-                        src={media(shot.blockout.lastAssetId)}
-                        alt={`Last frame for shot ${shot.number}`}
-                        style={{
-                          width: 160,
-                          height: 90,
-                          objectFit: "cover",
-                          borderRadius: 6,
-                          background: "#000",
-                        }}
-                      />
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
+                    <div className="stack" style={{ gap: "0.25rem" }}>
+                      {shot.blockout?.lastAssetId ? (
+                        <figure style={{ margin: 0 }}>
+                          <Thumb
+                            src={media(shot.blockout.lastAssetId)}
+                            alt={`Blockout last frame for shot ${shot.number}`}
+                            caption={`Shot ${shot.number} — blockout, last`}
+                            width={160}
+                            height={90}
+                            radius={6}
+                          />
+                          <figcaption className="muted" style={{ fontSize: 11 }}>
+                            blockout
+                          </figcaption>
+                        </figure>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                      {shot.frames.last ? (
+                        <figure style={{ margin: 0 }}>
+                          <Thumb
+                            src={media(shot.frames.last)}
+                            alt={`End frame for shot ${shot.number}`}
+                            caption={`Shot ${shot.number} — end frame`}
+                            width={160}
+                            height={90}
+                            radius={6}
+                          />
+                          <figcaption className="muted" style={{ fontSize: 11 }}>
+                            end frame
+                          </figcaption>
+                        </figure>
+                      ) : null}
+                    </div>
                   </td>
                   <td>
                     {shot.blockout?.animaticAssetId ? (
