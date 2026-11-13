@@ -582,3 +582,10 @@ User-visible changes per slice. Internal refactors are not listed.
   being inherited by every costume cut from it, so a coat appeared under a coat.
 - Clothing and accessories are decided later, in the shot's own words; the instructions say so, so the model does not
   invent them to fill the frame.
+
+## A reference is trusted by who made it
+
+- **An asset records the provider that produced it**, so its url travels back to that provider as a url — no upload, no
+  base64, no size limit — even when the picture lives on a host the provider does not list.
+- **A fal provider now declares fal'"'"'s media hosts by default** (`fal.media`, `fal.run`, `fal.ai`), so a fal url is
+  used as a url without anyone typing a host list.

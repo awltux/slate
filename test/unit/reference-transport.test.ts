@@ -228,3 +228,21 @@ describe("a reference the provider already hosts", () => {
     expect(staged.value.startsWith("data:")).toBe(true);
   });
 });
+
+describe("a reference the same provider made", () => {
+  it("is trusted by who made it, not by what host it lives on", async () => {
+    // fal serves its media from a host it does not declare here: the asset remembers which provider produced it.
+    const staged = await stageReference({
+      file,
+      provider: { ...fal, reference: { ...fal.reference, trustedHosts: [] } },
+      publicUrl: "https://some-cdn.example/abc/sheet.png",
+      publicUrlFrom: fal.id,
+      upload: null,
+      http: async () => {
+        throw new Error("nothing should be fetched");
+      },
+    });
+    expect(staged.via).toBe("url");
+    expect(staged.value).toBe("https://some-cdn.example/abc/sheet.png");
+  });
+});

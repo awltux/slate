@@ -230,7 +230,13 @@ export const entityGenerate = defineOp({
         const composite = bodyFor?.identity?.compositeAssetId ?? null;
         const compositeAsset = composite ? (before.assets[composite] ?? null) : null;
         const references = compositeAsset
-          ? [{ file: assetFile(context.root, compositeAsset), url: compositeAsset.sourceUrl ?? null }]
+          ? [
+              {
+                file: assetFile(context.root, compositeAsset),
+                url: compositeAsset.sourceUrl ?? null,
+                from: compositeAsset.sourceProviderId ?? null,
+              },
+            ]
           : [];
 
         const files = await generateImages({

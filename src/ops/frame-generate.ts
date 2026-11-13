@@ -250,7 +250,11 @@ export const frameGenerate = defineOp({
         const references = referenceAssetIds
           .map((id) => production.assets[id] ?? null)
           .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-          .map((entry) => ({ file: assetFile(context.root, entry), url: entry.sourceUrl ?? null }));
+          .map((entry) => ({
+            file: assetFile(context.root, entry),
+            url: entry.sourceUrl ?? null,
+            from: entry.sourceProviderId ?? null,
+          }));
 
         const files = await generateImages({
           provider,
@@ -274,6 +278,7 @@ export const frameGenerate = defineOp({
               kind: "frame",
               sourcePath: file.file,
               sourceUrl: file.url,
+              sourceProviderId: provider.id,
               clock: context.clock,
             }),
           );

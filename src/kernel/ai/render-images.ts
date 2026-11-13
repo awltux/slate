@@ -56,7 +56,7 @@ export async function generateImages(input: {
    * References, in order: the first becomes {{image}}, the second {{image2}}. A reference that already lives on the
    * provider's host travels as its url; the rest fall back to inline bytes or an upload.
    */
-  references?: Array<{ file: string; url?: string | null }>;
+  references?: Array<{ file: string; url?: string | null; from?: string | null }>;
   /** The endpoint that gives references a public home, when the provider's policy wants one. */
   upload?: Endpoint | null;
   http: HttpPort;
@@ -83,6 +83,7 @@ export async function generateImages(input: {
           await stageReference({
             file: first.file,
             publicUrl: first.url ?? null,
+            publicUrlFrom: first.from ?? null,
             provider: input.provider,
             upload: input.upload ?? null,
             http: input.http,
@@ -96,6 +97,7 @@ export async function generateImages(input: {
           const reference = await stageReference({
             file: entry.file,
             publicUrl: entry.url ?? null,
+            publicUrlFrom: entry.from ?? null,
             provider: input.provider,
             upload: input.upload ?? null,
             http: input.http,
@@ -111,6 +113,7 @@ export async function generateImages(input: {
           await stageReference({
             file: second.file,
             publicUrl: second.url ?? null,
+            publicUrlFrom: second.from ?? null,
             provider: input.provider,
             upload: input.upload ?? null,
             http: input.http,

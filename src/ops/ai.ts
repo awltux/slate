@@ -446,6 +446,7 @@ export const aiProviderSave = defineOp({
     }
     const id = input.id ?? newId("aip");
     const existing = config.providers.find((entry) => entry.id === id);
+    const storedReference = input.reference ?? existing?.reference;
     const provider: Provider = {
       id,
       name: input.name,
@@ -453,7 +454,11 @@ export const aiProviderSave = defineOp({
       mode: input.mode,
       baseUrl: input.baseUrl,
       auth: { header: input.authHeader, scheme: input.authScheme },
-      reference: input.reference ?? existing?.reference ?? DEFAULT_REFERENCE_POLICY,
+      reference:
+        storedReference ??
+        (input.kind === "fal"
+          ? { ...DEFAULT_REFERENCE_POLICY, trustedHosts: ["fal.media", "fal.run", "fal.ai"] }
+          : DEFAULT_REFERENCE_POLICY),
       queue: input.queue ?? existing?.queue ?? DEFAULT_QUEUE_SPEC,
       testPath: input.testPath,
       testMethod: input.testMethod,

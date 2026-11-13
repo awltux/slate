@@ -31,6 +31,8 @@ export const AssetSchema = z
      * remote model has to fetch, and a fal url it already has is better than megabytes of base64 we cannot send.
      */
     sourceUrl: z.string().nullable().default(null),
+    /** The provider that produced these bytes: its own url is one it can certainly fetch again. */
+    sourceProviderId: z.string().nullable().default(null),
     createdAt: z.string(),
   })
   .strict();
@@ -62,6 +64,8 @@ export async function ingestAsset(
     extension?: string;
     /** Where the bytes came from, when that was a model: the url is reused as a reference later. */
     sourceUrl?: string | null;
+    /** Which provider answered, so its url can be trusted without a host allow-list. */
+    sourceProviderId?: string | null;
   },
 ): Promise<Asset> {
   const paths = projectPaths(root);
@@ -89,6 +93,7 @@ export async function ingestAsset(
     sha256: hashBytes(bytes),
     bytes: size,
     sourceUrl: input.sourceUrl ?? null,
+    sourceProviderId: input.sourceProviderId ?? null,
     createdAt: input.clock.now(),
   };
 }

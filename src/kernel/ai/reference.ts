@@ -135,13 +135,18 @@ export async function stageReference(input: {
    * nothing and has no size limit, which inline bytes do.
    */
   publicUrl?: string | null;
+  /** The provider that produced the url. Its own address is fetchable by it, whatever host it lives on. */
+  publicUrlFrom?: string | null;
   /** The upload endpoint, when the provider has one bound. */
   upload?: Endpoint | null;
   http: HttpPort;
   key?: string | null;
 }): Promise<StagedReference> {
   // The provider's own address first: only a host that already has the bytes can use it, so it must match.
-  if (input.publicUrl && canFetch(input.publicUrl, input.provider)) {
+  if (
+    input.publicUrl &&
+    (input.publicUrlFrom === input.provider.id || canFetch(input.publicUrl, input.provider))
+  ) {
     return { value: input.publicUrl, via: "url", bytes: 0, contentType: contentTypeFor(input.file) };
   }
 
